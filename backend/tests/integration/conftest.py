@@ -8,6 +8,7 @@ Users are real Supabase Auth users created through the Auth admin API with the L
 service-role key, signed in through /auth/v1/token, and deleted afterwards.
 """
 
+import os
 import uuid
 from collections.abc import Iterator
 
@@ -29,6 +30,13 @@ from .support import (
 )
 
 
+def _unavailable(message: str) -> None:
+    """Skip when the stack is unavailable, or fail if DELEA_REQUIRE_INTEGRATION=1 (CI)."""
+    if os.environ.get("DELEA_REQUIRE_INTEGRATION") == "1":
+        pytest.fail(message, pytrace=False)
+    pytest.skip(message)
+
+
 @pytest.fixture(scope="session")
 def settings() -> Settings:
     s = get_settings()
@@ -43,20 +51,20 @@ def settings() -> Settings:
         if not value
     ]
     if missing:
-        pytest.skip(f"Integration tests need {', '.join(missing)} in backend/.env; {START_HINT}")
+        _unavailable(f"Integration tests need {', '.join(missing)} in backend/.env; {START_HINT}")
 
     try:
         with psycopg.connect(s.database_url, connect_timeout=3) as conn:
             conn.execute("select 1")
     except psycopg.OperationalError:
-        pytest.skip(f"Local Supabase database not reachable at {s.database_url}; {START_HINT}")
+        _unavailable(f"Local Supabase database not reachable at {s.database_url}; {START_HINT}")
 
     try:
         httpx.get(
             f"{s.supabase_url}/auth/v1/health", headers={"apikey": s.supabase_anon_key}, timeout=3
         ).raise_for_status()
     except httpx.HTTPError:
-        pytest.skip(f"Local Supabase Auth not reachable at {s.supabase_url}; {START_HINT}")
+        _unavailable(f"Local Supabase Auth not reachable at {s.supabase_url}; {START_HINT}")
     return s
 
 

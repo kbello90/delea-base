@@ -30,7 +30,12 @@ npx supabase@2.121.0 start
 npx supabase@2.121.0 status -o env
 ```
 
-Put them in `backend/.env`. That file is gitignored, so never commit it.
+Put them in `backend/.env`. That file is gitignored, so never commit it. Or let the script
+write it from the local stack, which is what CI does. It refuses non-local URLs:
+
+```sh
+npx supabase@2.121.0 status -o env | python backend/scripts/write_local_env.py
+```
 
 | `supabase status` | `backend/.env` |
 |---|---|
@@ -82,8 +87,12 @@ Linux and Docker use the default loop, and the Dockerfile has no loop flag.
     insert the `tenant_members` rows, sign each user in through `/auth/v1/token` to get real
     ES256 access tokens, and delete the users afterwards.
   - **Skipping:** if the database or Auth is unreachable, or the keys are missing from
-    `backend/.env`, they **skip** with a message saying how to start the stack. That's why CI
-    passes without a database.
+    `backend/.env`, they **skip** with a message saying how to start the stack. That's why the
+    plain backend CI job passes without a database. Set `DELEA_REQUIRE_INTEGRATION=1` to make
+    them **fail** instead. The CI `database` job does this, after starting the local stack and
+    running the pgTAP tests.
+  - **Seed guard:** the run fails if any seed row was modified. Tests must create their own rows
+    with the `IT-` prefix, which are deleted afterwards.
 
 ## Error responses
 
