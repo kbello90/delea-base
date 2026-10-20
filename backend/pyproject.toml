@@ -4,10 +4,11 @@ version = "0.0.0"
 description = "DELEA FastAPI backend (TRD §4)"
 requires-python = ">=3.11"
 dependencies = [
-  "fastapi>=0.115,<1.0",
+  "fastapi>=0.121,<1.0",  # Depends(scope="function")
   "uvicorn[standard]>=0.32",
   "pydantic-settings>=2.6",
   "pyjwt[crypto]>=2.10",
+  "psycopg[binary,pool]>=3.2",
 ]
 
 [project.optional-dependencies]
@@ -26,6 +27,9 @@ packages = ["app"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+  "integration: needs the local Supabase stack (npx supabase@2.121.0 start); skipped if unreachable",
+]
 
 [tool.ruff]
 line-length = 100

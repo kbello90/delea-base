@@ -52,13 +52,17 @@ Run these in `backend/`. On Windows, the venv's scripts live in `.venv\Scripts\`
 cd backend
 python -m venv .venv
 .venv/bin/python -m pip install -e ".[dev]"
-.venv/bin/python -m pytest
+.venv/bin/python -m pytest                  # unit tests; integration tests skip without the stack
+.venv/bin/python -m pytest -m integration   # against the local Supabase stack
 .venv/bin/python -m ruff check .
-.venv/bin/python -m uvicorn app.main:app --reload --port 8000   # GET http://localhost:8000/health
+.venv/bin/python -m uvicorn app.main:app --reload --port 8000   # Windows: add --loop asyncio:SelectorEventLoop
 ```
 
-Settings come from environment variables or `backend/.env`. See the root
-[`.env.example`](.env.example) for the variable names. Never commit real values.
+Settings come from environment variables or `backend/.env` (gitignored). Copy
+[`backend/.env.example`](backend/.env.example). Local keys come from
+`npx supabase@2.121.0 status -o env`. Never commit real values. See
+[`backend/README.md`](backend/README.md) for the DB session model, the error mapping, the
+integration test setup and known limitations.
 
 Docker:
 

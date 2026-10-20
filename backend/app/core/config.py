@@ -6,6 +6,7 @@ Every tier reads the same variables; Enterprise deployments differ only in their
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +19,8 @@ class Settings(BaseSettings):
     supabase_anon_key: str = ""
     supabase_service_role_key: str = ""
     database_url: str = ""
+    db_pool_min_size: int = 1
+    db_pool_max_size: int = 10
 
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
@@ -25,6 +28,20 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
 
     jwt_audience: str = "authenticated"
+
+    # Comma-separated list of exact origins. A wildcard is never allowed.
+    cors_origins: str = "http://localhost:5173,http://localhost:5174"
+
+    @field_validator("cors_origins")
+    @classmethod
+    def _no_wildcard_origin(cls, value: str) -> str:
+        if "*" in value:
+            raise ValueError("CORS_ORIGINS must list exact origins; '*' is not allowed")
+        return value
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
     @property
     def supabase_jwks_url(self) -> str:

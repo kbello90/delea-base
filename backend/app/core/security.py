@@ -3,8 +3,13 @@
 Supabase Auth signs access tokens with ES256. A custom access token hook adds the
 `tenant_id` and `app_role` claims (TRD §2.2). The top-level `role` claim is the Postgres
 role (`authenticated` / `anon`) and is not used for app authorization.
+
+Status codes: 401 when the token itself is missing, malformed, expired, or fails
+verification; 403 when a valid token carries no usable membership (no tenant_id or no
+valid app_role); 503 when the signing keys cannot be fetched.
 """
 
+import uuid
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Literal, cast, get_args
@@ -39,6 +44,18 @@ def _unauthorized(detail: str) -> HTTPException:
     )
 
 
+def _forbidden(detail: str) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+
+def _is_uuid(value: object) -> bool:
+    try:
+        uuid.UUID(str(value))
+    except ValueError:
+        return False
+    return True
+
+
 def decode_access_token(token: str) -> TokenClaims:
     """Verify an ES256 Supabase access token and extract tenant_id / app_role."""
     try:
@@ -48,21 +65,30 @@ def decode_access_token(token: str) -> TokenClaims:
             signing_key.key,
             algorithms=["ES256"],
             audience=get_settings().jwt_audience,
+            options={"require": ["exp", "sub"]},
         )
+    except jwt.PyJWKClientConnectionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication is temporarily unavailable",
+        ) from exc
     except jwt.PyJWTError as exc:
         raise _unauthorized("Invalid token") from exc
 
     sub = payload.get("sub")
     tenant_id = payload.get("tenant_id")
     app_role = payload.get("app_role")
-    if not sub or not tenant_id:
-        raise _unauthorized("Token is missing sub or tenant_id")
+    if not sub:
+        raise _unauthorized("Token is missing sub")
+    # A verified token without a membership: the user is known but has no tenant access.
+    if not tenant_id or not _is_uuid(tenant_id):
+        raise _forbidden("No tenant membership")
     if app_role not in APP_ROLES:
-        raise _unauthorized("Token has a missing or unknown app_role")
+        raise _forbidden("No valid app_role")
 
-    return TokenClaims(sub=sub, tenant_id=tenant_id, app_role=cast(AppRole, app_role))
+    return TokenClaims(sub=sub, tenant_id=str(tenant_id), app_role=cast(AppRole, app_role))
 
 
 def ensure_role(claims: TokenClaims, allowed: set[AppRole]) -> None:
     if claims.app_role not in allowed:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
+        raise _forbidden("Insufficient role")
