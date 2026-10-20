@@ -24,9 +24,12 @@ def it_description() -> str:
 
 def payload(**overrides: object) -> dict:
     body: dict[str, object] = {
-        "expense_date": "2026-10-15", "description": it_description(),
-        "category": "it-test", "amount_cents": 1234, "is_tax_deductible": True,
-    }  # fmt: skip
+        "expense_date": "2026-10-15",
+        "description": it_description(),
+        "category": "it-test",
+        "amount_cents": 1234,
+        "is_tax_deductible": True,
+    }
     body.update(overrides)
     return body
 
@@ -49,10 +52,12 @@ def test_role_matrix(client: TestClient, users: dict[str, TestUser]) -> None:
     assert_access(client, users, "GET", EXPORT, read)
     assert_access(client, users, "GET", item, {"owner_a": 200, "cpa_a": 200, "owner_b": 404})
     # Writes: owner only.
-    assert_access(client, users, "POST", EXPENSES, {"owner_a": 201, "owner_b": 201},
-                  json=lambda _: payload())  # fmt: skip
-    assert_access(client, users, "PATCH", item, {"owner_a": 200, "owner_b": 404},
-                  json={"amount_cents": 999})  # fmt: skip
+    assert_access(
+        client, users, "POST", EXPENSES, {"owner_a": 201, "owner_b": 201}, json=lambda _: payload()
+    )
+    assert_access(
+        client, users, "PATCH", item, {"owner_a": 200, "owner_b": 404}, json={"amount_cents": 999}
+    )
     target = f"{EXPENSES}/{create(client, users['owner_a'])['id']}"
     assert_access(client, users, "DELETE", target, {"owner_a": 204, "owner_b": 404})
 
@@ -62,8 +67,9 @@ def test_owner_crud(client: TestClient, users: dict[str, TestUser]) -> None:
     created = create(client, owner, amount_cents=5000, receipt_url="https://example.com/r.pdf")
     assert created["tenant_id"] == TENANT_A and created["amount_cents"] == 5000
     url = f"{EXPENSES}/{created['id']}"
-    updated = client.patch(url, json={"is_tax_deductible": False, "category": None},
-                           headers=owner.headers)  # fmt: skip
+    updated = client.patch(
+        url, json={"is_tax_deductible": False, "category": None}, headers=owner.headers
+    )
     assert updated.status_code == 200, updated.text
     assert (updated.json()["is_tax_deductible"], updated.json()["category"]) == (False, None)
     assert client.patch(url, json={"expense_date": None}, headers=owner.headers).status_code == 422
@@ -74,10 +80,18 @@ def test_owner_crud(client: TestClient, users: dict[str, TestUser]) -> None:
 def test_cpa_cannot_write(client: TestClient, users: dict[str, TestUser], db) -> None:
     cpa = users["cpa_a"]
     description = it_description()
-    assert client.post(EXPENSES, json=payload(description=description),
-                       headers=cpa.headers).status_code == 403  # fmt: skip
-    assert db.execute("select count(*) from public.expenses where description = %s",
-                      (description,)).fetchone()[0] == 0  # fmt: skip
+    assert (
+        client.post(
+            EXPENSES, json=payload(description=description), headers=cpa.headers
+        ).status_code
+        == 403
+    )
+    assert (
+        db.execute(
+            "select count(*) from public.expenses where description = %s", (description,)
+        ).fetchone()[0]
+        == 0
+    )
 
 
 def test_filters(client: TestClient, users: dict[str, TestUser]) -> None:
@@ -95,8 +109,9 @@ def test_filters(client: TestClient, users: dict[str, TestUser]) -> None:
     assert amounts(tax_deductible="false") == [6800]
     assert amounts(tax_deductible="true", date_to="2026-10-04") == [45000]
     assert amounts(limit=2, offset=1) == [14500, 25000]  # newest first: 10-12, 10-10, 10-05
-    bad = client.get(EXPENSES, params={"date_from": "2026-10-10", "date_to": "2026-10-01"},
-                     headers=owner.headers)  # fmt: skip
+    bad = client.get(
+        EXPENSES, params={"date_from": "2026-10-10", "date_to": "2026-10-01"}, headers=owner.headers
+    )
     assert bad.status_code == 422
 
 
@@ -111,11 +126,18 @@ def test_isolation(client: TestClient, users: dict[str, TestUser]) -> None:
 
 def test_tenant_id_in_body_is_rejected(client: TestClient, users: dict[str, TestUser], db) -> None:
     description = it_description()
-    response = client.post(EXPENSES, json=payload(description=description, tenant_id=TENANT_B),
-                           headers=users["owner_a"].headers)  # fmt: skip
+    response = client.post(
+        EXPENSES,
+        json=payload(description=description, tenant_id=TENANT_B),
+        headers=users["owner_a"].headers,
+    )
     assert response.status_code == 422
-    assert db.execute("select count(*) from public.expenses where description = %s",
-                      (description,)).fetchone()[0] == 0  # fmt: skip
+    assert (
+        db.execute(
+            "select count(*) from public.expenses where description = %s", (description,)
+        ).fetchone()[0]
+        == 0
+    )
 
 
 def test_csv_export_matches_filters_and_formats_money(
@@ -131,8 +153,13 @@ def test_csv_export_matches_filters_and_formats_money(
         ("2026-10-05", "145.00", "true"),
     ]
     assert list(rows[0].keys()) == [
-        "expense_date", "description", "category", "amount", "is_tax_deductible", "receipt_url",
-    ]  # fmt: skip
+        "expense_date",
+        "description",
+        "category",
+        "amount",
+        "is_tax_deductible",
+        "receipt_url",
+    ]
 
 
 def test_csv_export_escapes_formula_cells(client: TestClient, users: dict[str, TestUser]) -> None:
@@ -147,11 +174,11 @@ def test_csv_export_escapes_formula_cells(client: TestClient, users: dict[str, T
         f"IT-{tag}-cr": ("\rcmd", "'\rcmd"),
     }
     for description, (category, _) in dangerous.items():
-        create(client, owner, description=description, category=category,
-               expense_date="2026-09-01")  # fmt: skip
+        create(client, owner, description=description, category=category, expense_date="2026-09-01")
 
-    rows = parse_csv(client.get(EXPORT, params={"date_to": "2026-09-01"},
-                                headers=owner.headers).text)  # fmt: skip
+    rows = parse_csv(
+        client.get(EXPORT, params={"date_to": "2026-09-01"}, headers=owner.headers).text
+    )
     by_description = {r["description"]: r["category"] for r in rows}
     for description, (_, expected) in dangerous.items():
         assert by_description[description] == expected, description

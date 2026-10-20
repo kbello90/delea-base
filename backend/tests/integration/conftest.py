@@ -148,10 +148,20 @@ def _cleanup_test_rows(db: psycopg.Connection) -> Iterator[None]:
 # Seed tables whose rows the tests must never change (updated_at is ignored: a no-op PATCH
 # still bumps it). company_settings counters are covered too.
 _SEED_TABLES = (
-    "tenants", "tenant_domains", "brand_config", "company_settings", "products", "materials",
-    "product_materials", "customers", "invoices", "invoice_line_items", "expenses",
-    "automation_rules", "reorder_list",
-)  # fmt: skip
+    "tenants",
+    "tenant_domains",
+    "brand_config",
+    "company_settings",
+    "products",
+    "materials",
+    "product_materials",
+    "customers",
+    "invoices",
+    "invoice_line_items",
+    "expenses",
+    "automation_rules",
+    "reorder_list",
+)
 
 
 def _seed_fingerprint(db: psycopg.Connection) -> dict[str, str]:

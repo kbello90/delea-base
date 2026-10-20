@@ -33,9 +33,17 @@ def test_non_string_values() -> None:
 
 @pytest.mark.parametrize(
     ("cents", "text"),
-    [(0, "0.00"), (5, "0.05"), (99, "0.99"), (100, "1.00"), (1234, "12.34"),
-     (9223372036854775807, "92233720368547758.07"), (-150, "-1.50"), (None, None)],
-)  # fmt: skip
+    [
+        (0, "0.00"),
+        (5, "0.05"),
+        (99, "0.99"),
+        (100, "1.00"),
+        (1234, "12.34"),
+        (9223372036854775807, "92233720368547758.07"),
+        (-150, "-1.50"),
+        (None, None),
+    ],
+)
 def test_cents_to_decimal_is_exact(cents: int | None, text: str | None) -> None:
     assert cents_to_decimal(cents) == text
 

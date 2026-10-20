@@ -84,9 +84,11 @@ async def get_customer(customer_id: UUID, claims: CurrentClaims, conn: DbConn) -
 
 
 @router.post(
-    "", response_model=CustomerOut, status_code=status.HTTP_201_CREATED,
+    "",
+    response_model=CustomerOut,
+    status_code=status.HTTP_201_CREATED,
     dependencies=[OwnerOrStaff],
-)  # fmt: skip
+)
 async def create_customer(body: CustomerCreate, claims: CurrentClaims, conn: DbConn) -> CustomerOut:
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(

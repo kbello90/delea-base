@@ -98,8 +98,13 @@ async def list_expenses(
 
 
 CSV_HEADER = (
-    "expense_date", "description", "category", "amount", "is_tax_deductible", "receipt_url",
-)  # fmt: skip
+    "expense_date",
+    "description",
+    "category",
+    "amount",
+    "is_tax_deductible",
+    "receipt_url",
+)
 
 
 # Declared before /{expense_id} so "export.csv" is never parsed as an id.

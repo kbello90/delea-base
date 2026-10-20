@@ -21,21 +21,30 @@ def it_first_name() -> str:
 
 def retail(**overrides: object) -> dict:
     body: dict[str, object] = {
-        "first_name": it_first_name(), "last_name": "Tester",
-        "email": "it@test.local", "phone": "+1 555 0100",
-        "address_line1": "1 Main St", "city": "Albany", "state": "NY", "postal_code": "12207",
+        "first_name": it_first_name(),
+        "last_name": "Tester",
+        "email": "it@test.local",
+        "phone": "+1 555 0100",
+        "address_line1": "1 Main St",
+        "city": "Albany",
+        "state": "NY",
+        "postal_code": "12207",
         "notes": "Prefers rose gold",
-    }  # fmt: skip
+    }
     body.update(overrides)
     return body
 
 
 def wholesale(**overrides: object) -> dict:
     return retail(
-        customer_type="wholesale", company_name="IT Boutique", tax_exempt=True,
-        resale_certificate_number="NY-RS-1", wholesale_discount_bps=2000,
-        payment_terms="net_30", **overrides,
-    )  # fmt: skip
+        customer_type="wholesale",
+        company_name="IT Boutique",
+        tax_exempt=True,
+        resale_certificate_number="NY-RS-1",
+        wholesale_discount_bps=2000,
+        payment_terms="net_30",
+        **overrides,
+    )
 
 
 def create(client: TestClient, user: TestUser, body: dict) -> dict:
@@ -78,8 +87,17 @@ def test_separate_contact_columns_round_trip(
     body = retail(address_line2="Apt 4", country="ca", marketing_opt_in=True)
     created = create(client, users["staff_a"], body)
     assert created["tenant_id"] == TENANT_A
-    for field in ("email", "phone", "address_line1", "address_line2", "city", "state",
-                  "postal_code", "notes", "marketing_opt_in"):  # fmt: skip
+    for field in (
+        "email",
+        "phone",
+        "address_line1",
+        "address_line2",
+        "city",
+        "state",
+        "postal_code",
+        "notes",
+        "marketing_opt_in",
+    ):
         assert created[field] == body[field], field
     assert created["country"] == "CA"
     assert created["customer_type"] == "retail" and created["payment_terms"] == "due_on_receipt"
@@ -88,8 +106,10 @@ def test_separate_contact_columns_round_trip(
 def test_wholesale_customer_round_trip(client: TestClient, users: dict[str, TestUser]) -> None:
     created = create(client, users["owner_a"], wholesale())
     assert (created["customer_type"], created["company_name"], created["tax_exempt"]) == (
-        "wholesale", "IT Boutique", True,
-    )  # fmt: skip
+        "wholesale",
+        "IT Boutique",
+        True,
+    )
     assert (created["wholesale_discount_bps"], created["payment_terms"]) == (2000, "net_30")
 
 

@@ -132,10 +132,19 @@ class CustomerUpdate(BaseModel):
 
 NULLABLE_FIELDS = frozenset(
     {
-        "last_name", "email", "phone", "address_line1", "address_line2", "city", "state",
-        "postal_code", "notes", "company_name", "resale_certificate_number",
+        "last_name",
+        "email",
+        "phone",
+        "address_line1",
+        "address_line2",
+        "city",
+        "state",
+        "postal_code",
+        "notes",
+        "company_name",
+        "resale_certificate_number",
     }
-)  # fmt: skip
+)
 
 
 class CustomerOut(BaseModel):
