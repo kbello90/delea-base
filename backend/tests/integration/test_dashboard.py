@@ -54,18 +54,22 @@ async def test_formulas(settings: Settings) -> None:
         settings.database_url, autocommit=True
     ) as aconn:
         async with aconn.transaction(force_rollback=True):
-            before = await fetch_summary(aconn, TENANT_A)  # as the table owner, same tenant filter
-            month_start = before["month_start"]
-            year_start = before["year_start"]
+            # As the table owner: let the test set paid_at itself (rolled back with the rest).
+            await aconn.execute("alter table public.invoices disable trigger invoices_30_numbering")
             now = (await (await aconn.execute("select now()")).fetchone())[0]
             today = (
                 await (await aconn.execute("select (now() at time zone 'UTC')::date")).fetchone()
             )[0]
+
+            # Baseline and final reading both go through the owner's user session (RLS on),
+            # exactly like the endpoint. Tenant A's rows are inserted as that owner too.
+            await apply_user_scope(aconn, owner)
+            before = await fetch_summary(aconn, TENANT_A)
+            month_start = before["month_start"]
+            year_start = before["year_start"]
             last_month = month_start - timedelta(days=1)  # previous month (maybe last year)
             last_year = year_start - timedelta(days=1)
 
-            # Let the test set paid_at itself (rolled back with the transaction).
-            await aconn.execute("alter table public.invoices disable trigger invoices_30_numbering")
             rows = _Rows(aconn)
             await rows.invoice(TENANT_A, 10000, 800, "paid", now)
             await rows.invoice(TENANT_A, 20000, 1600, "shipped", last_month)
@@ -73,15 +77,11 @@ async def test_formulas(settings: Settings) -> None:
             await rows.invoice(TENANT_A, 80000, 6400, "paid", now, refunded=True)
             await rows.invoice(TENANT_A, 160000, 12800, "paid", now, refunded=True, cancelled=True)
             await rows.invoice(TENANT_A, 320000, 25600, "quote")
-            await rows.invoice(TENANT_B, 640000, 51200, "paid", now)
-
             await rows.expense(TENANT_A, today, 1000)
             await rows.expense(TENANT_A, today, 2000, deductible=False)
             await rows.expense(TENANT_A, last_month.date(), 4000)
             await rows.expense(TENANT_A, last_year.date(), 8000)
             await rows.expense(TENANT_A, today + timedelta(days=40), 16000)  # future: no
-            await rows.expense(TENANT_B, today, 32000)
-
             await aconn.execute(
                 "insert into public.products (tenant_id, sku, name, metal, price_cents, "
                 "stock_qty, low_stock_threshold) values "
@@ -95,7 +95,16 @@ async def test_formulas(settings: Settings) -> None:
                 (TENANT_A,),
             )
 
-            # The endpoint path: the owner's user session, RLS applied.
+            # Tenant B's rows arrive after the baseline, so any leak would show in the deltas.
+            await aconn.execute("reset role")
+            await rows.invoice(TENANT_B, 640000, 51200, "paid", now)
+            await rows.expense(TENANT_B, today, 32000)
+            await aconn.execute(
+                "insert into public.products (tenant_id, sku, name, metal, price_cents, "
+                "stock_qty, low_stock_threshold) values (%s, 'IT-B-LOW', 'IT b', 'other', 1, 0, 3)",
+                (TENANT_B,),
+            )
+
             await apply_user_scope(aconn, owner)
             after = await fetch_summary(aconn, TENANT_A)
 
