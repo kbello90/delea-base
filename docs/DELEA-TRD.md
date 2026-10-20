@@ -10,6 +10,7 @@
 3. **Monorepo tooling:** pnpm workspaces + Turborepo (§4).
 4. **Migrations:** Supabase CLI, SQL-first, in a root `supabase/` directory — RLS policies are versioned in the same migration stream as the schema (§4).
 5. **Storefront data access:** public FastAPI endpoints keyed by hostname; no direct Supabase access from the storefront (§1.3). Stripe Connect Standard, guest checkout with a tokenized tracking link, and the other data-model decisions are recorded in `DELEA-Schema.md` §8.
+6. **Backend database access:** the FastAPI backend talks to Postgres directly through a psycopg connection pool, not through PostgREST. Each authenticated request runs in one transaction that does `set local role authenticated` and sets the caller's verified JWT claims, so RLS is the enforcement. Public storefront endpoints, Stripe webhooks and the automation worker use a separate service connection; the AI assistant uses `set local role ai_readonly` with `app.tenant_id`. `supabase-py` is used only for Auth admin actions such as CPA invites.
 
 ---
 
