@@ -38,7 +38,7 @@ def create(client: TestClient, user: TestUser, **overrides: object) -> dict:
 
 
 def test_role_matrix(client: TestClient, users: dict[str, TestUser]) -> None:
-    item = f"{MATERIALS}/{SEED_A_PLATING}"
+    item = f"{MATERIALS}/{create(client, users['owner_a'])['id']}"  # never a seed row
     # Reads: owner and staff of A; B's owner gets an empty-looking tenant (404 on A's row).
     assert_access(client, users, "GET", MATERIALS, {"owner_a": 200, "staff_a": 200, "owner_b": 200})
     assert_access(client, users, "GET", item, {"owner_a": 200, "staff_a": 200, "owner_b": 404})
@@ -47,7 +47,7 @@ def test_role_matrix(client: TestClient, users: dict[str, TestUser]) -> None:
         client, users, "POST", MATERIALS, {"owner_a": 201, "owner_b": 201}, json=lambda _: payload()
     )
     assert_access(
-        client, users, "PATCH", item, {"owner_a": 200, "owner_b": 404}, json={"unit": "vials"}
+        client, users, "PATCH", item, {"owner_a": 200, "owner_b": 404}, json={"unit": "g"}
     )
     target = create(client, users["owner_a"])["id"]
     assert_access(

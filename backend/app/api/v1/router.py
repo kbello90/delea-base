@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.api.v1 import (
     ai,
     automation,
+    customers,
     expenses,
     invoices,
     materials,
@@ -17,6 +18,7 @@ api_router = APIRouter()
 for module in (
     products,
     materials,
+    customers,
     invoices,
     expenses,
     automation,

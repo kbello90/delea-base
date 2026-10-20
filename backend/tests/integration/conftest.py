@@ -145,6 +145,35 @@ def _cleanup_test_rows(db: psycopg.Connection) -> Iterator[None]:
         db.execute(f"delete from public.{table} where {column} like %s", (f"{TEST_SKU_PREFIX}%",))
 
 
+# Seed tables whose rows the tests must never change (updated_at is ignored: a no-op PATCH
+# still bumps it). company_settings counters are covered too.
+_SEED_TABLES = (
+    "tenants", "tenant_domains", "brand_config", "company_settings", "products", "materials",
+    "product_materials", "customers", "invoices", "invoice_line_items", "expenses",
+    "automation_rules", "reorder_list",
+)  # fmt: skip
+
+
+def _seed_fingerprint(db: psycopg.Connection) -> dict[str, str]:
+    return {
+        table: db.execute(
+            f"select coalesce(md5(string_agg((to_jsonb(t) - 'updated_at')::text, '|' "
+            f"order by (to_jsonb(t) - 'updated_at')::text)), '') from public.{table} t"
+        ).fetchone()[0]
+        for table in _SEED_TABLES
+    }
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _seed_rows_unchanged(db: psycopg.Connection) -> Iterator[None]:
+    """Fail the run if any test left a seed row modified (tests must use their own IT- rows)."""
+    before = _seed_fingerprint(db)
+    yield
+    after = _seed_fingerprint(db)
+    changed = sorted(t for t in _SEED_TABLES if before[t] != after[t])
+    assert not changed, f"integration tests changed seed data in: {', '.join(changed)}"
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _cleanup_automation_events(db: psycopg.Connection) -> Iterator[None]:
     """Triggers write automation_events (e.g. stock_low); drop the ones this run produced."""
