@@ -244,7 +244,7 @@ delea-base/
 │   │   │       ├── automation.py
 │   │   │       ├── settings.py       # brand config, company/tax info, CPA invites
 │   │   │       ├── ai.py             # /ai/query — read-only enforcement lives here
-│   │   │       ├── public.py         # unauthenticated storefront endpoints; tenant resolved from hostname (added with migrations task)
+│   │   │       ├── public.py         # unauthenticated storefront endpoints; tenant resolved from hostname (added with the storefront endpoints task)
 │   │   │       ├── stripe_webhooks.py
 │   │   │       └── router.py         # aggregates v1 routers
 │   │   ├── models/                   # Pydantic schemas, mirrored by packages/api-client/types.ts

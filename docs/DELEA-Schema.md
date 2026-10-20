@@ -1,6 +1,6 @@
 # DELEA — Backend Schema (v1)
 
-**Status:** Locked — ready for migrations (all §8 decisions accepted as recommended, 2026-10-20)
+**Status:** Locked and implemented — migrations in `supabase/migrations/` are the source of truth; §9 lists where they differ from the DDL below (all §8 decisions accepted as recommended, 2026-10-20)
 **Derived from:** DELEA PRD v1 (all Open Questions resolved) and DELEA TRD v1 (locked)
 **Lives in the repo as:** `supabase/migrations/*.sql` (this doc is the spec those migrations are written from)
 
@@ -345,3 +345,23 @@ All accepted as recommended on 2026-10-20.
 **Wholesale behavior (added after review).** `customers.customer_type` is `retail` or `wholesale`. Wholesale customers carry a company name, tax-exempt flag with resale certificate number, a percentage discount, and payment terms. FastAPI applies these when it builds an invoice: the discount reduces unit prices, `tax_exempt` sets `tax_rate_bps` to 0, and `payment_terms` sets `invoices.due_date`. Storefront shoppers are always created as `retail`. Wholesale accounts are created by the owner or staff in the admin app. Decision (accepted): wholesale pricing is a per-customer discount percent. A separate wholesale price on each product is deferred, since it would add a second price to maintain on every SKU.
 
 Smaller choices I made that you can veto: separate `quote_number` and `invoice_number` series (a quote gets `QTE-…` at creation and an `INV-…` number when paid, matching the demo's two number formats); `reorder_list` as a small table so the `add_to_reorder_list` automation has somewhere to write; and one SKU per metal rather than a variant model.
+
+## 9. As built (supabase/migrations, commit 21626de)
+
+The migrations in `supabase/migrations/` are now the source of truth. Where the SQL in §3–§7 differs from them, the migrations win, and the differences are:
+
+- **Same-tenant references.** Every parent/child reference uses a composite `(tenant_id, id)` foreign key, so a child row can never point at a parent in another tenant (foreign-key checks bypass RLS, so RLS alone cannot stop this). Parents (`products`, `materials`, `customers`, `invoices`, `automation_rules`) carry `unique (tenant_id, id)`. "Set null" actions use column lists so `tenant_id` is never nulled.
+- **Staff financial guard.** Once an invoice's `order_status` is past `quote`, staff cannot change `subtotal_cents`, `tax_rate_bps`, `tax_cents` or `total_cents`, and cannot insert, update or delete its line items. Only the owner or the service role can. Staff can still advance the status and edit non-financial fields such as notes. The guard identifies staff from the `app_role` claim, so the service role and migration role are never blocked.
+- **Document numbering.**
+  - Format is `QTE-YYYY-NNN` / `INV-YYYY-NNN`, zero-padded to at least 3 digits and never truncated.
+  - Numbers are always assigned by trigger; client-supplied values are ignored.
+  - `quote_number`, `invoice_number` and `paid_at` are immutable once set.
+  - An invoice inserted directly as paid, or moved from `quote` straight past `paid`, still receives its invoice number.
+  - Inserting an invoice fails if the tenant has no `company_settings` row.
+- **Stock events.** "Low" means strictly below the threshold. `stock_low` and `material_low` fire only when an update crosses the threshold, never on insert.
+- **Domains.** `tenant_domains.domain` includes the port (for example `localhost:5173`), because the Host header carries it.
+- **Functions.** `EXECUTE` is revoked from `public`, `anon` and `authenticated` on every function in `public`, so `ai_readonly` holds no execute grants. The `grant ai_readonly to postgres` needed by the local tests is made inside each test transaction and is not in any migration, so it cannot reach production.
+- **Local ports.** `supabase/config.toml` uses 553xx instead of the CLI defaults (543xx), because Windows reserves 54269–54368. The local API is on 55321, the database on 55322, and Studio on 55323.
+- **Seed.** Tenant A "DELEA Demo" uses 800 bps (8%) tax to match the demo; tenant B "Aurora Gems" is a small second tenant for isolation tests.
+
+**Provisioning note.** Because invoice insert requires a `company_settings` row, creating a tenant must insert `tenants`, `company_settings` and `brand_config` together. A tenant-creation procedure belongs in the provisioning task.
