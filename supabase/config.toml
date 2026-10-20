@@ -1,17 +1,21 @@
 # Supabase CLI project config. Applies to the shared project and every Enterprise project
 # (TRD §2.3). Migrations live in ./migrations; pgTAP tests in ./tests.
+#
+# Local ports use 553xx instead of the CLI defaults (543xx): on Windows, Hyper-V/WinNAT often
+# reserves the 543xx range (check with `netsh interface ipv4 show excludedportrange protocol=tcp`).
 project_id = "delea-base"
 
 [api]
 enabled = true
-port = 54321
+port = 55321
+# The ai schema is deliberately not exposed over the REST API (Schema §7).
 schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
 
 [db]
-port = 54322
-shadow_port = 54320
+port = 55322
+shadow_port = 55320
 major_version = 15
 
 [db.seed]
@@ -20,7 +24,17 @@ sql_paths = ["./seed.sql"]
 
 [studio]
 enabled = true
-port = 54323
+port = 55323
+
+[local_smtp]
+enabled = true
+port = 55324
+
+[analytics]
+port = 55327
+
+[db.pooler]
+port = 55329
 
 [auth]
 enabled = true
@@ -30,7 +44,7 @@ jwt_expiry = 3600
 enable_signup = true
 
 # Custom access token hook that adds tenant_id and app_role claims (TRD §2.2).
-# Enable once the migration that defines the hook function exists.
-# [auth.hook.custom_access_token]
-# enabled = true
-# uri = "pg-functions://postgres/public/custom_access_token_hook"
+# Defined in migrations/20261020000800_auth_hook.sql.
+[auth.hook.custom_access_token]
+enabled = true
+uri = "pg-functions://postgres/public/custom_access_token_hook"
