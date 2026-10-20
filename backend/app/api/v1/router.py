@@ -6,6 +6,7 @@ from app.api.v1 import (
     ai,
     automation,
     customers,
+    dashboard,
     expenses,
     invoices,
     materials,
@@ -24,6 +25,7 @@ for module in (
     automation,
     settings,
     ai,
+    dashboard,
     stripe_webhooks,
 ):
     api_router.include_router(module.router)
