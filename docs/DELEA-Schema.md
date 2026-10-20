@@ -1,10 +1,10 @@
-# DELEA — Backend Schema (v1 draft for review)
+# DELEA — Backend Schema (v1)
 
-**Status:** Draft — review before scaffolding migrations
+**Status:** Locked — ready for migrations (all §8 decisions accepted as recommended, 2026-10-20)
 **Derived from:** DELEA PRD v1 (all Open Questions resolved) and DELEA TRD v1 (locked)
 **Lives in the repo as:** `supabase/migrations/*.sql` (this doc is the spec those migrations are written from)
 
-Items marked **[DECISION]** are not settled by the PRD or TRD. Each has a recommendation; they are collected in §8.
+Items marked **[DECISION]** were open when this doc was drafted; all are now settled and recorded in §8.
 
 ---
 
@@ -23,6 +23,8 @@ Items marked **[DECISION]** are not settled by the PRD or TRD. Each has a recomm
 create type tier as enum ('essential', 'professional', 'enterprise');
 create type app_role as enum ('owner', 'staff', 'cpa');
 create type order_status as enum ('quote', 'paid', 'in_production', 'shipped', 'delivered');  -- locked, PRD Q1
+create type customer_type as enum ('retail', 'wholesale');
+create type payment_terms as enum ('due_on_receipt', 'net_15', 'net_30', 'net_60');
 create type metal_type as enum ('gold_14k', 'gold_18k', 'rose_gold', 'white_gold', 'silver_925', 'platinum', 'other');
 create type automation_trigger as enum ('order_placed', 'order_status_changed', 'stock_low', 'material_low');
 create type automation_action as enum ('send_email', 'notify_owner', 'add_to_reorder_list');
@@ -144,13 +146,29 @@ Assumption: one SKU per metal. "Gold ring" and "silver ring" are separate produc
 create table customers (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenants(id) on delete cascade,
-  name text not null,
+  customer_type customer_type not null default 'retail',
+  first_name text not null,
+  last_name text,
   email text,
   phone text,
-  address text,
+  address_line1 text,
+  address_line2 text,
+  city text,
+  state text,
+  postal_code text,
+  country char(2) not null default 'US',
+  marketing_opt_in boolean not null default false,
   notes text,
+  -- Wholesale-only fields (null / defaults for retail customers)
+  company_name text,
+  tax_exempt boolean not null default false,
+  resale_certificate_number text,
+  wholesale_discount_bps integer not null default 0 check (wholesale_discount_bps between 0 and 10000),
+  payment_terms payment_terms not null default 'due_on_receipt',
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  check (customer_type = 'wholesale' or (company_name is null and not tax_exempt and wholesale_discount_bps = 0 and payment_terms = 'due_on_receipt')),
+  check (customer_type <> 'wholesale' or company_name is not null)
 );
 
 create table invoices (
@@ -167,6 +185,7 @@ create table invoices (
   tax_cents bigint not null default 0,
   total_cents bigint not null default 0,
   stripe_payment_intent_id text,
+  due_date date,                                             -- set from customers.payment_terms; null = due on receipt
   public_token uuid not null default gen_random_uuid(),      -- unguessable link for shopper order tracking; see §8 item 4
   notes text,
   paid_at timestamptz,
@@ -226,6 +245,17 @@ create table reorder_list (
   created_at timestamptz not null default now()
 );
 
+-- Queue drained by the FastAPI automation service. Database triggers insert rows; the database never sends email itself.
+create table automation_events (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenants(id) on delete cascade,
+  event_type automation_trigger not null,
+  payload jsonb not null default '{}',                       -- e.g. {"invoice_id": "...", "from_status": "paid", "to_status": "shipped"}
+  created_at timestamptz not null default now(),
+  processed_at timestamptz
+);
+create index automation_events_pending on automation_events (created_at) where processed_at is null;
+
 -- Idempotency for Stripe webhooks.
 create table stripe_events (
   event_id text primary key,
@@ -237,7 +267,7 @@ create table stripe_events (
 **Invoice rules enforced in the database:**
 - `order_status` moves forward only along `quote → paid → in_production → shipped → delivered`, enforced by a `before update` trigger. A forward skip such as `paid → shipped` is allowed, since not every piece is made to order. Backward moves are rejected.
 - Setting `paid` stamps `paid_at` and assigns `invoice_number` from `company_settings.next_invoice_number` (row-locked increment). `quote_number` is assigned from `next_quote_number` on insert.
-- `order_status_changed` and `order_placed` automations fire from a trigger that inserts into a queue the FastAPI automation service drains. The database never sends email itself.
+- `order_placed` and `order_status_changed` events are inserted into `automation_events` by a trigger on `invoices`. `stock_low` and `material_low` events are inserted by triggers on `products` and `materials` when a stock update crosses below its threshold. The FastAPI automation service drains the queue; the database never sends email itself.
 
 ## 6. Row-Level Security
 
@@ -260,7 +290,7 @@ create policy products_select on products for select to authenticated
 | `invoices`, `invoice_line_items` | full | read, insert, update status up to `shipped`/`delivered`; no delete | invoices: read only; line items: none |
 | `expenses` | full | none | read |
 | `automation_rules`, `reorder_list` | full | read | none |
-| `stripe_events` | none (service role only) | none | none |
+| `stripe_events`, `automation_events` | none (service role only) | none | none |
 
 Notes:
 - `company_settings` is owner-only because it holds the EIN and Stripe account reference.
@@ -283,8 +313,11 @@ create view ai.materials_status as
   select ... from public.materials where tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid;
 create view ai.sales_summary as    -- MTD/YTD revenue by status
   select ... from public.invoices  where tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid;
-create view ai.tax_summary as
-  select ... from public.invoices i full join public.expenses e on false ... ;  -- shape finalized in the migration; same tenant filter
+create view ai.expense_summary as  -- expenses by month and category, with deductible totals
+  select ... from public.expenses  where tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid;
+create view ai.tax_summary as      -- tax collected on paid invoices by month (the "tax reserve" figure in the demo)
+  select ... from public.invoices  where tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid
+                                     and paid_at is not null and refunded_at is null and cancelled_at is null;
 
 grant select on all tables in schema ai to ai_readonly;   -- SELECT on views only. No INSERT/UPDATE/DELETE/EXECUTE grants exist.
 ```
@@ -298,9 +331,9 @@ FastAPI's `/ai/query` handler connects with its normal backend login, opens a tr
 - An `ai_readonly` insert/update/delete attempt fails on every table and view.
 - A session with `app.tenant_id` set to tenant A cannot see tenant B rows, and an unset `app.tenant_id` returns zero rows.
 
-## 8. Decisions needed before migrations are written
+## 8. Locked decisions
 
-Each has a recommendation. Reply with the numbers you want changed, or "all recommended."
+All accepted as recommended on 2026-10-20.
 
 1. **Storefront data access [DECISION; requires a TRD change].** TRD §1.3 says the storefront can read the product grid directly from Supabase. In the shared tier that would require an `anon` read policy, and anonymous visitors could then query every tenant's published products, because the client chooses which tenant to ask for. **Recommendation:** the storefront reads through public FastAPI endpoints (`GET /public/products`, `/public/brand`) that resolve the tenant from the request hostname via `tenant_domains`. `anon` gets no table access. Cost: one extra hop. Benefit: no cross-tenant exposure and the same path works for Enterprise.
 2. **Stripe account model [DECISION].** Each customer must receive money in their own Stripe account. **Recommendation:** Stripe Connect (Standard), where the owner connects their account via OAuth and `company_settings.stripe_account_id` stores the connected account. DELEA never holds the customer's secret keys, and one platform webhook handles every tenant. The alternative, per-tenant API keys, means storing and rotating secrets per customer.
@@ -308,5 +341,7 @@ Each has a recommendation. Reply with the numbers you want changed, or "all reco
 4. **Shopper order tracking [DECISION].** The PRD lists "track order" for end customers. **Recommendation:** guest checkout with no shopper accounts. The confirmation email carries a link containing `invoices.public_token`, which a public FastAPI endpoint resolves to a read-only order status page. Accounts can come later.
 5. **Discount rules [DECISION].** The PRD lists "discount rules" under the catalog without defining them. **Recommendation:** v1 supports a product-level sale price (`sale_price_cents`, optional `sale_ends_at`) only. Promo codes and rule engines are deferred.
 6. **Refunds and cancellations [DECISION].** The five-value `order_status` enum is locked and I'm not reopening it. But refunds and cancelled orders will happen once Stripe is live. **Recommendation:** keep the enum as is and add nullable `refunded_at` and `cancelled_at` timestamps on `invoices` (already in the DDL above), set by the Stripe webhook or the owner. The UI shows a Refunded/Cancelled badge over the unchanged status.
+
+**Wholesale behavior (added after review).** `customers.customer_type` is `retail` or `wholesale`. Wholesale customers carry a company name, tax-exempt flag with resale certificate number, a percentage discount, and payment terms. FastAPI applies these when it builds an invoice: the discount reduces unit prices, `tax_exempt` sets `tax_rate_bps` to 0, and `payment_terms` sets `invoices.due_date`. Storefront shoppers are always created as `retail`. Wholesale accounts are created by the owner or staff in the admin app. Decision (accepted): wholesale pricing is a per-customer discount percent. A separate wholesale price on each product is deferred, since it would add a second price to maintain on every SKU.
 
 Smaller choices I made that you can veto: separate `quote_number` and `invoice_number` series (a quote gets `QTE-…` at creation and an `INV-…` number when paid, matching the demo's two number formats); `reorder_list` as a small table so the `add_to_reorder_list` automation has somewhere to write; and one SKU per metal rather than a variant model.

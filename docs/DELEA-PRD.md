@@ -95,7 +95,7 @@ One-time setup fee + monthly retainer, three tiers (Essential / Professional / E
 ## 11. Related Documents
 
 - **DELEA TRD** — technical architecture, stack, and infrastructure decisions (`DELEA-TRD.md`)
-- **DELEA Backend Schema** — data model derived from this PRD's entities (`DELEA-Schema.md`, draft pending review of its open decisions)
+- **DELEA Backend Schema** — data model derived from this PRD's entities (`DELEA-Schema.md`, locked)
 - **DELEA App Flow / UI-UX** — screen-by-screen flows and design system (to be added)
 - **DELEA Pricing & Tiers** — setup fees and retainer breakdown by tier
 - **delea-demo.html** — interactive mockup demonstrating the storefront, website editor, and AI assistant concepts described above

@@ -9,6 +9,7 @@
 2. **Enterprise dedicated DB = a separate Supabase project** on dedicated compute, not self-hosted Postgres. One auth system and one RLS pattern across all tiers; the backend never branches by tier (§2.3).
 3. **Monorepo tooling:** pnpm workspaces + Turborepo (§4).
 4. **Migrations:** Supabase CLI, SQL-first, in a root `supabase/` directory — RLS policies are versioned in the same migration stream as the schema (§4).
+5. **Storefront data access:** public FastAPI endpoints keyed by hostname; no direct Supabase access from the storefront (§1.3). Stripe Connect Standard, guest checkout with a tokenized tracking link, and the other data-model decisions are recorded in `DELEA-Schema.md` §8.
 
 ---
 
@@ -68,8 +69,9 @@ Redis (Enterprise-tier only, or shared/namespaced on lower tiers if/when caching
 ### 1.3 Request patterns
 
 - **Admin app → backend:** all writes (product CRUD, invoices, expenses, automation rules, brand config) go through FastAPI, which validates against the tenant's JWT claims and RLS-scoped Postgres role. This is where business logic (e.g., "can't delete a material referenced by a paid invoice") lives — not in the DB alone.
-- **Admin/storefront → Supabase directly:** simple authenticated reads (e.g., storefront product grid, admin dashboard listing views) can go straight through the Supabase JS client with RLS enforcing tenant isolation, skipping FastAPI for latency. Anything that mutates data or triggers business logic (Stripe checkout, invoice creation, automation triggers) always routes through FastAPI.
-- **AI assistant:** `apps/admin` only (never exposed on the public storefront in v1). Frontend sends a natural-language query to a FastAPI endpoint (`/ai/query`), which calls the LLM with a **read-only, pre-scoped** data context — see §3.2 for exactly how "read-only" is enforced. Demo-stage: this is a direct API call from FastAPI to the LLM provider with seeded/live data stuffed into context. Post-first-customer (per PRD, deferred): this becomes a separate FastAPI + LangChain microservice with LangSmith tracing, same read-only contract, just with tool-calling and observability instead of a single stuffed prompt.
+- **Admin → Supabase directly (authenticated reads only):** simple reads in `apps/admin` (e.g., dashboard listing views) can go through the Supabase JS client with RLS enforcing tenant isolation, skipping FastAPI for latency. Anything that mutates data or triggers business logic (Stripe checkout, invoice creation, automation triggers) always routes through FastAPI.
+- **Storefront → FastAPI public endpoints only (locked):** `apps/storefront` never queries Supabase directly. It calls public, unauthenticated FastAPI endpoints (`GET /api/v1/public/products`, `/api/v1/public/brand`, order tracking by `public_token`) that resolve the tenant from the request hostname via `tenant_domains`. The `anon` Postgres role has no table grants, so one tenant's catalog can never be read by asking for another tenant's id. The storefront's `supabaseClient.ts` stays in the tree but is unused in v1.
+- **AI assistant:** `apps/admin` only (never exposed on the public storefront in v1). Frontend sends a natural-language query to a FastAPI endpoint (`/api/v1/ai/query`; all v1 routes mount under `/api/v1`), which calls the LLM with a **read-only, pre-scoped** data context — see §3.2 for exactly how "read-only" is enforced. Demo-stage: this is a direct API call from FastAPI to the LLM provider with seeded/live data stuffed into context. Post-first-customer (per PRD, deferred): this becomes a separate FastAPI + LangChain microservice with LangSmith tracing, same read-only contract, just with tool-calling and observability instead of a single stuffed prompt.
 
 ### 1.4 UI reference
 
@@ -241,6 +243,7 @@ delea-base/
 │   │   │       ├── automation.py
 │   │   │       ├── settings.py       # brand config, company/tax info, CPA invites
 │   │   │       ├── ai.py             # /ai/query — read-only enforcement lives here
+│   │   │       ├── public.py         # unauthenticated storefront endpoints; tenant resolved from hostname (added with migrations task)
 │   │   │       ├── stripe_webhooks.py
 │   │   │       └── router.py         # aggregates v1 routers
 │   │   ├── models/                   # Pydantic schemas, mirrored by packages/api-client/types.ts
