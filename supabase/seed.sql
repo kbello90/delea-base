@@ -1,0 +1,2 @@
+-- Demo/seed data (brand config, sample products/materials/invoices).
+-- Placeholder: populated after the schema migrations are approved.

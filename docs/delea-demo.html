@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DELEA · Jewelry Operations Platform</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* neutral surface tokens (light default) */
+    --bg:#FAF7F2;
+    --surface:#FFFFFF;
+    --surface-2:#F3EDE3;
+    --border:#E4DACB;
+    --text:#241C17;
+    --text-muted:#8A7C6C;
+    --sidebar-bg:#1B1511;
+    --sidebar-text:#C7BBAC;
+    --sidebar-text-active:#FAF3E6;
+
+    /* brand tokens (rebrandable live) */
+    --brand:#6B2737;
+    --brand-deep:#4A1B26;
+    --brand-gold:#B8935B;
+    --brand-gold-soft:#EBDCC3;
+
+    --radius:4px;
+    --radius-lg:10px;
+    --shadow: 0 1px 2px rgba(27,21,17,0.06), 0 8px 24px -12px rgba(27,21,17,0.18);
+    --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+    --sans: 'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#15110D;
+      --surface:#1E1812;
+      --surface-2:#241D16;
+      --border:#3A2E22;
+      --text:#EFE6D8;
+      --text-muted:#A9998880;
+      --text-muted:#A99988;
+      --sidebar-bg:#0F0C09;
+      --sidebar-text:#B4A896;
+      --sidebar-text-active:#FBF3E6;
+      --brand-gold-soft:#3A2E1E;
+      --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -12px rgba(0,0,0,0.6);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#15110D;
+    --surface:#1E1812;
+    --surface-2:#241D16;
+    --border:#3A2E22;
+    --text:#EFE6D8;
+    --text-muted:#A99988;
+    --sidebar-bg:#0F0C09;
+    --sidebar-text:#B4A896;
+    --sidebar-text-active:#FBF3E6;
+    --brand-gold-soft:#3A2E1E;
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -12px rgba(0,0,0,0.6);
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,h4,.serif{ font-family:var(--serif); font-weight:600; letter-spacing:-0.01em; }
+  a{ color:inherit; }
+  button{ font-family:var(--sans); }
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb{ background:var(--border); border-radius:8px; }
+
+  .app{ display:flex; min-height:100vh; }
+
+  /* ---------- SIDEBAR ---------- */
+  aside{
+    width:260px; flex-shrink:0;
+    background:var(--sidebar-bg);
+    color:var(--sidebar-text);
+    display:flex; flex-direction:column;
+    position:fixed; top:0; left:0; bottom:0;
+    z-index:40;
+    transition:transform .25s ease;
+    border-right:1px solid rgba(184,147,91,0.18);
+  }
+  .brand-block{
+    padding:1.8rem 1.4rem 1.4rem;
+    display:flex; align-items:center; gap:0.85rem;
+    border-bottom:1px solid rgba(184,147,91,0.18);
+  }
+  .brand-mark{
+    width:42px; height:42px; border-radius:50%;
+    border:1.5px solid var(--brand-gold);
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--serif); font-size:1.15rem; color:var(--brand-gold-soft, #EBDCC3);
+    flex-shrink:0;
+  }
+  .brand-copy .brand-name{ font-family:var(--serif); font-size:1.05rem; color:var(--sidebar-text-active); line-height:1.15; }
+  .brand-copy .brand-tag{ font-size:0.66rem; color:var(--brand-gold); letter-spacing:0.06em; margin-top:2px; }
+
+  nav.menu{ padding:1rem 0; flex:1; overflow-y:auto; }
+  .menu-item{
+    display:flex; align-items:center; gap:0.7rem;
+    padding:0.62rem 1.4rem;
+    font-size:0.84rem; font-weight:500;
+    cursor:pointer; color:var(--sidebar-text);
+    border-left:2px solid transparent;
+    transition:background .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .menu-item .glyph{ width:1.1rem; text-align:center; opacity:0.85; font-size:0.95rem; }
+  .menu-item:hover{ background:rgba(184,147,91,0.08); color:var(--sidebar-text-active); }
+  .menu-item.active{
+    color:var(--sidebar-text-active);
+    background:rgba(184,147,91,0.12);
+    border-left-color:var(--brand-gold);
+  }
+  .menu-section-label{
+    font-size:0.63rem; text-transform:uppercase; letter-spacing:0.09em;
+    color:rgba(199,187,172,0.45); padding:1.1rem 1.4rem 0.35rem;
+  }
+
+  .sidebar-foot{
+    padding:1rem 1.4rem; border-top:1px solid rgba(184,147,91,0.18);
+    font-size:0.72rem; color:var(--sidebar-text);
+    display:flex; align-items:center; justify-content:space-between; gap:0.5rem;
+  }
+  .lang-pill{
+    background:transparent; border:1px solid rgba(184,147,91,0.35); color:var(--sidebar-text);
+    border-radius:20px; padding:0.25rem 0.6rem; font-size:0.68rem; cursor:pointer;
+  }
+
+  /* ---------- MAIN ---------- */
+  main{ margin-left:260px; flex:1; min-width:0; }
+
+  .topbar{
+    background:var(--surface);
+    border-bottom:1px solid var(--border);
+    padding:1rem 2rem;
+    display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;
+    position:sticky; top:0; z-index:30;
+  }
+  .topbar h1{ font-size:1.25rem; margin:0; }
+  .topbar h1 .sub{ font-family:var(--sans); font-weight:400; font-size:0.72rem; color:var(--text-muted); display:block; margin-top:2px; letter-spacing:0.02em; }
+  .topbar-actions{ display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap; }
+  .mobile-toggle{ display:none; background:none; border:none; font-size:1.3rem; color:var(--text); cursor:pointer; }
+
+  .btn{
+    font-family:var(--sans); font-weight:600; font-size:0.78rem;
+    padding:0.55rem 1.05rem; border-radius:var(--radius); border:1px solid transparent;
+    cursor:pointer; transition:transform .12s ease, opacity .12s ease;
+    display:inline-flex; align-items:center; gap:0.45rem;
+  }
+  .btn:active{ transform:scale(0.97); }
+  .btn-primary{ background:var(--brand); color:#fff; }
+  .btn-primary:hover{ background:var(--brand-deep); }
+  .btn-line{ background:transparent; border-color:var(--border); color:var(--text); }
+  .btn-line:hover{ border-color:var(--brand-gold); }
+  .btn-gold{ background:var(--brand-gold); color:#241C17; }
+  .btn-sm{ padding:0.34rem 0.7rem; font-size:0.7rem; }
+
+  /* ---------- REBRAND PANEL ---------- */
+  .rebrand-panel{
+    max-height:0; overflow:hidden; background:var(--surface-2);
+    border-bottom:1px solid var(--border);
+    transition:max-height .3s ease;
+  }
+  .rebrand-panel.open{ max-height:220px; }
+  .rebrand-inner{
+    padding:1.3rem 2rem; display:flex; gap:2rem; align-items:flex-end; flex-wrap:wrap;
+  }
+  .rebrand-note{
+    flex-basis:100%; font-size:0.78rem; color:var(--text-muted); max-width:640px; margin-bottom:0.4rem;
+  }
+  .field{ display:flex; flex-direction:column; gap:0.35rem; }
+  .field label{ font-size:0.68rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); }
+  .field input[type="text"]{
+    padding:0.5rem 0.7rem; border:1px solid var(--border); border-radius:var(--radius);
+    font-size:0.85rem; font-family:var(--sans); background:var(--surface); color:var(--text); min-width:220px;
+  }
+  .swatch-row{ display:flex; align-items:center; gap:0.5rem; }
+  .swatch-row input[type="color"]{
+    width:38px; height:38px; padding:0; border:1px solid var(--border); border-radius:50%; overflow:hidden; cursor:pointer; background:none;
+  }
+  .swatch-row span{ font-size:0.76rem; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+
+  /* ---------- CONTENT ---------- */
+  .content{ padding:2rem; }
+  .panel{ display:none; }
+  .panel.active{ display:block; animation:rise .28s ease; }
+  @keyframes rise{ from{ opacity:0; transform:translateY(8px);} to{ opacity:1; transform:translateY(0);} }
+
+  .metrics{ display:grid; grid-template-columns:repeat(auto-fit, minmax(190px,1fr)); gap:1rem; margin-bottom:1.8rem; }
+  .metric{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+    padding:1.1rem 1.3rem; box-shadow:var(--shadow);
+  }
+  .metric .label{ font-size:0.68rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); font-weight:600; }
+  .metric .value{ font-family:var(--serif); font-size:1.7rem; margin-top:0.25rem; }
+  .metric .delta{ font-size:0.72rem; color:#3F7D50; margin-top:0.2rem; }
+  .metric .delta.down{ color:var(--brand); }
+
+  .card{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+    margin-bottom:1.6rem; overflow:hidden; box-shadow:var(--shadow);
+  }
+  .card-head{
+    padding:0.95rem 1.4rem; background:var(--surface-2); border-bottom:1px solid var(--border);
+    display:flex; justify-content:space-between; align-items:center; gap:0.6rem; flex-wrap:wrap;
+  }
+  .card-head h3{ font-size:0.98rem; margin:0; font-family:var(--serif); font-weight:600; }
+  .card-body{ padding:1.3rem 1.4rem; }
+
+  table{ width:100%; border-collapse:collapse; font-size:0.83rem; }
+  th,td{ text-align:left; padding:0.7rem 1.4rem; border-bottom:1px solid var(--border); }
+  th{ font-size:0.66rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); background:var(--surface-2); }
+  tr:last-child td{ border-bottom:none; }
+  .table-wrap{ overflow-x:auto; }
+
+  .tag{ display:inline-block; padding:0.18rem 0.6rem; border-radius:20px; font-size:0.66rem; font-weight:600; }
+  .tag-ok{ background:#E5F0E6; color:#2F6A3F; }
+  .tag-warn{ background:#FBEFD9; color:#93641B; }
+  .tag-bad{ background:#F7E4E4; color:var(--brand); }
+  .tag-info{ background:var(--brand-gold-soft); color:var(--brand-deep); }
+
+  .grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:1.1rem; padding:1.3rem 1.4rem; }
+  .grid-2 .full{ grid-column:1 / -1; }
+  .field2{ display:flex; flex-direction:column; gap:0.3rem; }
+  .field2 label{ font-size:0.68rem; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); }
+  .field2 input, .field2 select, .field2 textarea{
+    padding:0.55rem 0.75rem; border:1px solid var(--border); border-radius:var(--radius); font-size:0.85rem;
+    background:var(--surface); color:var(--text); font-family:var(--sans);
+  }
+
+  /* ---------- AI PANEL ---------- */
+  .ai-layout{ display:grid; grid-template-columns:1fr 320px; gap:1.3rem; }
+  @media(max-width:980px){ .ai-layout{ grid-template-columns:1fr; } }
+  .chat-shell{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+    display:flex; flex-direction:column; height:520px; overflow:hidden; box-shadow:var(--shadow);
+  }
+  .chat-head{
+    background:var(--brand-deep); color:#F6ECE2; padding:0.95rem 1.3rem;
+    display:flex; align-items:center; gap:0.8rem;
+  }
+  .chat-head .dot{ width:7px; height:7px; border-radius:50%; background:#7FD98A; display:inline-block; margin-left:0.35rem; }
+  .chat-body{ flex:1; padding:1.1rem 1.3rem; overflow-y:auto; display:flex; flex-direction:column; gap:0.7rem; background:var(--bg); }
+  .bubble{ max-width:80%; padding:0.65rem 0.9rem; border-radius:10px; font-size:0.85rem; }
+  .bubble.ai{ background:var(--surface); border:1px solid var(--border); align-self:flex-start; border-bottom-left-radius:2px; }
+  .bubble.user{ background:var(--brand); color:#fff; align-self:flex-end; border-bottom-right-radius:2px; }
+  .chat-foot{ display:flex; gap:0.6rem; padding:0.75rem 1rem; border-top:1px solid var(--border); background:var(--surface); }
+  .chat-foot input{ flex:1; padding:0.55rem 0.8rem; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); color:var(--text); }
+  .quick-row{ display:flex; gap:0.4rem; flex-wrap:wrap; padding:0.6rem 1rem 0.9rem; background:var(--surface); border-top:1px solid var(--border); }
+
+  .suggest-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+    padding:1rem 1.2rem; margin-bottom:0.9rem; cursor:pointer; transition:border-color .15s ease, transform .15s ease;
+  }
+  .suggest-card:hover{ border-color:var(--brand-gold); transform:translateY(-2px); }
+  .suggest-card .ic{ font-size:1.3rem; }
+  .suggest-card h4{ font-size:0.88rem; margin:0.3rem 0 0.15rem; font-family:var(--serif); }
+  .suggest-card p{ font-size:0.76rem; color:var(--text-muted); margin:0; }
+
+  /* ---------- STOREFRONT ---------- */
+  .store-hero{
+    background:linear-gradient(160deg, var(--brand-deep), var(--brand));
+    color:#F6ECE2; padding:3rem 2rem; text-align:center; border-radius:var(--radius-lg) var(--radius-lg) 0 0;
+  }
+  .store-hero h2{ font-size:2rem; margin:0; }
+  .store-hero p{ color:#E8D2CE; margin-top:0.5rem; font-size:0.92rem; max-width:520px; margin-left:auto; margin-right:auto; }
+  .store-grid{ padding:1.5rem; display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:1.1rem; background:var(--surface); border-radius:0 0 var(--radius-lg) var(--radius-lg); }
+  .store-item{ background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); padding:1rem; text-align:center; }
+  .store-item .emoji{ font-size:2rem; display:block; margin-bottom:0.3rem; }
+  .store-item h5{ font-size:0.82rem; margin:0; }
+  .store-item .price{ color:var(--brand); font-weight:700; margin:0.2rem 0 0.5rem; }
+
+  /* ---------- WEBSITE EDITOR ---------- */
+  .editing-badge{
+    position:absolute; top:14px; right:16px;
+    background:rgba(255,255,255,0.14); border:1px solid rgba(255,255,255,0.3);
+    color:#F6ECE2; font-size:0.65rem; padding:0.3rem 0.65rem; border-radius:20px;
+  }
+  .store-hero [contenteditable="true"]{ outline:none; border-bottom:1px dashed transparent; cursor:text; border-radius:2px; }
+  .store-hero [contenteditable="true"]:hover{ border-bottom-color:rgba(246,236,226,0.5); }
+  .store-hero [contenteditable="true"]:focus{ border-bottom-color:var(--brand-gold); }
+  .edit-item{ position:relative; }
+  .edit-field{
+    width:100%; text-align:center; border:1px solid transparent; background:transparent;
+    font-family:var(--sans); border-radius:4px; padding:0.15rem 0.3rem; color:var(--text);
+  }
+  .edit-field:hover{ border-color:var(--border); }
+  .edit-field:focus{ border-color:var(--brand-gold); background:var(--surface); outline:none; }
+  .name-field{ font-weight:600; font-size:0.82rem; margin-top:0.2rem; }
+  .price-field{ color:var(--brand); font-weight:700; }
+  .edit-controls{ display:flex; justify-content:center; gap:0.35rem; margin-top:0.5rem; }
+  .icon-btn{
+    width:24px; height:24px; border-radius:50%; border:1px solid var(--border);
+    background:var(--surface); cursor:pointer; font-size:0.8rem; line-height:1; color:var(--text);
+  }
+  .icon-btn:hover{ border-color:var(--brand-gold); }
+  .icon-btn.danger{ color:var(--brand); border-color:var(--brand); }
+  .add-item{
+    display:flex; align-items:center; justify-content:center; min-height:130px;
+    border:1.5px dashed var(--border); border-radius:var(--radius); cursor:pointer;
+    color:var(--text-muted); font-size:0.82rem; background:transparent;
+  }
+  .add-item:hover{ border-color:var(--brand-gold); color:var(--text); }
+
+  /* ---------- CHART ---------- */
+  .chart-wrap{ padding:1.4rem; }
+  .chart-caption{ display:flex; justify-content:space-between; font-size:0.7rem; color:var(--text-muted); margin-top:0.4rem; }
+
+  .overlay{ display:none; position:fixed; inset:0; background:rgba(20,15,10,0.45); z-index:35; }
+  .overlay.active{ display:block; }
+
+  @media (max-width:960px){
+    aside{ transform:translateX(-100%); }
+    aside.open{ transform:translateX(0); }
+    main{ margin-left:0; }
+    .mobile-toggle{ display:inline-flex; }
+    .grid-2{ grid-template-columns:1fr; }
+    .grid-2 .full{ grid-column:1; }
+    .topbar h1 .sub{ display:none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="overlay" id="overlay" onclick="toggleSidebar()"></div>
+
+<div class="app">
+  <aside id="sidebar">
+    <div class="brand-block">
+      <div class="brand-mark" id="brandMark">D</div>
+      <div class="brand-copy">
+        <div class="brand-name" id="brandName">DELEA</div>
+        <div class="brand-tag" id="brandTag">Jewelry Operations</div>
+      </div>
+    </div>
+    <nav class="menu">
+      <div class="menu-item active" data-panel="panel-ai" onclick="switchPanel('panel-ai', this)"><span class="glyph">✦</span> AI Assistant</div>
+      <div class="menu-item" data-panel="panel-store" onclick="switchPanel('panel-store', this)"><span class="glyph">◆</span> Live Website</div>
+      <div class="menu-item" data-panel="panel-edit" onclick="switchPanel('panel-edit', this)"><span class="glyph">◈</span> Website Editor</div>
+      <div class="menu-section-label">Operations</div>
+      <div class="menu-item" data-panel="panel-products" onclick="switchPanel('panel-products', this)"><span class="glyph">○</span> Product Catalog</div>
+      <div class="menu-item" data-panel="panel-inventory" onclick="switchPanel('panel-inventory', this)"><span class="glyph">▤</span> Inventory &amp; Materials</div>
+      <div class="menu-item" data-panel="panel-invoices" onclick="switchPanel('panel-invoices', this)"><span class="glyph">▢</span> Invoices &amp; Tax</div>
+      <div class="menu-item" data-panel="panel-expenses" onclick="switchPanel('panel-expenses', this)"><span class="glyph">▥</span> Expenses</div>
+      <div class="menu-section-label">Growth</div>
+      <div class="menu-item" data-panel="panel-marketing" onclick="switchPanel('panel-marketing', this)"><span class="glyph">≋</span> Marketing</div>
+      <div class="menu-item" data-panel="panel-analytics" onclick="switchPanel('panel-analytics', this)"><span class="glyph">▲</span> Analytics</div>
+      <div class="menu-item" data-panel="panel-automation" onclick="switchPanel('panel-automation', this)"><span class="glyph">⚡</span> Automation</div>
+      <div class="menu-section-label">Setup</div>
+      <div class="menu-item" data-panel="panel-settings" onclick="switchPanel('panel-settings', this)"><span class="glyph">⚙</span> Settings</div>
+    </nav>
+    <div class="sidebar-foot">
+      <span>Owner / Admin</span>
+      <button class="lang-pill" id="langPill" onclick="cycleLanguage()">EN</button>
+    </div>
+  </aside>
+
+  <main>
+    <div class="topbar">
+      <div style="display:flex; align-items:center; gap:0.8rem;">
+        <button class="mobile-toggle" onclick="toggleSidebar()">☰</button>
+        <h1 id="pageTitle">AI Assistant<span class="sub">Understands your inventory, sales, and tax position</span></h1>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-line btn-sm" onclick="toggleTheme()" id="themeBtn">Dark view</button>
+        <button class="btn btn-gold btn-sm" onclick="toggleRebrand()">Rebrand for a client</button>
+      </div>
+    </div>
+
+    <div class="rebrand-panel" id="rebrandPanel">
+      <div class="rebrand-inner">
+        <div class="rebrand-note">This is the same customization step used when a client's private environment is set up — change the name and colors and every screen updates immediately.</div>
+        <div class="field">
+          <label>Business name</label>
+          <input type="text" id="inputBizName" value="DELEA" oninput="applyBrand()">
+        </div>
+        <div class="field">
+          <label>Tagline</label>
+          <input type="text" id="inputTagline" value="Jewelry Operations" oninput="applyBrand()">
+        </div>
+        <div class="field">
+          <label>Primary color</label>
+          <div class="swatch-row">
+            <input type="color" id="inputPrimary" value="#6b2737" oninput="applyBrand()">
+            <span id="primaryHex">#6B2737</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Accent color</label>
+          <div class="swatch-row">
+            <input type="color" id="inputGold" value="#b8935b" oninput="applyBrand()">
+            <span id="goldHex">#B8935B</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- AI ASSISTANT -->
+      <div class="panel active" id="panel-ai">
+        <div class="metrics">
+          <div class="metric"><div class="label">AI Conversations</div><div class="value">147</div><div class="delta">+12% this week</div></div>
+          <div class="metric"><div class="label">Customer Satisfaction</div><div class="value">94%</div><div class="delta">+2.4%</div></div>
+          <div class="metric"><div class="label">AI-Assisted Sales</div><div class="value">$8,240</div><div class="delta">+18%</div></div>
+          <div class="metric"><div class="label">Active Sessions</div><div class="value">12</div><div class="delta">live now</div></div>
+        </div>
+        <div class="ai-layout">
+          <div class="chat-shell">
+            <div class="chat-head">
+              <strong id="chatBizName">DELEA</strong> assistant <span class="dot"></span>
+            </div>
+            <div class="chat-body" id="chatBody">
+              <div class="bubble ai">Hi — I can help with stock levels, sales, and tax questions. What do you need?</div>
+              <div class="bubble user">What's our best seller this month?</div>
+              <div class="bubble ai">The Custom Initial Necklace in 14K gold — 98 units, $9,604 in revenue. Want to see stock on hand?</div>
+            </div>
+            <div class="chat-foot">
+              <input type="text" id="chatInput" placeholder="Ask about stock, sales, or tax..." onkeydown="if(event.key==='Enter') sendChat()">
+              <button class="btn btn-primary btn-sm" onclick="sendChat()">Send</button>
+            </div>
+            <div class="quick-row">
+              <button class="btn btn-line btn-sm" onclick="quickChat('stock')">Check stock</button>
+              <button class="btn btn-line btn-sm" onclick="quickChat('sales')">Today's sales</button>
+              <button class="btn btn-line btn-sm" onclick="quickChat('tax')">Tax summary</button>
+            </div>
+          </div>
+          <div>
+            <div class="suggest-card" onclick="quickChat('recommend')">
+              <div class="ic">◆</div><h4>Product recommendations</h4><p>Upsell and cross-sell suggestions from purchase behavior.</p>
+            </div>
+            <div class="suggest-card" onclick="quickChat('stock')">
+              <div class="ic">▤</div><h4>Inventory intelligence</h4><p>Restock forecasts and slow-moving SKUs flagged automatically.</p>
+            </div>
+            <div class="suggest-card" onclick="quickChat('tax')">
+              <div class="ic">▢</div><h4>Tax &amp; compliance</h4><p>Liability estimates and filing reminders.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STOREFRONT -->
+      <div class="panel" id="panel-store">
+        <div class="card" style="margin-bottom:0;">
+          <div class="store-hero">
+            <h2 id="storeHeroTitle">DELEA Fine Jewelry</h2>
+            <p id="storeHeroSub">Handcrafted pieces in 14K gold, rose gold, and 925 sterling silver — made to order.</p>
+            <div style="margin-top:1rem;"><button class="btn btn-gold btn-sm">Shop the collection</button></div>
+          </div>
+          <div class="store-grid" id="storeGrid"></div>
+        </div>
+      </div>
+
+      <!-- EDITOR -->
+      <div class="panel" id="panel-edit">
+        <div class="card" style="margin-bottom:0;">
+          <div class="store-hero" style="position:relative;">
+            <span class="editing-badge">Editing · click any text or product to change it</span>
+            <h2 id="editHeroTitle" contenteditable="true" oninput="syncHeroFromEditable()">DELEA Fine Jewelry</h2>
+            <p id="editHeroSub" contenteditable="true" oninput="syncHeroFromEditable()">Handcrafted pieces in 14K gold, rose gold, and 925 sterling silver — made to order.</p>
+            <div style="margin-top:1rem;"><button class="btn btn-gold btn-sm" disabled>Shop the collection</button></div>
+          </div>
+          <div class="store-grid" id="editGrid"></div>
+          <div style="padding:0 1.5rem 1.5rem;">
+            <button class="btn btn-primary btn-sm" onclick="addProduct()">+ Add product</button>
+            <span style="font-size:0.74rem; color:var(--text-muted); margin-left:0.6rem;">Use the arrows on a product to change its position on the page.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- PRODUCTS -->
+      <div class="panel" id="panel-products">
+        <div class="metrics">
+          <div class="metric"><div class="label">Active SKUs</div><div class="value">42</div></div>
+          <div class="metric"><div class="label">Low stock</div><div class="value">3</div></div>
+          <div class="metric"><div class="label">Avg. margin</div><div class="value">68%</div></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Catalog</h3><button class="btn btn-primary btn-sm">New product</button></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Product</th><th>SKU</th><th>Metal</th><th>Price</th><th>Stock</th><th></th></tr></thead>
+            <tbody>
+              <tr><td>Custom Initial Necklace</td><td>DL-NK-01</td><td>14K Gold</td><td>$98</td><td><span class="tag tag-ok">24</span></td><td><button class="btn btn-line btn-sm">Edit</button></td></tr>
+              <tr><td>Birth Flower Pendant</td><td>DL-FL-02</td><td>Rose Gold</td><td>$110</td><td><span class="tag tag-warn">5</span></td><td><button class="btn btn-line btn-sm">Edit</button></td></tr>
+              <tr><td>Engagement Ring</td><td>DL-RG-01</td><td>925 Silver</td><td>$145</td><td><span class="tag tag-bad">2</span></td><td><button class="btn btn-line btn-sm">Edit</button></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- INVENTORY -->
+      <div class="panel" id="panel-inventory">
+        <div class="card">
+          <div class="card-head"><h3>Raw materials</h3><button class="btn btn-line btn-sm">Bulk update</button></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Material</th><th>Unit cost</th><th>Qty on hand</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>925 Silver blanks</td><td>$22.50</td><td>18 pcs</td><td><span class="tag tag-ok">Optimal</span></td></tr>
+              <tr><td>14K gold plating solution</td><td>$65.00</td><td>3 vials</td><td><span class="tag tag-bad">Reorder</span></td></tr>
+              <tr><td>Packaging boxes</td><td>$2.90</td><td>212 pcs</td><td><span class="tag tag-ok">Good</span></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- INVOICES -->
+      <div class="panel" id="panel-invoices">
+        <div class="card">
+          <div class="card-head"><h3>Invoices &amp; tax</h3><div style="display:flex; gap:0.5rem;"><button class="btn btn-line btn-sm">Export CSV</button><button class="btn btn-primary btn-sm">Create invoice</button></div></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Invoice</th><th>Customer</th><th>Item</th><th>Total</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>INV-2026-089</td><td>Sarah Jenkins</td><td>Initial Necklace</td><td>$98 + tax</td><td><span class="tag tag-ok">Paid</span></td></tr>
+              <tr><td>QTE-2026-042</td><td>Michael Chang</td><td>Silver Ring</td><td>$175 + tax</td><td><span class="tag tag-warn">Quote</span></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- EXPENSES -->
+      <div class="panel" id="panel-expenses">
+        <div class="card">
+          <div class="card-head"><h3>Expense ledger</h3><button class="btn btn-primary btn-sm">Log expense</button></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Deductible</th></tr></thead>
+            <tbody>
+              <tr><td>Sep 2, 2026</td><td>Packaging (500 pcs)</td><td>$1,450</td><td><span class="tag tag-ok">Yes</span></td></tr>
+              <tr><td>Aug 28, 2026</td><td>Shipping</td><td>$380</td><td><span class="tag tag-ok">Yes</span></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- MARKETING -->
+      <div class="panel" id="panel-marketing">
+        <div class="card">
+          <div class="card-head"><h3>Marketing</h3><button class="btn btn-primary btn-sm">New campaign</button></div>
+          <div class="grid-2">
+            <div class="field2"><label>Email</label><input type="text" value="Abandoned cart reminder" readonly></div>
+            <div class="field2"><label>Google Ads</label><input type="text" value="Budget $45/day · ROAS 4.2x" readonly></div>
+            <div class="field2"><label>Meta</label><input type="text" value="925 Silver Rings — active" readonly></div>
+            <div class="field2"><label>TikTok</label><input type="text" value="Initial Necklace campaign" readonly></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ANALYTICS -->
+      <div class="panel" id="panel-analytics">
+        <div class="metrics">
+          <div class="metric"><div class="label">Revenue (MTD)</div><div class="value">$34,200</div></div>
+          <div class="metric"><div class="label">Tax reserve</div><div class="value">$2,736</div></div>
+          <div class="metric"><div class="label">Net profit</div><div class="value">$21,450</div></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Revenue, last 6 months</h3><button class="btn btn-line btn-sm">Export report</button></div>
+          <div class="chart-wrap">
+            <svg id="revChart" viewBox="0 0 640 220" width="100%" height="220" role="img" aria-label="Revenue chart"></svg>
+            <div class="chart-caption"><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span><span>Aug</span><span>Sep</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AUTOMATION -->
+      <div class="panel" id="panel-automation">
+        <div class="card">
+          <div class="card-head"><h3>Automation rules</h3><button class="btn btn-primary btn-sm">New rule</button></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Trigger</th><th>Action</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>Order placed</td><td>Send confirmation email</td><td><span class="tag tag-ok">Active</span></td></tr>
+              <tr><td>Stock below 3 units</td><td>Alert owner + reorder list</td><td><span class="tag tag-ok">Active</span></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="panel" id="panel-settings">
+        <div class="card">
+          <div class="card-head"><h3>Company &amp; language</h3><button class="btn btn-primary btn-sm">Save</button></div>
+          <div class="grid-2">
+            <div class="field2"><label>Legal name</label><input type="text" value="DELEA Jewelry LLC"></div>
+            <div class="field2"><label>Tax ID / EIN</label><input type="text" value="12-3456789"></div>
+            <div class="field2"><label>Currency</label><select><option>USD ($)</option><option>EUR (€)</option></select></div>
+            <div class="field2"><label>Default language</label><select><option>English</option><option>Español</option><option>Français</option></select></div>
+            <div class="field2 full"><label>Address</label><input type="text" value="5th Avenue, Jewelry District, NY"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script>
+  // ---------- panel switching ----------
+  const titles = {
+    'panel-ai': ['AI Assistant', 'Understands your inventory, sales, and tax position'],
+    'panel-store': ['Live Website', 'What customers see right now'],
+    'panel-edit': ['Website Editor', 'Edit the live site directly — add products, reorder, update copy'],
+    'panel-products': ['Product Catalog', 'SKUs, pricing, and stock'],
+    'panel-inventory': ['Inventory & Materials', 'Raw materials and reorder alerts'],
+    'panel-invoices': ['Invoices & Tax', 'Quotes, invoices, and tax calculation'],
+    'panel-expenses': ['Expenses', 'Cost ledger and deductible tracking'],
+    'panel-marketing': ['Marketing', 'Email, ads, and social in one place'],
+    'panel-analytics': ['Analytics', 'Revenue, margin, and tax reserve'],
+    'panel-automation': ['Automation', 'Rule-based workflows'],
+    'panel-settings': ['Settings', 'Company profile and language']
+  };
+  function switchPanel(id, el){
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    document.querySelectorAll('.menu-item').forEach(m=>m.classList.remove('active'));
+    if(el) el.classList.add('active');
+    const t = titles[id];
+    document.getElementById('pageTitle').innerHTML = t[0] + '<span class="sub">'+t[1]+'</span>';
+    if(window.innerWidth <= 960){ toggleSidebar(true); }
+  }
+
+  function toggleSidebar(forceClose){
+    const s = document.getElementById('sidebar');
+    const o = document.getElementById('overlay');
+    if(forceClose){ s.classList.remove('open'); o.classList.remove('active'); return; }
+    s.classList.toggle('open'); o.classList.toggle('active');
+  }
+
+  // ---------- theme ----------
+  function toggleTheme(){
+    const root = document.documentElement;
+    const isDark = root.getAttribute('data-theme') === 'dark';
+    root.setAttribute('data-theme', isDark ? 'light' : 'dark');
+    document.getElementById('themeBtn').textContent = isDark ? 'Dark view' : 'Light view';
+  }
+
+  // ---------- rebrand ----------
+  function toggleRebrand(){
+    document.getElementById('rebrandPanel').classList.toggle('open');
+  }
+  function applyBrand(){
+    const name = document.getElementById('inputBizName').value.trim() || 'DELEA';
+    const tag = document.getElementById('inputTagline').value.trim() || 'Jewelry Operations';
+    const primary = document.getElementById('inputPrimary').value;
+    const gold = document.getElementById('inputGold').value;
+
+    document.getElementById('primaryHex').textContent = primary.toUpperCase();
+    document.getElementById('goldHex').textContent = gold.toUpperCase();
+
+    document.documentElement.style.setProperty('--brand', primary);
+    document.documentElement.style.setProperty('--brand-deep', shade(primary, -18));
+    document.documentElement.style.setProperty('--brand-gold', gold);
+    document.documentElement.style.setProperty('--brand-gold-soft', shade(gold, 42));
+
+    document.getElementById('brandName').textContent = name;
+    document.getElementById('brandTag').textContent = tag;
+    document.getElementById('brandMark').textContent = name.trim().charAt(0).toUpperCase() || 'D';
+    document.getElementById('chatBizName').textContent = name;
+    document.getElementById('storeHeroTitle').textContent = name + ' Fine Jewelry';
+    document.getElementById('editHeroTitle').innerText = name + ' Fine Jewelry';
+  }
+  function shade(hex, percent){
+    hex = hex.replace('#','');
+    const num = parseInt(hex,16);
+    let r = (num >> 16) + Math.round(255*percent/100);
+    let g = ((num >> 8) & 0x00FF) + Math.round(255*percent/100);
+    let b = (num & 0x0000FF) + Math.round(255*percent/100);
+    r = Math.max(Math.min(255,r),0); g = Math.max(Math.min(255,g),0); b = Math.max(Math.min(255,b),0);
+    return '#' + (0x1000000 + r*0x10000 + g*0x100 + b).toString(16).slice(1);
+  }
+
+  // ---------- chat ----------
+  const responses = {
+    stock: n => `Inventory for 925 Silver rings is at 18 units, and gold plating solution is low at 3 vials — reorder suggested. Want me to add it to the reorder list?`,
+    sales: n => `Today's revenue for ${n} is $1,240 so far, tracking about 8% ahead of this day last week.`,
+    tax: n => `Estimated tax liability this month is $2,736, based on MTD revenue of $34,200. Filing reminder is set for the 15th.`,
+    recommend: n => `Customers who bought the Custom Initial Necklace often add the matching Birth Flower Pendant — worth a bundle offer.`,
+    default: n => `Got it — I've noted that. Want me to pull the relevant numbers from ${n}'s dashboard?`
+  };
+  function bizName(){ return document.getElementById('brandName').textContent || 'DELEA'; }
+  function pushBubble(role, text){
+    const body = document.getElementById('chatBody');
+    const div = document.createElement('div');
+    div.className = 'bubble ' + role;
+    div.textContent = text;
+    body.appendChild(div);
+    body.scrollTop = body.scrollHeight;
+  }
+  function sendChat(){
+    const input = document.getElementById('chatInput');
+    const msg = input.value.trim();
+    if(!msg) return;
+    pushBubble('user', msg);
+    input.value = '';
+    setTimeout(()=>{
+      const key = /stock|inventory/i.test(msg) ? 'stock' : /sale|revenue/i.test(msg) ? 'sales' : /tax/i.test(msg) ? 'tax' : /recommend|upsell/i.test(msg) ? 'recommend' : 'default';
+      pushBubble('ai', responses[key](bizName()));
+    }, 500);
+  }
+  function quickChat(key){
+    const map = { stock:'Show me current stock levels', sales:"What's today's sales?", tax:'Summarize my tax position', recommend:'Give me an upsell idea' };
+    document.getElementById('chatInput').value = map[key];
+    sendChat();
+  }
+
+  // ---------- storefront (shared model between Live Website and Website Editor) ----------
+  const emojiCycle = ['◆','✿','◇','✦','◈','✧'];
+  let items = [
+    {e:'◆', n:'Custom Initial Necklace', p:'$98'},
+    {e:'✿', n:'Birth Flower Pendant', p:'$110'},
+    {e:'◇', n:'Engagement Ring', p:'$145'},
+    {e:'✦', n:'Celestial Charm', p:'$95'},
+    {e:'◆', n:'Diamond Halo Ring', p:'$185'},
+    {e:'◈', n:'Monogram Necklace', p:'$125'}
+  ];
+
+  function renderStore(){
+    document.getElementById('storeGrid').innerHTML = items.map(i=>`
+      <div class="store-item">
+        <span class="emoji">${i.e}</span>
+        <h5>${i.n}</h5>
+        <div class="price">${i.p}</div>
+        <button class="btn btn-line btn-sm">Add to bag</button>
+      </div>`).join('');
+  }
+
+  function renderEditGrid(){
+    document.getElementById('editGrid').innerHTML = items.map((i,idx)=>`
+      <div class="store-item edit-item">
+        <span class="emoji">${i.e}</span>
+        <input class="edit-field name-field" value="${i.n}" oninput="updateItemField(${idx},'n',this.value)">
+        <input class="edit-field price-field" value="${i.p}" oninput="updateItemField(${idx},'p',this.value)">
+        <div class="edit-controls">
+          <button class="icon-btn" onclick="moveItem(${idx},-1)" title="Move earlier">‹</button>
+          <button class="icon-btn" onclick="moveItem(${idx},1)" title="Move later">›</button>
+          <button class="icon-btn danger" onclick="removeItem(${idx})" title="Remove">✕</button>
+        </div>
+      </div>`).join('') + '<div class="store-item add-item" onclick="addProduct()">+ Add product</div>';
+  }
+
+  function updateItemField(idx, field, value){
+    items[idx][field] = value;
+    renderStore(); // reflect on the live site without disturbing the editor's focused input
+  }
+
+  function moveItem(idx, dir){
+    const target = idx + dir;
+    if(target < 0 || target >= items.length) return;
+    [items[idx], items[target]] = [items[target], items[idx]];
+    renderEditGrid();
+    renderStore();
+  }
+
+  function removeItem(idx){
+    items.splice(idx, 1);
+    renderEditGrid();
+    renderStore();
+  }
+
+  function addProduct(){
+    const icon = emojiCycle[items.length % emojiCycle.length];
+    items.push({ e: icon, n:'New Piece', p:'$0' });
+    renderEditGrid();
+    renderStore();
+  }
+
+  function syncHeroFromEditable(){
+    document.getElementById('storeHeroTitle').textContent = document.getElementById('editHeroTitle').innerText;
+    document.getElementById('storeHeroSub').textContent = document.getElementById('editHeroSub').innerText;
+  }
+
+  // ---------- language ----------
+  const langs = ['EN','ES','FR'];
+  let langIdx = 0;
+  function cycleLanguage(){
+    langIdx = (langIdx+1) % langs.length;
+    document.getElementById('langPill').textContent = langs[langIdx];
+  }
+
+  // ---------- chart ----------
+  function renderChart(){
+    const svg = document.getElementById('revChart');
+    const data = [21400, 24800, 27300, 29600, 31100, 34200];
+    const max = Math.max(...data);
+    const w = 640, h = 220, pad = 24, barGap = 18;
+    const barW = (w - pad*2 - barGap*(data.length-1)) / data.length;
+    let bars = '';
+    data.forEach((v,i)=>{
+      const barH = (v/max) * (h - pad*2 - 20);
+      const x = pad + i*(barW+barGap);
+      const y = h - pad - barH;
+      bars += `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="3" fill="var(--brand)" opacity="${0.55 + i*0.08}"></rect>`;
+      bars += `<text x="${x + barW/2}" y="${y-8}" text-anchor="middle" font-size="11" fill="var(--text-muted)" font-family="Archivo, sans-serif">$${Math.round(v/1000)}k</text>`;
+    });
+    bars += `<line x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}" stroke="var(--border)" stroke-width="1"></line>`;
+    svg.innerHTML = bars;
+  }
+
+  renderStore();
+  renderEditGrid();
+  renderChart();
+</script>
+</body>
+</html>

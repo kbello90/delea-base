@@ -1,0 +1,72 @@
+/*
+ * DELEA design tokens — ported from the :root variables in docs/delea-demo.html.
+ * Components must reference these via var(--…) only; never hardcode brand values.
+ * Brand tokens (--brand*) are overridden at runtime per tenant (see applyBrandTokens).
+ */
+:root {
+  /* neutral surface tokens (light default) */
+  --bg: #FAF7F2;
+  --surface: #FFFFFF;
+  --surface-2: #F3EDE3;
+  --border: #E4DACB;
+  --text: #241C17;
+  --text-muted: #8A7C6C;
+  --sidebar-bg: #1B1511;
+  --sidebar-text: #C7BBAC;
+  --sidebar-text-active: #FAF3E6;
+
+  /* brand tokens (rebrandable live) */
+  --brand: #6B2737;
+  --brand-deep: #4A1B26;
+  --brand-gold: #B8935B;
+  --brand-gold-soft: #EBDCC3;
+
+  --radius: 4px;
+  --radius-lg: 10px;
+  --shadow: 0 1px 2px rgba(27, 21, 17, 0.06), 0 8px 24px -12px rgba(27, 21, 17, 0.18);
+  --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --sans: 'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15110D;
+    --surface: #1E1812;
+    --surface-2: #241D16;
+    --border: #3A2E22;
+    --text: #EFE6D8;
+    --text-muted: #A99988;
+    --sidebar-bg: #0F0C09;
+    --sidebar-text: #B4A896;
+    --sidebar-text-active: #FBF3E6;
+    --brand-gold-soft: #3A2E1E;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #15110D;
+  --surface: #1E1812;
+  --surface-2: #241D16;
+  --border: #3A2E22;
+  --text: #EFE6D8;
+  --text-muted: #A99988;
+  --sidebar-bg: #0F0C09;
+  --sidebar-text: #B4A896;
+  --sidebar-text-active: #FBF3E6;
+  --brand-gold-soft: #3A2E1E;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+}

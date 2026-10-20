@@ -1,0 +1,57 @@
+/* Component styles. Token references only — no literal colors. */
+.dl-button {
+  font-family: var(--sans);
+  font-size: 14px;
+  padding: 8px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--brand);
+  background: var(--brand);
+  color: var(--surface);
+  cursor: pointer;
+}
+.dl-button:hover {
+  background: var(--brand-deep);
+  border-color: var(--brand-deep);
+}
+.dl-button--ghost {
+  background: transparent;
+  color: var(--brand);
+}
+.dl-button--ghost:hover {
+  background: var(--surface-2);
+}
+
+.dl-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 24px;
+}
+.dl-card__title {
+  font-family: var(--serif);
+  font-weight: 500;
+  margin: 0 0 12px;
+  color: var(--text);
+}
+
+.dl-tag {
+  display: inline-block;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: var(--radius);
+  background: var(--brand-gold-soft);
+  color: var(--text);
+}
+
+.dl-metric__label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.dl-metric__value {
+  font-family: var(--serif);
+  font-size: 28px;
+  color: var(--text);
+}

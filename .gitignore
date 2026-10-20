@@ -1,0 +1,34 @@
+# Node / frontend
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+.vite/
+
+# Env files (never commit secrets)
+.env
+.env.*
+!.env.example
+
+# Python / backend
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+
+# Supabase CLI local state
+supabase/.temp/
+supabase/.branches/
+
+# Bicep build output (compiled ARM JSON)
+infra/bicep/**/*.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

@@ -1,0 +1,36 @@
+# Supabase CLI project config. Applies to the shared project and every Enterprise project
+# (TRD §2.3). Migrations live in ./migrations; pgTAP tests in ./tests.
+project_id = "delea-base"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5174"]
+jwt_expiry = 3600
+enable_signup = true
+
+# Custom access token hook that adds tenant_id and app_role claims (TRD §2.2).
+# Enable once the migration that defines the hook function exists.
+# [auth.hook.custom_access_token]
+# enabled = true
+# uri = "pg-functions://postgres/public/custom_access_token_hook"
