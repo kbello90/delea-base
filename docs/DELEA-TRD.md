@@ -308,3 +308,73 @@ delea-base/
 
 None. All TRD decisions are locked (see the list at the top). Anything new that surfaces during scaffolding gets flagged and decided before the spec changes.
 
+
+---
+
+## 6. As built: backend
+
+What the FastAPI backend implements so far, and the rules it follows. Details live in `backend/README.md`.
+
+### 6.1 Request model
+Every authenticated request runs in **one transaction** as `authenticated`, with the caller's verified JWT claims set, so **RLS is the enforcement** (decision 6).
+- **Commit timing:** the transaction commits when the endpoint returns, before the response is sent, and rolls back on any error.
+- **`tenant_id`:** comes only from the verified token. Request bodies reject a `tenant_id` field with 422, and every query also filters on the caller's tenant.
+- **`require_role`:** mirrors the RLS policies to give clear 403s. It never grants more than RLS does.
+
+### 6.2 Routes (all under `/api/v1`)
+| Route | owner | staff | cpa |
+|---|---|---|---|
+| `products` (list/get · create/update/delete) | ✓ · ✓ | read | — |
+| `materials` (list with `q`, `low_stock`; get · writes) | ✓ · ✓ | read | — |
+| `customers` (list/get · create/update · delete) | ✓ · ✓ · ✓ | ✓ · ✓ · — | — |
+| `expenses` (list with date range / category / deductible; get; `export.csv` · writes) | ✓ · ✓ | — | read |
+| `settings/company` (get · patch) | ✓ · ✓ | — | — |
+| `settings/brand` (get · patch) | ✓ · ✓ | read | — |
+| `dashboard/summary` | ✓ | — | — |
+
+**Also:**
+- **Health:** `GET /health` (liveness) and `GET /health/ready` (database check) sit outside `/api/v1`.
+- **Invoices:** waiting on the migration that lets staff read the tax rate and delete quote line items.
+
+### 6.3 Error mapping
+Every error response is `{"detail": "..."}`, never with SQL text or stack traces.
+
+| Cause | Status |
+|---|---|
+| missing, invalid or expired token | 401 |
+| no membership, wrong role, RLS violation, insufficient privilege | 403 |
+| no row, or a row hidden by RLS | 404 |
+| unique, foreign-key or `P0001` | 409 |
+| check, not-null, invalid value, request validation | 422 |
+| JWKS or database unreachable | 503 |
+
+Messages raised by our own triggers (`RAISE`) are passed through; Postgres-generated messages stay generic.
+
+### 6.4 CORS
+Allowed origins come from `CORS_ORIGINS`: a comma-separated list of exact origins, defaulting to `http://localhost:5173,http://localhost:5174`. A wildcard is rejected at startup.
+- **Methods:** `GET, POST, PATCH, DELETE, OPTIONS`.
+- **Headers:** `Authorization, Content-Type`.
+- **Credentials:** none.
+
+### 6.5 Money rules
+All amounts are integer cents. Rounding is half-up, in integer arithmetic: `(a × bps + 5000) // 10000`. These rules are implemented in `backend/app/services/pricing.py`, and will be used by the invoices endpoints.
+- **Unit price:** the sale price while a sale is active (`sale_price_cents` set and `sale_ends_at` in the future, or no `sale_ends_at`), otherwise `price_cents`.
+- **Wholesale customers:** the lower of that price and `round_half_up(price_cents × (10000 − discount_bps) / 10000)`. Discounts never stack.
+- **Totals:**
+  - `line_total = unit × qty`;
+  - `subtotal = Σ line_total`;
+  - `tax = round_half_up(subtotal × rate_bps / 10000)`, once on the subtotal;
+  - `total = subtotal + tax`.
+- **Tax rate:** 0 for a tax-exempt customer; otherwise an owner-only override if given, else the tenant's `default_tax_rate_bps`. The rate used is stored on the invoice as a snapshot.
+- **Client input:** a client never sends or influences subtotal, tax or total.
+- **CSV exports:** amounts are written as exact decimal strings (`12.50`). Any cell starting with `= + - @`, tab or CR is prefixed with `'`.
+- **Dashboard:**
+  - **Revenue:** the subtotal of invoices paid in the period, excluding refunded and cancelled ones.
+  - **Tax reserve:** their tax.
+  - **Net profit:** revenue − expenses (all expenses dated in the period, up to today).
+  - **Periods:** UTC calendar month and year to date.
+
+### 6.6 Known limitations
+- **Token expiry:** an access token stays valid until it expires (`jwt_expiry`, 3600 s locally). Removing or changing someone's membership takes effect at their next token refresh. We'll revisit this with a shorter expiry, or a membership re-check on sensitive requests.
+- **Multi-tenant users:** a user in several tenants gets their oldest membership.
+- **Direct database API:** until the follow-up migration closes it, the Supabase REST API still exposes `public` to signed-in users. The API-only rules (owner-only refund, cancel and tax override; server-computed totals) are enforced only through FastAPI.
