@@ -128,11 +128,29 @@ def client(settings: Settings) -> Iterator[TestClient]:
         yield test_client
 
 
+# Rows created by the tests carry the IT- prefix in one identifying column per table.
+_TEST_ROWS = (
+    ("products", "sku"),
+    ("materials", "name"),
+    ("customers", "first_name"),
+    ("expenses", "description"),
+)
+
+
 @pytest.fixture(autouse=True)
-def _cleanup_test_products(db: psycopg.Connection) -> Iterator[None]:
-    """Remove every product the tests created (SKU prefix IT-), whatever the test did."""
+def _cleanup_test_rows(db: psycopg.Connection) -> Iterator[None]:
+    """Remove every row the tests created (IT- prefix), whatever the test did."""
     yield
-    db.execute("delete from public.products where sku like %s", (f"{TEST_SKU_PREFIX}%",))
+    for table, column in _TEST_ROWS:
+        db.execute(f"delete from public.{table} where {column} like %s", (f"{TEST_SKU_PREFIX}%",))
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _cleanup_automation_events(db: psycopg.Connection) -> Iterator[None]:
+    """Triggers write automation_events (e.g. stock_low); drop the ones this run produced."""
+    started_at = db.execute("select clock_timestamp()").fetchone()[0]
+    yield
+    db.execute("delete from public.automation_events where created_at >= %s", (started_at,))
 
 
 @pytest.fixture

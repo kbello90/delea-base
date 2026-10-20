@@ -63,3 +63,22 @@ def product_payload(**overrides: object) -> dict:
     }
     payload.update(overrides)
     return payload
+
+
+# The five test identities, in a fixed order for readable failures.
+IDENTITIES = ("owner_a", "staff_a", "cpa_a", "owner_b", "no_membership")
+
+
+def assert_access(client, users: dict, method: str, path: str, expected: dict, json=None) -> None:
+    """Call `path` as every identity and compare the status codes with `expected`.
+
+    `expected` maps identity -> status; identities left out must get 403. Writes that succeed
+    are the caller's to clean up (test rows carry the IT- prefix).
+    """
+    got = {}
+    for name in IDENTITIES:
+        body = json(name) if callable(json) else json
+        response = client.request(method, path, json=body, headers=users[name].headers)
+        got[name] = response.status_code
+    want = {name: expected.get(name, 403) for name in IDENTITIES}
+    assert got == want, f"{method} {path}: got {got}, want {want}"

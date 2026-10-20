@@ -8,12 +8,12 @@ caller's tenant from the verified token; tenant_id is never taken from the reque
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from psycopg import sql
+from fastapi import APIRouter, Depends, Query, Response, status
 from psycopg.rows import dict_row
 
 from app.api.deps import CurrentClaims, DbConn, require_role
 from app.core.errors import NotFoundError
+from app.db.sql_helpers import like_pattern, patch_changes, update_statement
 from app.models.product import NULLABLE_FIELDS, ProductCreate, ProductOut, ProductUpdate
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -26,11 +26,6 @@ _COLUMNS = (
     "sale_price_cents, sale_ends_at, stock_qty, low_stock_threshold, image_urls, icon, "
     "is_published, sort_order, created_at, updated_at"
 )
-
-
-def _like_pattern(term: str) -> str:
-    escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    return f"%{escaped}%"
 
 
 @router.get("", response_model=list[ProductOut], dependencies=[ReadRoles])
@@ -57,7 +52,7 @@ async def list_products(
             {
                 "tenant_id": claims.tenant_id,
                 "is_published": is_published,
-                "pattern": _like_pattern(q) if q else None,
+                "pattern": like_pattern(q) if q else None,
                 "limit": limit,
                 "offset": offset,
             },
@@ -110,36 +105,12 @@ async def create_product(body: ProductCreate, claims: CurrentClaims, conn: DbCon
 async def update_product(
     product_id: UUID, body: ProductUpdate, claims: CurrentClaims, conn: DbConn
 ) -> ProductOut:
-    changes = body.model_dump(mode="json", exclude_unset=True)
-    if not changes:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "No fields to update")
-    null_not_allowed = sorted(
-        k for k, v in changes.items() if v is None and k not in NULLABLE_FIELDS
+    changes = patch_changes(body, NULLABLE_FIELDS)
+    query = update_statement(
+        "products", changes, ProductUpdate, _COLUMNS, casts={"metal": "public.metal_type"}
     )
-    if null_not_allowed:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            f"These fields cannot be null: {', '.join(null_not_allowed)}",
-        )
-
-    # Column names come from the model's own fields, never from the request keys directly.
-    assignments = [
-        sql.SQL("{} = {}").format(
-            sql.Identifier(field),
-            sql.SQL("{}::public.metal_type").format(sql.Placeholder(field))
-            if field == "metal"
-            else sql.Placeholder(field),
-        )
-        for field in changes
-        if field in ProductUpdate.model_fields
-    ]
-    query = sql.SQL(
-        "update public.products set {assignments} "
-        "where id = %(id)s and tenant_id = %(tenant_id)s returning " + _COLUMNS
-    ).format(assignments=sql.SQL(", ").join(assignments))
-
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(query, {**changes, "id": product_id, "tenant_id": claims.tenant_id})
+        await cur.execute(query, {**changes, "key": product_id, "tenant_id": claims.tenant_id})
         row = await cur.fetchone()
     if row is None:
         raise NotFoundError("Product not found")
