@@ -332,10 +332,11 @@ Every authenticated request runs in **one transaction** as `authenticated`, with
 | `expenses` (list with date range / category / deductible; get; `export.csv` · writes) | ✓ · ✓ | — | read |
 | `settings/company` (get · patch) | ✓ · ✓ | — | — |
 | `settings/brand` (get · patch) | ✓ · ✓ | read | — |
+| `settings/currency` (get; via `current_tenant_currency()`) | ✓ | read | read |
 | `invoices` (list/get/`export.csv`) | ✓ | ✓ | read (`items` null) |
 | `invoices` create (`pay_now`), `PUT /{id}/items`, `POST /{id}/status` | ✓ | ✓ | — |
 | `invoices` tax-rate override, `/{id}/refund`, `/{id}/cancel`, delete (quotes only) | ✓ | — | — |
-| `dashboard/summary` | ✓ | — | — |
+| `dashboard/summary`, `dashboard/monthly` | ✓ | — | — |
 
 **Also:**
 - **Health:** `GET /health` (liveness) and `GET /health/ready` (database check) sit outside `/api/v1`.

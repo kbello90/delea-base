@@ -2,6 +2,8 @@
 
 company_settings: owner only (it holds the EIN and the Stripe account reference).
 brand_config: read by owner and staff, written by the owner (RLS: owner all, staff select).
+currency: read by owner, staff and cpa through current_tenant_currency() (SECURITY DEFINER),
+so staff and cpa learn the currency without reading company_settings.
 require_role gives a clear 403 up front, but RLS (user session as `authenticated`) is the
 enforcement. Every query also filters on the caller's tenant. CPA invites come later.
 """
@@ -19,13 +21,16 @@ from app.models.settings import (
     BrandConfigUpdate,
     CompanySettingsOut,
     CompanySettingsUpdate,
+    CurrencyOut,
     language_rule_errors,
 )
+from app.services.currency import fetch_currency
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 OwnerOnly = Depends(require_role("owner"))
 OwnerOrStaff = Depends(require_role("owner", "staff"))
+AnyMember = Depends(require_role("owner", "staff", "cpa"))
 
 _COMPANY_COLUMNS = (
     "tenant_id, legal_name, ein, address, currency::text as currency, default_language, "
@@ -114,3 +119,8 @@ async def update_brand_config(
     if row is None:
         raise NotFoundError("Brand config not found")
     return BrandConfigOut.model_validate(row)
+
+
+@router.get("/currency", response_model=CurrencyOut, dependencies=[AnyMember])
+async def get_currency(conn: DbConn) -> CurrencyOut:
+    return CurrencyOut(currency=await fetch_currency(conn))

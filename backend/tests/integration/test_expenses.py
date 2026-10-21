@@ -156,10 +156,29 @@ def test_csv_export_matches_filters_and_formats_money(
         "expense_date",
         "description",
         "category",
+        "currency",
         "amount",
         "is_tax_deductible",
         "receipt_url",
     ]
+
+
+def test_csv_export_currency_is_the_tenants(
+    client: TestClient, users: dict[str, TestUser], db
+) -> None:
+    a = parse_csv(client.get(EXPORT, headers=users["cpa_a"].headers).text)
+    assert a and {r["currency"] for r in a} == {"USD"}
+    db.execute(
+        "update public.company_settings set currency = 'CAD' where tenant_id = %s", (TENANT_B,)
+    )
+    try:
+        b = parse_csv(client.get(EXPORT, headers=users["owner_b"].headers).text)
+        assert b and {r["currency"] for r in b} == {"CAD"}
+    finally:
+        db.execute(
+            "update public.company_settings set currency = 'USD' where tenant_id = %s",
+            (TENANT_B,),
+        )
 
 
 def test_csv_export_escapes_formula_cells(client: TestClient, users: dict[str, TestUser]) -> None:

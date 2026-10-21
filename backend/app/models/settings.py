@@ -116,3 +116,9 @@ class BrandConfigOut(BaseModel):
     hero_title: str | None
     hero_subtitle: str | None
     updated_at: datetime
+
+
+class CurrencyOut(BaseModel):
+    """The tenant's currency code; every amount is hundredths of its major unit."""
+
+    currency: str

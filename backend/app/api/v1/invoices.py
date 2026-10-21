@@ -40,6 +40,7 @@ from app.models.invoice import (
     LineItemIn,
     OrderStatus,
 )
+from app.services.currency import fetch_currency
 from app.services.invoices import customer_display_name, due_date_for
 from app.services.pricing import (
     CustomerPricing,
@@ -269,6 +270,7 @@ CSV_HEADER = (
     "created_at",
     "paid_at",
     "due_date",
+    "currency",
     "subtotal",
     "tax_rate_bps",
     "tax",
@@ -291,6 +293,10 @@ async def export_invoices_csv(
     response streams; an error after streaming has started truncates the file and is logged.
     """
 
+    # Read before streaming starts, so a refusal is a proper 403 rather than a cut-off file.
+    async with user_session(pool, claims) as conn:
+        currency = await fetch_currency(conn)
+
     async def rows() -> AsyncIterator[tuple]:
         try:
             async with user_session(pool, claims) as conn:
@@ -304,6 +310,7 @@ async def export_invoices_csv(
                 ):
                     yield (
                         *r[:7],
+                        currency,
                         cents_to_decimal(r[7]),
                         r[8],
                         cents_to_decimal(r[9]),

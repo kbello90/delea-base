@@ -24,6 +24,7 @@ from app.core.security import TokenClaims
 from app.db.session import user_session
 from app.db.sql_helpers import patch_changes, update_statement
 from app.models.expense import NULLABLE_FIELDS, ExpenseCreate, ExpenseOut, ExpenseUpdate
+from app.services.currency import fetch_currency
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,7 @@ CSV_HEADER = (
     "expense_date",
     "description",
     "category",
+    "currency",
     "amount",
     "is_tax_deductible",
     "receipt_url",
@@ -121,6 +123,10 @@ async def export_expenses_csv(
     short and the error is logged.
     """
 
+    # Read before streaming starts, so a refusal is a proper 403 rather than a cut-off file.
+    async with user_session(pool, claims) as conn:
+        currency = await fetch_currency(conn)
+
     async def rows() -> AsyncIterator[tuple]:
         try:
             async with user_session(pool, claims) as conn:
@@ -131,7 +137,7 @@ async def export_expenses_csv(
                     "order by expense_date, created_at, id",
                     _params(claims, filters),
                 ):
-                    yield (r[0], r[1], r[2], cents_to_decimal(r[3]), r[4], r[5])
+                    yield (r[0], r[1], r[2], currency, cents_to_decimal(r[3]), r[4], r[5])
         except Exception:
             logger.exception("Expense CSV export failed mid-stream")
             raise

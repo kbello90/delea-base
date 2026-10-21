@@ -140,5 +140,8 @@ stay generic.
   (`*_cents`). `company_settings.currency` accepts only USD, CAD, EUR, GBP, MXN, AUD, NZD and
   CHF (`SUPPORTED_CURRENCIES` in `app/models/settings.py`); zero-decimal (JPY) and
   three-decimal (KWD) currencies are a 422.
+  Every role reads the currency from `GET /api/v1/settings/currency` (owner, staff, cpa), which
+  calls `current_tenant_currency()`, and the invoice and expense CSV exports carry a `currency`
+  column just before the first amount column.
 - **Multi-tenant users:** a user in several tenants gets their oldest membership. See the TODO
   in the access token hook.

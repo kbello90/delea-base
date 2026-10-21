@@ -397,6 +397,23 @@ export interface paths {
         patch: operations["update_brand_config_api_v1_settings_brand_patch"];
         trace?: never;
     };
+    "/api/v1/settings/currency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Currency */
+        get: operations["get_currency_api_v1_settings_currency_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dashboard/summary": {
         parameters: {
             query?: never;
@@ -526,6 +543,14 @@ export interface components {
             enabled_languages?: components["schemas"]["Language"][] | null;
             /** Default Tax Rate Bps */
             default_tax_rate_bps?: number | null;
+        };
+        /**
+         * CurrencyOut
+         * @description The tenant's currency code; every amount is hundredths of its major unit.
+         */
+        CurrencyOut: {
+            /** Currency */
+            currency: string;
         };
         /** CustomerCreate */
         CustomerCreate: {
@@ -2311,6 +2336,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_currency_api_v1_settings_currency_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrencyOut"];
                 };
             };
         };

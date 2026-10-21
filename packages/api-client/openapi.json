@@ -2093,6 +2093,32 @@
         ]
       }
     },
+    "/api/v1/settings/currency": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get Currency",
+        "operationId": "get_currency_api_v1_settings_currency_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrencyOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/dashboard/summary": {
       "get": {
         "tags": [
@@ -2519,6 +2545,20 @@
         "additionalProperties": false,
         "type": "object",
         "title": "CompanySettingsUpdate"
+      },
+      "CurrencyOut": {
+        "properties": {
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          }
+        },
+        "type": "object",
+        "required": [
+          "currency"
+        ],
+        "title": "CurrencyOut",
+        "description": "The tenant's currency code; every amount is hundredths of its major unit."
       },
       "CustomerCreate": {
         "properties": {

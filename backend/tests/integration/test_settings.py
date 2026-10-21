@@ -12,6 +12,7 @@ pytestmark = pytest.mark.integration
 
 COMPANY = "/api/v1/settings/company"
 BRAND = "/api/v1/settings/brand"
+CURRENCY = "/api/v1/settings/currency"
 
 _COMPANY_COLS = (
     "legal_name",
@@ -185,3 +186,39 @@ def test_staff_and_cpa_cannot_write_brand(
         ).fetchone()[0]
         == "Jewelry Operations"
     )
+
+
+def test_currency_role_matrix(client: TestClient, users: dict[str, TestUser]) -> None:
+    # Every member role of both tenants; the user without a membership gets 403.
+    assert_access(
+        client,
+        users,
+        "GET",
+        CURRENCY,
+        {"owner_a": 200, "staff_a": 200, "cpa_a": 200, "owner_b": 200},
+    )
+
+
+def test_currency_is_per_tenant(client: TestClient, users: dict[str, TestUser], db) -> None:
+    db.execute(
+        "update public.company_settings set currency = 'CAD' where tenant_id = %s", (TENANT_B,)
+    )
+    try:
+        got = {
+            name: client.get(CURRENCY, headers=users[name].headers).json()
+            for name in ("owner_a", "staff_a", "cpa_a", "owner_b")
+        }
+        assert got == {
+            "owner_a": {"currency": "USD"},
+            "staff_a": {"currency": "USD"},
+            "cpa_a": {"currency": "USD"},
+            "owner_b": {"currency": "CAD"},
+        }
+        refused = client.get(CURRENCY, headers=users["no_membership"].headers)
+        assert refused.status_code == 403
+        assert refused.json() == {"detail": "No tenant membership"}
+    finally:
+        db.execute(
+            "update public.company_settings set currency = 'USD' where tenant_id = %s",
+            (TENANT_B,),
+        )

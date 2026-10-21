@@ -518,7 +518,39 @@ def test_csv_export(client, users, db) -> None:
         assert row["invoice_number"] == paid["invoice_number"]
         assert row["customer_name"] == "'=IT-HYPERLINK(1) Tester"
         assert (row["subtotal"], row["tax"], row["total"]) == ("19.99", "1.60", "21.59")
+        # The tenant's currency, as the column just before the first amount.
+        assert row["currency"] == "USD"
+        header = list(row.keys())
+        assert header.index("currency") == header.index("subtotal") - 1
         assert "items" not in row and "description" not in row
     finally:
         db.execute("delete from public.invoices where customer_id = %s", (cust,))
         db.execute("delete from public.customers where id = %s", (cust,))
+
+
+def test_csv_export_currency_is_the_tenants(client, users, db) -> None:
+    db.execute(
+        "update public.company_settings set currency = 'CAD' where tenant_id = %s", (TENANT_B,)
+    )
+    try:
+        b = list(
+            csv.DictReader(
+                io.StringIO(
+                    client.get(f"{INVOICES}/export.csv", headers=users["owner_b"].headers).text
+                )
+            )
+        )
+        assert b and {r["currency"] for r in b} == {"CAD"}
+        a = list(
+            csv.DictReader(
+                io.StringIO(
+                    client.get(f"{INVOICES}/export.csv", headers=users["cpa_a"].headers).text
+                )
+            )
+        )
+        assert a and {r["currency"] for r in a} == {"USD"}
+    finally:
+        db.execute(
+            "update public.company_settings set currency = 'USD' where tenant_id = %s",
+            (TENANT_B,),
+        )
