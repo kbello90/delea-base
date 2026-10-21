@@ -40,9 +40,35 @@ pnpm dev          # admin on http://localhost:5173, storefront on http://localho
 pnpm --filter @delea/admin dev        # one app only
 ```
 
-Each app reads `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` and `VITE_API_BASE_URL`.
-Copy `apps/<app>/.env.example` to `apps/<app>/.env.local` to set them. The placeholder pages
-render without them.
+Each app reads `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, plus the backend URL:
+`VITE_API_URL` in the admin app and `VITE_API_BASE_URL` in the storefront. Copy
+`apps/<app>/.env.example` to `apps/<app>/.env.local` (gitignored, never commit it) and fill it
+from the LOCAL stack only: `API_URL` and `ANON_KEY` from `npx supabase@2.121.0 status -o env`.
+The admin app shows a "not configured" message without them.
+
+```sh
+pnpm test         # Vitest (admin, api-client)
+pnpm typecheck
+```
+
+### Local dev users (manual testing)
+
+With the local stack running and `backend/.env` written (see Backend), create three users in
+tenant A ("DELEA Demo"), one per role:
+
+```sh
+backend/.venv/bin/python backend/scripts/create_dev_users.py   # Windows: backend\.venv\Scripts\python
+```
+
+| Email | Role | Password |
+|---|---|---|
+| `owner@delea.local` | owner | `delea-local-dev` |
+| `staff@delea.local` | staff | `delea-local-dev` |
+| `cpa@delea.local` | cpa | `delea-local-dev` |
+
+The password is public and works only against the local stack. The script is idempotent
+(re-running resets the password and role) and refuses any non-local URL. Integration tests
+don't use these users; they create and delete their own.
 
 ## Backend
 
