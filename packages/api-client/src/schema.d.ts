@@ -1272,7 +1272,7 @@ export interface components {
              */
             updated_at: string;
             /** Images */
-            images?: components["schemas"]["ProductImageOut"][];
+            images: components["schemas"]["ProductImageOut"][];
         };
         /**
          * ProductUpdate

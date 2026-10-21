@@ -103,4 +103,4 @@ class ProductOut(BaseModel):
     sort_order: int
     created_at: datetime
     updated_at: datetime
-    images: list[ProductImageOut] = Field(default_factory=list)
+    images: list[ProductImageOut]
