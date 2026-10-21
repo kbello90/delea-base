@@ -36,3 +36,8 @@ export const ROLE_LABEL: Record<AppRole, string> = {
 export function routesFor(role: AppRole): AppRoute[] {
   return ROUTES.filter((route) => route.roles.includes(role));
 }
+
+/** True when `path` is one of the role's pages (or below one). Unknown paths are false. */
+export function canVisit(role: AppRole, path: string): boolean {
+  return routesFor(role).some((route) => path === route.path || path.startsWith(`${route.path}/`));
+}

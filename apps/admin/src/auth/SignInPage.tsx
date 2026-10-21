@@ -1,13 +1,13 @@
 import { Button } from "@delea/ui";
 import { useState, type FormEvent } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
+import { canVisit } from "../routes/routeTable";
 import { DEFAULT_BRAND } from "../theme/defaults";
 import { useAuth } from "./authContext";
 import { validateSignIn, type FieldErrors } from "./signInValidation";
 
 export function SignInPage() {
   const { state, signIn } = useAuth();
-  const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from ?? "/";
 
@@ -17,7 +17,12 @@ export function SignInPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (state.status === "signedIn") return <Navigate to={from} replace />;
+  if (state.status === "signedIn") {
+    // Back to the page that sent us here only if this account may see it (the previous user
+    // may have had another role); otherwise "/" picks the role's start page.
+    const role = state.claims?.appRole;
+    return <Navigate to={role && canVisit(role, from) ? from : "/"} replace />;
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -29,8 +34,8 @@ export function SignInPage() {
     setSubmitting(true);
     const message = await signIn(email.trim(), password);
     setSubmitting(false);
+    // On success the session change re-renders this page, which redirects (above).
     if (message) setFormError(message);
-    else navigate(from, { replace: true });
   }
 
   return (

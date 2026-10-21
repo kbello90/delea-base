@@ -63,6 +63,30 @@ describe("sign-in page", () => {
     expect(location.pathname).toBe("/products");
   });
 
+  it("returns to the requested page when the new role may see it", async () => {
+    const backend = fakeBackend(null);
+    const { location } = renderApp({ path: "/settings", backend });
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Email"), "owner@delea.local");
+    await user.type(screen.getByLabelText("Password"), "pw");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
+    expect(location.pathname).toBe("/settings");
+  });
+
+  it("goes to the role's start page when the requested page isn't allowed", async () => {
+    // e.g. the owner signed out on /dashboard, then staff signs in on the same browser
+    const backend = fakeBackend(null);
+    backend.control.signInToken = tokenFor("staff");
+    const { location } = renderApp({ path: "/dashboard", backend });
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Email"), "staff@delea.local");
+    await user.type(screen.getByLabelText("Password"), "pw");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Products" })).toBeInTheDocument();
+    expect(location.pathname).toBe("/products");
+  });
+
   it.each([
     [{ message: "Invalid login credentials", status: 400 }, "Email or password is incorrect."],
     [{ message: "Failed to fetch", status: 0 }, "Can't reach the sign-in service. Check your connection and try again."],
