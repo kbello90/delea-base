@@ -16,3 +16,10 @@ export function applyBrandTokens(
   el.style.setProperty("--brand-gold", tokens.brandGold);
   el.style.setProperty("--brand-gold-soft", tokens.brandGoldSoft);
 }
+
+/** Removes runtime brand overrides so the defaults in tokens.css apply again. */
+export function clearBrandTokens(el: HTMLElement = document.documentElement): void {
+  for (const name of ["--brand", "--brand-deep", "--brand-gold", "--brand-gold-soft"]) {
+    el.style.removeProperty(name);
+  }
+}

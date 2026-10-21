@@ -7,5 +7,5 @@ export type { CardProps } from "./components/Card";
 export { Metric } from "./components/Metric";
 export type { MetricProps } from "./components/Metric";
 export { Tag } from "./components/Tag";
-export { applyBrandTokens } from "./tokens";
+export { applyBrandTokens, clearBrandTokens } from "./tokens";
 export type { BrandTokens } from "./tokens";
