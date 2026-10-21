@@ -2,6 +2,7 @@ import type { RouteObject } from "react-router-dom";
 import { RequireAuth } from "../auth/RequireAuth";
 import { SignInPage } from "../auth/SignInPage";
 import { DashboardPage } from "../dashboard/DashboardPage";
+import { MaterialsPage } from "../materials/MaterialsPage";
 import { NewProductPage, ProductPage } from "../products/ProductFormPage";
 import { ProductsPage } from "../products/ProductsPage";
 import { AppShell } from "../shell/AppShell";
@@ -13,6 +14,7 @@ import { ROUTES } from "./routeTable";
 const PAGES: Record<string, JSX.Element> = {
   "/dashboard": <DashboardPage />,
   "/products": <ProductsPage />,
+  "/materials": <MaterialsPage />,
 };
 
 export const appRoutes: RouteObject[] = [

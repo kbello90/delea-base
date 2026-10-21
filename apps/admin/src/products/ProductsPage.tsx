@@ -1,10 +1,11 @@
 import { ApiError } from "@delea/api-client";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/authContext";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { PageHeader } from "../components/PageHeader";
+import { SearchBox } from "../components/SearchBox";
 import { useToast } from "../components/toastContext";
 import { formatMoney } from "../lib/money";
 import { useCurrency } from "../lib/useCurrency";
@@ -43,31 +44,6 @@ function useFilterParams() {
   const clear = () => setParams(new URLSearchParams());
   const active = Boolean(filters.q || filters.metal || filters.published !== null || filters.lowStock);
   return { filters, set, clear, active };
-}
-
-function SearchBox({ value, onChange }: { value: string; onChange: (q: string) => void }) {
-  const [text, setText] = useState(value);
-  // The latest callback, so a re-render (e.g. a refetch) doesn't restart the debounce.
-  const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
-  useEffect(() => setText(value), [value]);
-  useEffect(() => {
-    if (text.trim() === value) return;
-    const timer = setTimeout(() => onChangeRef.current(text.trim()), 300);
-    return () => clearTimeout(timer);
-  }, [text, value]);
-  return (
-    <div className="filter">
-      <label htmlFor="product-search">Search</label>
-      <input
-        id="product-search"
-        type="search"
-        placeholder="Name or SKU"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-      />
-    </div>
-  );
 }
 
 function PublishButton({ product }: { product: Product }) {
@@ -195,7 +171,7 @@ export function ProductsPage() {
       />
 
       <form className="filters" role="search" aria-label="Filter products" onSubmit={(e) => e.preventDefault()}>
-        <SearchBox value={filters.q} onChange={(q) => set("q", q)} />
+        <SearchBox id="product-search" placeholder="Name or SKU" value={filters.q} onChange={(q) => set("q", q)} />
         <div className="filter">
           <label htmlFor="filter-metal">Metal</label>
           <select id="filter-metal" value={filters.metal ?? ""} onChange={(e) => set("metal", e.target.value)}>

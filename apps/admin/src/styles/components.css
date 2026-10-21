@@ -23,6 +23,10 @@
   padding: 1.5rem;
   z-index: 81;
 }
+/* A dialog holding a form: wide enough for two columns of .form-grid. */
+.dialog--form {
+  width: min(560px, calc(100vw - 2rem));
+}
 .dialog__title {
   font-size: 1.2rem;
   margin: 0 0 0.75rem;

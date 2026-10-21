@@ -1,0 +1,158 @@
+/* List pages: filters, data grid (cards below 760px), pager, and form layout. Token colors only. */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+}
+.filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.filter label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.filter input[type="search"],
+.filter select {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+.filter input[type="search"] {
+  width: min(260px, 100%);
+}
+.filter--check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  padding-bottom: 0.45rem;
+}
+
+.table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  transition: opacity 0.15s ease;
+}
+.table-wrap.is-refreshing {
+  opacity: 0.6;
+}
+.data-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.data-grid th {
+  text-align: left;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.data-grid td {
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.data-grid tr:last-child td {
+  border-bottom: none;
+}
+.cell-title {
+  font-weight: 600;
+}
+.row-actions {
+  white-space: nowrap;
+}
+.row-actions > * + * {
+  margin-left: 0.9rem;
+}
+.skeleton__inline {
+  display: inline-block;
+  width: 4.5rem;
+  height: 0.8rem;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.skeleton--table {
+  height: 320px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+}
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  margin: 1rem 0 2rem;
+  font-size: 0.85rem;
+}
+
+/* Below 760px each row becomes a card; labels come from data-label. */
+@media (max-width: 760px) {
+  .data-grid thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .data-grid,
+  .data-grid tbody,
+  .data-grid tr,
+  .data-grid td {
+    display: block;
+  }
+  .data-grid tr {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .data-grid td {
+    border: none;
+    padding: 0.25rem 1rem;
+  }
+  .data-grid td[data-label]::before {
+    content: attr(data-label);
+    display: inline-block;
+    min-width: 5.5rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+  }
+  .row-actions {
+    white-space: normal;
+  }
+}
+
+/* ---------- forms ---------- */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0 1.25rem;
+}
+.field-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}

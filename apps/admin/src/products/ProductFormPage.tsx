@@ -1,9 +1,10 @@
 import { ApiError } from "@delea/api-client";
 import { Button } from "@delea/ui";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/authContext";
 import { ErrorState } from "../components/ErrorState";
+import { Field } from "../components/Field";
 import { Loading } from "../components/Loading";
 import { PageHeader } from "../components/PageHeader";
 import { useToast } from "../components/toastContext";
@@ -21,37 +22,6 @@ import {
   type ProductFormValues,
 } from "./productForm";
 import "./products.css";
-
-function Field({
-  id,
-  label,
-  error,
-  hint,
-  children,
-}: {
-  id: string;
-  label: string;
-  error?: string;
-  hint?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="field">
-      <label htmlFor={id}>{label}</label>
-      {children}
-      {hint && !error && (
-        <span id={`${id}-hint`} className="field-hint">
-          {hint}
-        </span>
-      )}
-      {error && (
-        <span id={`${id}-error`} className="field-error">
-          {error}
-        </span>
-      )}
-    </div>
-  );
-}
 
 function ProductForm({
   initial,
