@@ -102,8 +102,8 @@ describe("dashboard figures", () => {
     const lowStock = within(screen.getByRole("region", { name: "Low stock" }));
     expect(lowStock.getByText("product below the low-stock threshold")).toBeInTheDocument();
     expect(lowStock.getByText("materials below the reorder threshold")).toBeInTheDocument();
-    expect(lowStock.getByRole("link", { name: "View products" })).toHaveAttribute("href", "/products");
-    expect(lowStock.getByRole("link", { name: "View materials" })).toHaveAttribute("href", "/materials");
+    expect(lowStock.getByRole("link", { name: "View low-stock products" })).toHaveAttribute("href", "/products?low_stock=true");
+    expect(lowStock.getByRole("link", { name: "View low-stock materials" })).toHaveAttribute("href", "/materials?low_stock=true");
 
     const statuses = within(screen.getByRole("region", { name: "Invoices by status" }));
     const rows = statuses.getAllByRole("term").map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]);

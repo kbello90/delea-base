@@ -222,12 +222,12 @@ function Details({ summary }: { summary: Summary }) {
           <li>
             <span className="stat-list__count">{summary.low_stock_products}</span>
             <span>{summary.low_stock_products === 1 ? "product" : "products"} below the low-stock threshold</span>
-            <Link to="/products">View products</Link>
+            <Link to="/products?low_stock=true">View low-stock products</Link>
           </li>
           <li>
             <span className="stat-list__count">{summary.low_stock_materials}</span>
             <span>{summary.low_stock_materials === 1 ? "material" : "materials"} below the reorder threshold</span>
-            <Link to="/materials">View materials</Link>
+            <Link to="/materials?low_stock=true">View low-stock materials</Link>
           </li>
         </ul>
       </section>
