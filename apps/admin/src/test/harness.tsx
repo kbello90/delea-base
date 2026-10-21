@@ -70,15 +70,75 @@ export const DEFAULT_BRAND_RESPONSE: Schemas["BrandConfigOut"] = {
   updated_at: "2026-10-20T00:00:00Z",
 };
 
+/** Tenant A's seed data this month (see supabase/seed.sql), as GET /dashboard/summary returns it. */
+export const SUMMARY_RESPONSE: Schemas["DashboardSummary"] = {
+  currency_unit: "cents",
+  period_basis: "UTC",
+  month_start: "2026-10-01T00:00:00Z",
+  year_start: "2026-01-01T00:00:00Z",
+  mtd: {
+    revenue_cents: 9800,
+    tax_reserve_cents: 784,
+    expenses_cents: 91300,
+    deductible_expenses_cents: 84500,
+    net_profit_cents: -81500,
+  },
+  ytd: {
+    revenue_cents: 1234500,
+    tax_reserve_cents: 98760,
+    expenses_cents: 456700,
+    deductible_expenses_cents: 400000,
+    net_profit_cents: 777800,
+  },
+  low_stock_products: 1,
+  low_stock_materials: 2,
+  invoice_counts: { quote: 1, paid: 1, in_production: 0, shipped: 3, delivered: 4, refunded: 5, cancelled: 6 },
+};
+
+export const MONTHLY_RESPONSE: Schemas["MonthlyTrend"] = {
+  currency_unit: "cents",
+  period_basis: "UTC",
+  months: [
+    { month_start: "2026-05-01", revenue_cents: 0, expenses_cents: 0 },
+    { month_start: "2026-06-01", revenue_cents: 250000, expenses_cents: 120000 },
+    { month_start: "2026-07-01", revenue_cents: 310000, expenses_cents: 99900 },
+    { month_start: "2026-08-01", revenue_cents: 0, expenses_cents: 45000 },
+    { month_start: "2026-09-01", revenue_cents: 664700, expenses_cents: 100500 },
+    { month_start: "2026-10-01", revenue_cents: 9800, expenses_cents: 91300 },
+  ],
+};
+
+export const COMPANY_RESPONSE: Schemas["CompanySettingsOut"] = {
+  tenant_id: TENANT_A,
+  legal_name: "DELEA Jewelry LLC",
+  ein: "12-3456789",
+  address: null,
+  currency: "USD",
+  default_language: "en",
+  enabled_languages: ["en"],
+  default_tax_rate_bps: 800,
+  stripe_account_id: null,
+  next_quote_number: 41,
+  next_invoice_number: 89,
+  updated_at: "2026-10-20T00:00:00Z",
+};
+
 type Responder = (request: Request) => Response | Promise<Response>;
 
-/** Fake backend API: brand config by default; override per path with `routes`. */
+const DEFAULT_RESPONSES: Record<string, unknown> = {
+  "/api/v1/settings/brand": DEFAULT_BRAND_RESPONSE,
+  "/api/v1/settings/company": COMPANY_RESPONSE,
+  "/api/v1/dashboard/summary": SUMMARY_RESPONSE,
+  "/api/v1/dashboard/monthly": MONTHLY_RESPONSE,
+};
+
+/** Fake backend API: realistic responses for the built pages by default; override per path with `routes`. */
 export function fakeApi(routes: Record<string, Responder> = {}) {
   return vi.fn(async (request: Request) => {
     const path = new URL(request.url).pathname;
     const respond = routes[path];
     if (respond) return respond(request);
-    if (path === "/api/v1/settings/brand") return jsonResponse(200, DEFAULT_BRAND_RESPONSE);
+    if (path in DEFAULT_RESPONSES) return jsonResponse(200, DEFAULT_RESPONSES[path]);
     return jsonResponse(404, { detail: "Not found" });
   });
 }

@@ -26,6 +26,9 @@ const LANDING: Record<AppRole, string> = { owner: "Dashboard", staff: "Products"
 
 const ROLES: AppRole[] = ["owner", "staff", "cpa"];
 
+// Pages that are built (no placeholder). Placeholders say which slice builds them.
+const BUILT = new Set(["/dashboard"]);
+
 const cases = ROLES.flatMap((role) =>
   PAGES.map((page) => ({ role, ...page, allowed: ALLOWED[role].includes(page.label) })),
 );
@@ -36,7 +39,7 @@ describe("route guard", () => {
     const heading = await screen.findByRole("heading", { level: 1 });
     if (allowed) {
       expect(heading).toHaveTextContent(label);
-      expect(screen.getByText(/^Coming in slice \d$/)).toBeInTheDocument();
+      if (!BUILT.has(path)) expect(screen.getByText(/^Coming in slice \d$/)).toBeInTheDocument();
     } else {
       expect(heading).toHaveTextContent("You don't have access to this page");
       expect(screen.queryByText(/^Coming in slice/)).not.toBeInTheDocument();

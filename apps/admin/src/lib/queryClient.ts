@@ -20,6 +20,8 @@ export function createQueryClient(onNoMembership: () => void): QueryClient {
         // Client errors (4xx) won't succeed on retry; network and 5xx get two more tries.
         retry: (failures, error) => !(error instanceof ApiError && error.status >= 400 && error.status < 500) && failures < 2,
         refetchOnWindowFocus: false,
+        // Tests exercise the real retry policy without waiting for its backoff.
+        ...(import.meta.env.MODE === "test" ? { retryDelay: 0 } : {}),
       },
     },
   });
