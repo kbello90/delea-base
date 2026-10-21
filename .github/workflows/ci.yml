@@ -21,6 +21,10 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: API types match the committed openapi.json
+        run: |
+          pnpm --filter @delea/api-client gen
+          git diff --exit-code -- packages/api-client/src/schema.d.ts
       - run: pnpm lint
       - run: pnpm build
 
@@ -38,6 +42,10 @@ jobs:
           cache: pip
           cache-dependency-path: backend/pyproject.toml
       - run: pip install -e ".[dev]"
+      - name: openapi.json matches the API
+        run: |
+          python scripts/dump_openapi.py
+          git diff --exit-code -- ../packages/api-client/openapi.json
       - run: ruff check .
       - run: pytest
 

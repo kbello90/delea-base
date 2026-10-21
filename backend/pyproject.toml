@@ -4,7 +4,10 @@ version = "0.0.0"
 description = "DELEA FastAPI backend (TRD §4)"
 requires-python = ">=3.11"
 dependencies = [
-  "fastapi>=0.121,<1.0",  # Depends(scope="function")
+  # Exact pins: these three shape openapi.json, which CI checks for drift (see README).
+  "fastapi==0.157.0",  # needs >=0.121 for Depends(scope="function")
+  "starlette==1.9.0",
+  "pydantic==2.14.1",
   "uvicorn[standard]>=0.32",
   "pydantic-settings>=2.6",
   "pyjwt[crypto]>=2.10",

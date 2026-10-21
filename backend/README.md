@@ -66,6 +66,21 @@ Linux and Docker use the default loop, and the Dockerfile has no loop flag.
 - `GET /health/ready`: runs `select 1`. It returns 503 if the database is unreachable or
   `DATABASE_URL` isn't set.
 
+## OpenAPI schema and pinned versions
+
+The frontend's typed client is generated from `packages/api-client/openapi.json`. After any
+change to routes or models, regenerate both files and commit them with the change:
+
+```sh
+.venv/bin/python scripts/dump_openapi.py          # writes packages/api-client/openapi.json
+pnpm --filter @delea/api-client gen               # writes packages/api-client/src/schema.d.ts
+```
+
+CI regenerates both and fails on any diff. `fastapi`, `starlette` and `pydantic` are pinned to
+exact versions in `pyproject.toml` because they shape the generated schema: with version ranges,
+a new release could change `openapi.json` and fail the drift check without any code change.
+Bump them on purpose, and regenerate and commit the schema in the same change.
+
 ## Tests
 
 ```sh
