@@ -86,7 +86,9 @@ describe("auth middleware", () => {
   });
 
   it("a second 401 signs out and does not retry again", async () => {
-    const { fetch } = fakeFetch(() => json(401, { detail: "Invalid token" }));
+    // Loop guard: a client that retries forever would never yield (the fake resolves at once),
+    // so after 10 calls the fake answers 500 to end the loop and let the assertions fail.
+    const { fetch } = fakeFetch((_req, i) => (i < 10 ? json(401, { detail: "Invalid token" }) : json(500, {})));
     const auth = fakeAuth({ current: "stale", refreshed: "also-rejected" });
     const api = createApiClient({ baseUrl: BASE, auth, fetch });
 
