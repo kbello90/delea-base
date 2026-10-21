@@ -22,10 +22,15 @@ class Language(StrEnum):
     fr = "fr"
 
 
+# v1 stores every amount as integer hundredths of the major unit ("cents"), so only currencies
+# with exactly two decimal places are supported (no JPY, no three-decimal currencies).
+SUPPORTED_CURRENCIES = ("USD", "CAD", "EUR", "GBP", "MXN", "AUD", "NZD", "CHF")
+
+
 def _currency(value: str) -> str:
     code = value.upper()
-    if not re.fullmatch(r"[A-Z]{3}", code):
-        raise ValueError("must be a 3-letter ISO 4217 currency code")
+    if code not in SUPPORTED_CURRENCIES:
+        raise ValueError(f"must be one of {', '.join(SUPPORTED_CURRENCIES)}")
     return code
 
 

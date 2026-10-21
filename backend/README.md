@@ -136,5 +136,9 @@ stay generic.
   or their role changes in the meantime. The `tenant_id` and `app_role` claims are fixed when
   the token is issued. We'll revisit this with a shorter expiry, or a membership re-check on
   sensitive requests.
+- **Two-decimal currencies only (v1).** Every amount is integer hundredths of the major unit
+  (`*_cents`). `company_settings.currency` accepts only USD, CAD, EUR, GBP, MXN, AUD, NZD and
+  CHF (`SUPPORTED_CURRENCIES` in `app/models/settings.py`); zero-decimal (JPY) and
+  three-decimal (KWD) currencies are a 422.
 - **Multi-tenant users:** a user in several tenants gets their oldest membership. See the TODO
   in the access token hook.

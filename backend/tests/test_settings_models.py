@@ -3,7 +3,12 @@
 import pytest
 from pydantic import ValidationError
 
-from app.models.settings import BrandConfigUpdate, CompanySettingsUpdate, language_rule_errors
+from app.models.settings import (
+    SUPPORTED_CURRENCIES,
+    BrandConfigUpdate,
+    CompanySettingsUpdate,
+    language_rule_errors,
+)
 
 
 def test_valid_company_update_normalizes_currency() -> None:
@@ -11,6 +16,23 @@ def test_valid_company_update_normalizes_currency() -> None:
         currency="eur", default_tax_rate_bps=0, enabled_languages=["en", "fr"]
     )
     assert u.currency == "EUR"
+
+
+def test_supported_currencies_are_the_two_decimal_list() -> None:
+    assert SUPPORTED_CURRENCIES == ("USD", "CAD", "EUR", "GBP", "MXN", "AUD", "NZD", "CHF")
+
+
+@pytest.mark.parametrize("code", [*SUPPORTED_CURRENCIES, "usd", "chf", "Mxn"])
+def test_two_decimal_currencies_accepted(code: str) -> None:
+    assert CompanySettingsUpdate(currency=code).currency == code.upper()
+
+
+# Valid ISO 4217 codes that v1 does not support: zero- and three-decimal currencies, and
+# two-decimal ones outside the list.
+@pytest.mark.parametrize("code", ["JPY", "KRW", "CLP", "KWD", "BHD", "TND", "BRL", "SEK"])
+def test_other_currencies_rejected(code: str) -> None:
+    with pytest.raises(ValidationError, match="must be one of USD, CAD, EUR"):
+        CompanySettingsUpdate(currency=code)
 
 
 @pytest.mark.parametrize(

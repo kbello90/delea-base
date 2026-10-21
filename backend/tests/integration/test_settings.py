@@ -123,6 +123,8 @@ def test_company_get_and_patch(client: TestClient, users: dict[str, TestUser], d
         {"default_tax_rate_bps": 10001},
         {"default_tax_rate_bps": -1},
         {"currency": "DOLLARS"},
+        {"currency": "JPY"},  # valid ISO code, but not a two-decimal currency
+        {"currency": "KWD"},
         {"default_language": "de"},
         {"enabled_languages": ["en", "pt"]},
         # Merged-row rule: tenant A's default is 'en', so it must stay enabled.

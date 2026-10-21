@@ -368,7 +368,7 @@ Allowed origins come from `CORS_ORIGINS`: a comma-separated list of exact origin
 - **Credentials:** none.
 
 ### 6.5 Money rules
-All amounts are integer cents. Rounding is half-up, in integer arithmetic: `(a × bps + 5000) // 10000`. These rules are implemented in `backend/app/services/pricing.py`, and will be used by the invoices endpoints.
+All amounts are integer cents. v1 supports two-decimal currencies only: every amount is hundredths of the major unit, and `company_settings.currency` must be one of USD, CAD, EUR, GBP, MXN, AUD, NZD or CHF (validated by the backend). Zero-decimal (e.g. JPY) and three-decimal (e.g. KWD) currencies are not supported. Rounding is half-up, in integer arithmetic: `(a × bps + 5000) // 10000`. These rules are implemented in `backend/app/services/pricing.py`, and will be used by the invoices endpoints.
 - **Unit price:** the sale price while a sale is active (`sale_price_cents` set and `sale_ends_at` in the future, or no `sale_ends_at`), otherwise `price_cents`.
 - **Wholesale customers:** the lower of that price and `round_half_up(price_cents × (10000 − discount_bps) / 10000)`. Discounts never stack.
 - **Totals:**
