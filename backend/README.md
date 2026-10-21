@@ -131,11 +131,16 @@ stay generic.
 
 ## Known limitations
 
-- **Removing access takes effect at the next token refresh.** An access token stays valid until
-  it expires (`jwt_expiry`, 3600 s locally), even if the user's `tenant_members` row is deleted
-  or their role changes in the meantime. The `tenant_id` and `app_role` claims are fixed when
-  the token is issued. We'll revisit this with a shorter expiry, or a membership re-check on
-  sensitive requests.
+- **A removed member, or a tenant that is no longer active, keeps API access until their token
+  expires (about an hour).** RLS and the backend trust the `tenant_id` and `app_role` claims,
+  which are fixed when the token is issued (`jwt_expiry`, 3600 s locally). Deleting the
+  `tenant_members` row, changing the role, or setting `tenants.is_active = false` changes
+  nothing for tokens already issued. Only `current_tenant_currency()` re-checks the membership
+  today. **Milestone B, required before the first paying customer** (not implemented yet):
+  in the `user_session` setup, one primary-key lookup per request that checks the
+  `tenant_members` row exists for (user, tenant, role) and `tenants.is_active` is true,
+  refusing with 403 otherwise; and the same membership check in `current_tax_rate_bps()`,
+  in the same change.
 - **Two-decimal currencies only (v1).** Every amount is integer hundredths of the major unit
   (`*_cents`). `company_settings.currency` accepts only USD, CAD, EUR, GBP, MXN, AUD, NZD and
   CHF (`SUPPORTED_CURRENCIES` in `app/models/settings.py`); zero-decimal (JPY) and

@@ -387,7 +387,8 @@ All amounts are integer cents. v1 supports two-decimal currencies only: every am
   - **Periods:** UTC calendar month and year to date.
 
 ### 6.6 Known limitations
-- **Token expiry:** an access token stays valid until it expires (`jwt_expiry`, 3600 s locally). Removing or changing someone's membership takes effect at their next token refresh. We'll revisit this with a shorter expiry, or a membership re-check on sensitive requests.
+- **Token expiry:** a removed member, or a tenant that is no longer active, keeps API access until their access token expires (about an hour; `jwt_expiry`, 3600 s locally), because RLS and the backend trust the token's `tenant_id` and `app_role` claims. Deleting the `tenant_members` row, changing the role or setting `tenants.is_active = false` doesn't affect tokens already issued. Only `current_tenant_currency()` re-checks the membership today.
+  - **Milestone B, required before the first paying customer (not implemented yet):** in the `user_session` setup, one primary-key lookup per request that checks the `tenant_members` row exists for (user, tenant, role) and `tenants.is_active` is true, refusing with 403 otherwise. In the same change, add the same membership check to `current_tax_rate_bps()`.
 - **Multi-tenant users:** a user in several tenants gets their oldest membership.
 - **Direct database API: closed.** `public` isn't exposed over REST or GraphQL (Schema §9 "No direct data API"), so the API-only rules can't be bypassed with a user's JWT. Hosted projects need the same Data API settings; see the provisioning runbook.
 - **No restock on refund or cancel (v1):** refund and cancel only set their timestamps.
