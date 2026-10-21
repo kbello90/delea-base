@@ -138,6 +138,8 @@ select throws_ok(format('select pg_temp.write_as(%L, %L)', 'authenticated',
                         $q$update public.invoices set order_status = 'paid' where id = 'c0000000-0000-0000-0000-000000000001'$q$),
                  '23514', null, 'staff cannot move an invoice backward');
 reset role;
+-- Back to the migration/service role: no app_role claim, so the app-user guards don't apply.
+select set_config('request.jwt.claims', '', true);
 
 -- ---------------------------------------------------------------------------
 -- Numbers and paid_at are immutable

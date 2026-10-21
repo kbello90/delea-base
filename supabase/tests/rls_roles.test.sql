@@ -105,7 +105,9 @@ insert into cases values
   ('products',
    $q$insert into public.products (tenant_id, sku, name, metal, price_cents) values ('11111111-1111-1111-1111-111111111111', 'T-1', 'T', 'other', 100)$q$,
    $q$update public.products set name = name where tenant_id = '11111111-1111-1111-1111-111111111111'$q$,
-   $q$delete from public.products where tenant_id = '11111111-1111-1111-1111-111111111111'$q$),
+   -- Products that appear on an invoice past quote can't be deleted by app users (see the
+   -- line-item guard tests below), so the matrix deletes the unsold ones.
+   $q$delete from public.products where tenant_id = '11111111-1111-1111-1111-111111111111' and id not in (select li.product_id from public.invoice_line_items li join public.invoices i on i.id = li.invoice_id where li.product_id is not null and i.order_status <> 'quote')$q$),
   ('materials',
    $q$insert into public.materials (tenant_id, name, unit, unit_cost_cents) values ('11111111-1111-1111-1111-111111111111', 'T', 'pcs', 1)$q$,
    $q$update public.materials set name = name where tenant_id = '11111111-1111-1111-1111-111111111111'$q$,
@@ -171,7 +173,7 @@ insert into expected values
   ('staff', 'product_materials',  true,  false, false, false),
   ('staff', 'customers',          true,  true,  true,  false),
   ('staff', 'invoices',           true,  true,  true,  false),
-  ('staff', 'invoice_line_items', true,  true,  true,  false),
+  ('staff', 'invoice_line_items', true,  true,  true,  true),   -- quote lines only (20261020001200)
   ('staff', 'expenses',           false, false, false, false),
   ('staff', 'automation_rules',   true,  false, false, false),
   ('staff', 'reorder_list',       true,  false, false, false),
@@ -277,13 +279,14 @@ from (values
   ('total_cents',    $q$update public.invoices set total_cents = 1 where id = 'a7000000-0000-0000-0000-000000000001'$q$)
 ) v (col, col_sql);
 
--- Past 'quote': line items are locked for staff (insert, update, move in, delete).
+-- Past 'quote': line items are locked (insert, update, move in, delete). Inserts and moves
+-- hit the guard trigger (42501); updates and deletes are filtered to 0 rows by the policies.
 select throws_ok(format('select pg_temp.write_as(%L, %L)', 'authenticated',
   $q$insert into public.invoice_line_items (invoice_id, tenant_id, description, qty, unit_price_cents, line_total_cents) values ('a7000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'Extra', 1, 100, 100)$q$),
   '42501', null, 'staff cannot add a line item to a paid invoice');
-select throws_ok(format('select pg_temp.write_as(%L, %L)', 'authenticated',
-  $q$update public.invoice_line_items set qty = 5 where invoice_id = 'a7000000-0000-0000-0000-000000000001'$q$),
-  '42501', null, 'staff cannot edit a line item on a paid invoice');
+select is(pg_temp.write_as('authenticated',
+  $$update public.invoice_line_items set qty = 5 where invoice_id = 'a7000000-0000-0000-0000-000000000001'$$),
+  0, 'staff cannot edit a line item on a paid invoice');
 select throws_ok(format('select pg_temp.write_as(%L, %L)', 'authenticated',
   $q$update public.invoice_line_items set invoice_id = 'a7000000-0000-0000-0000-000000000001' where invoice_id = 'a7000000-0000-0000-0000-000000000002'$q$),
   '42501', null, 'staff cannot move a line item onto a paid invoice');
@@ -308,23 +311,36 @@ select throws_ok(format('select pg_temp.write_as(%L, %L)', 'authenticated',
   $q$update public.invoices set order_status = 'quote' where id = 'a7000000-0000-0000-0000-000000000001'$q$),
   '23514', null, 'staff cannot move a paid invoice backward');
 
--- The owner is not restricted by the guard.
+-- The owner may still change amounts on a paid invoice (the staff financial guard), but not
+-- its line items: the quote-only rule covers every app_role (20261020001200).
 select pg_temp.set_claims('11111111-1111-1111-1111-111111111111', 'owner');
 select is(pg_temp.write_as('authenticated',
   $$update public.invoices set total_cents = 10000 where id = 'a7000000-0000-0000-0000-000000000001'$$),
   1, 'owner can change amounts on a paid invoice');
-select is(pg_temp.write_as('authenticated',
-  $$insert into public.invoice_line_items (invoice_id, tenant_id, description, qty, unit_price_cents, line_total_cents) values ('a7000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'Extra', 1, 100, 100)$$),
-  1, 'owner can add a line item to a paid invoice');
+select throws_ok(format('select pg_temp.write_as(%L, %L)', 'authenticated',
+  $q$insert into public.invoice_line_items (invoice_id, tenant_id, description, qty, unit_price_cents, line_total_cents) values ('a7000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'Extra', 1, 100, 100)$q$),
+  '42501', 'line items can only change while the invoice is a quote',
+  'owner cannot add a line item to a paid invoice');
 select is(pg_temp.write_as('authenticated',
   $$delete from public.invoice_line_items where invoice_id = 'a7000000-0000-0000-0000-000000000001'$$),
-  1, 'owner can delete a line item on a paid invoice');
+  0, 'owner cannot delete a line item on a paid invoice');
+select is(pg_temp.write_as('authenticated',
+  $$update public.invoice_line_items set qty = 9 where invoice_id = 'a7000000-0000-0000-0000-000000000001'$$),
+  0, 'owner cannot edit a line item on a paid invoice');
+-- Consequence of the rule: deleting a product sold on a paid invoice would null that line's
+-- product_id (FK on delete set null), which is a line change past quote, so it is refused.
+select throws_ok(format('select pg_temp.write_as(%L, %L)', 'authenticated',
+  $q$delete from public.products where id = 'a1000000-0000-0000-0000-000000000001'$q$),
+  '42501', null, 'owner cannot delete a product that appears on a paid invoice');
 
 -- The service role (no app_role claim) is not restricted either.
 select set_config('request.jwt.claims', '{"role": "service_role"}', true);
 select is(pg_temp.write_as('service_role',
   $$update public.invoices set total_cents = 10000 where id = 'a7000000-0000-0000-0000-000000000001'$$),
   1, 'service role can change amounts on a paid invoice');
+select is(pg_temp.write_as('service_role',
+  $$insert into public.invoice_line_items (invoice_id, tenant_id, description, qty, unit_price_cents, line_total_cents) values ('a7000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'Adjustment', 1, 100, 100)$$),
+  1, 'service role can still add a line item to a paid invoice');
 
 select * from finish();
 rollback;

@@ -45,7 +45,7 @@ insert into public.products
   (id, tenant_id, sku, name, metal, price_cents, stock_qty, icon, is_published, sort_order)
 values
   ('a1000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111',
-   'DL-NK-01', 'Custom Initial Necklace', 'gold_14k',   9800, 24, '◆', true, 1),
+   'DL-NK-01', 'Custom Initial Necklace', 'gold_14k',   9800, 25, '◆', true, 1),  -- 24 after Sarah's sale
   ('a1000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111',
    'DL-FL-02', 'Birth Flower Pendant',    'rose_gold', 11000,  5, '✿', true, 2),
   ('a1000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111',
@@ -106,7 +106,8 @@ values
 -- ---------------------------------------------------------------------------
 -- Invoices (8% tax for tenant A, 5.5% for tenant B)
 -- ---------------------------------------------------------------------------
--- Sarah's order: created as a quote (QTE-2026-041), then paid (INV-2026-089).
+-- Sarah's order: created as a quote (QTE-2026-041), then paid (INV-2026-089). Becoming
+-- paid decrements stock (migration 20261020001200): the necklace goes 25 -> 24, the demo's figure.
 insert into public.invoices
   (id, tenant_id, customer_id, customer_name, subtotal_cents, tax_rate_bps, tax_cents, total_cents)
 values

@@ -189,7 +189,9 @@ from scoped_tables order by tbl;
 
 -- ---------------------------------------------------------------------------
 -- Composite foreign keys: references cannot cross tenants, even for the service role
+-- (no app_role claim, so the app-user guards don't fire first)
 -- ---------------------------------------------------------------------------
+select set_config('request.jwt.claims', '', true);
 select throws_ok(
   $$insert into public.invoice_line_items (invoice_id, tenant_id, description, qty, unit_price_cents, line_total_cents)
     values ('b8000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'X', 1, 1, 1)$$,
