@@ -158,3 +158,51 @@ async def test_concurrent_sales_cannot_oversell(settings: Settings, db, last_uni
     ).fetchall()
     assert stock == 0
     assert [s for (s,) in statuses] == ["paid", "quote"]
+
+
+@pytest.mark.anyio
+async def test_sale_waits_for_a_concurrent_stock_change(
+    settings: Settings, db, last_unit: dict
+) -> None:
+    """A sale racing a stock change that isn't an invoice (an owner adjusting stock) must see
+    the committed stock. Two sales already queue on the tenant's document counter, so this
+    is the case where the decrement's FOR UPDATE lock is what keeps stock from going negative.
+    """
+    sale = last_unit["invoices"][0]
+    url = settings.database_url
+    async with (
+        await psycopg.AsyncConnection.connect(url, autocommit=True) as adjust,
+        await psycopg.AsyncConnection.connect(url, autocommit=True) as seller,
+    ):
+        result: dict = {}
+
+        async def sell() -> None:
+            try:
+                async with seller.transaction():
+                    await apply_user_scope(seller, claims(TENANT_A, "staff"))
+                    await seller.execute(
+                        "update public.invoices set order_status = 'paid' where id = %s", (sale,)
+                    )
+                result["ok"] = True
+            except psycopg.Error as exc:
+                result["error"] = exc
+
+        async with adjust.transaction():
+            await apply_user_scope(adjust, claims(TENANT_A, "owner"))
+            # The owner writes the last unit off (e.g. damaged) while the sale is in flight.
+            await adjust.execute(
+                "update public.products set stock_qty = 0 where id = %s",
+                (last_unit["product_id"],),
+            )
+            task = asyncio.create_task(sell())
+            await _wait_until_blocked(settings, seller.info.backend_pid)
+        await asyncio.wait_for(task, timeout=10)
+
+    assert "error" in result, "the sale must see the committed stock of 0 and fail"
+    assert map_db_error(result["error"]).detail == (
+        f"insufficient stock for SKU {last_unit['sku']}: 0 available, 1 requested"
+    )
+    stock = db.execute(
+        "select stock_qty from public.products where id = %s", (last_unit["product_id"],)
+    ).fetchone()[0]
+    assert stock == 0
