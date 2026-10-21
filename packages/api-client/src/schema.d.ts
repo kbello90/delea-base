@@ -75,6 +75,91 @@ export interface paths {
         patch: operations["update_product_api_v1_products__product_id__patch"];
         trace?: never;
     };
+    "/api/v1/products/{product_id}/images/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Upload */
+        post: operations["create_upload_api_v1_products__product_id__images_uploads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/products/{product_id}/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register Image */
+        post: operations["register_image_api_v1_products__product_id__images_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/products/{product_id}/images/{image_id}/primary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set Primary Image */
+        post: operations["set_primary_image_api_v1_products__product_id__images__image_id__primary_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/products/{product_id}/images/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Reorder Images */
+        put: operations["reorder_images_api_v1_products__product_id__images_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/products/{product_id}/images/{image_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Image */
+        delete: operations["delete_image_api_v1_products__product_id__images__image_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/materials": {
         parameters: {
             query?: never;
@@ -814,6 +899,16 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** ImageOrder */
+        ImageOrder: {
+            /** Image Ids */
+            image_ids: string[];
+        };
+        /**
+         * ImageType
+         * @enum {string}
+         */
+        ImageType: "image/jpeg" | "image/png" | "image/webp";
         /** InvoiceCounts */
         InvoiceCounts: {
             /** Quote */
@@ -1095,8 +1190,6 @@ export interface components {
              * @default 3
              */
             low_stock_threshold: number;
-            /** Image Urls */
-            image_urls?: string[];
             /** Icon */
             icon?: string | null;
             /**
@@ -1109,6 +1202,29 @@ export interface components {
              * @default 0
              */
             sort_order: number;
+        };
+        /**
+         * ProductImageOut
+         * @description One image, ordered by position. URLs are the public base URL plus the stored path.
+         */
+        ProductImageOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Position */
+            position: number;
+            /** Is Primary */
+            is_primary: boolean;
+            /** Url */
+            url: string;
+            /** Thumb Url */
+            thumb_url: string;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
         };
         /** ProductOut */
         ProductOut: {
@@ -1139,8 +1255,6 @@ export interface components {
             stock_qty: number;
             /** Low Stock Threshold */
             low_stock_threshold: number;
-            /** Image Urls */
-            image_urls: string[];
             /** Icon */
             icon: string | null;
             /** Is Published */
@@ -1157,6 +1271,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Images */
+            images?: components["schemas"]["ProductImageOut"][];
         };
         /**
          * ProductUpdate
@@ -1180,14 +1296,37 @@ export interface components {
             stock_qty?: number | null;
             /** Low Stock Threshold */
             low_stock_threshold?: number | null;
-            /** Image Urls */
-            image_urls?: string[] | null;
             /** Icon */
             icon?: string | null;
             /** Is Published */
             is_published?: boolean | null;
             /** Sort Order */
             sort_order?: number | null;
+        };
+        /** RegisterRequest */
+        RegisterRequest: {
+            /**
+             * Upload Id
+             * Format: uuid
+             */
+            upload_id: string;
+            content_type: components["schemas"]["ImageType"];
+        };
+        /** UploadRequest */
+        UploadRequest: {
+            content_type: components["schemas"]["ImageType"];
+        };
+        /** UploadTicket */
+        UploadTicket: {
+            /**
+             * Upload Id
+             * Format: uuid
+             */
+            upload_id: string;
+            /** Upload Url */
+            upload_url: string;
+            /** Max Bytes */
+            max_bytes: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -1257,6 +1396,9 @@ export interface operations {
         parameters: {
             query?: {
                 is_published?: boolean | null;
+                metal?: components["schemas"]["MetalType"] | null;
+                /** @description true: stock below the low-stock threshold */
+                low_stock?: boolean | null;
                 q?: string | null;
                 limit?: number;
                 offset?: number;
@@ -1394,6 +1536,175 @@ export interface operations {
                 "application/json": components["schemas"]["ProductUpdate"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_upload_api_v1_products__product_id__images_uploads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadTicket"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_image_api_v1_products__product_id__images_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductImageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_primary_image_api_v1_products__product_id__images__image_id__primary_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_images_api_v1_products__product_id__images_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageOrder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_image_api_v1_products__product_id__images__image_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

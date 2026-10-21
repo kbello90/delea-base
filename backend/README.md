@@ -109,6 +109,45 @@ Bump them on purpose, and regenerate and commit the schema in the same change.
   - **Seed guard:** the run fails if any seed row was modified. Tests must create their own rows
     with the `IT-` prefix, which are deleted afterwards.
 
+## Product images
+
+Images live in the `product_images` table (paths only) and in two Storage buckets
+(migration 20261020001500):
+
+| Bucket | Public | Holds | Written by |
+|---|---|---|---|
+| `product-uploads` | no | raw uploads (JPEG/PNG/WebP, 5 MiB), deleted at registration | the browser, only through a signed URL the backend issues |
+| `product-images` | read | the 1200 px and 400 px WebP variants | the backend only |
+
+Restrictive policies deny `anon` and `authenticated` every direct read or write in both buckets.
+
+1. `POST /products/{id}/images/uploads` signs `{tenant_id}/{product_id}/{upload_id}.{ext}`.
+   The tenant comes from the token; a `tenant_id` or path in the body is a 422.
+2. The browser PUTs the file to the signed URL.
+3. `POST /products/{id}/images` rebuilds that path from the token, downloads the file, and runs
+   `app/services/product_images.py` in the thread pool (at most 2 at a time). The service checks
+   it is really a JPEG, PNG or WebP (Pillow, not the content type), at most 5 MiB and
+   25 megapixels. It applies the EXIF orientation, converts non-sRGB ICC profiles to sRGB,
+   keeps transparency, strips all metadata (EXIF/GPS, XMP, ICC), and writes WebP variants
+   (1200 px at quality 85, 400 px at 82). The row is then inserted, and the raw upload is
+   always deleted. If the insert fails, the variants are deleted too.
+4. Primary, order and delete are owner only, like every product write. Deleting an image or a
+   product removes its files after the transaction commits.
+
+**Storage key.** These calls use `SUPABASE_SERVICE_ROLE_KEY` over the Storage HTTP API
+(`app/core/storage.py`). It lives in `backend/.env` locally (gitignored) and in an App Service
+setting from a `@secure()` Bicep parameter when hosted. It is never a `VITE_*` variable, so it
+can't reach the browser. No SQL runs with it, so this isn't a database `service_session`: image
+rows are read and written in the caller's RLS user session.
+
+**Public URLs.** The database stores object paths only. URLs are `PRODUCT_IMAGES_BASE_URL` plus
+the path. When the setting is empty, it is derived from `SUPABASE_URL`
+(`…/storage/v1/object/public/product-images`), which is right for the local stack. Hosted,
+set it to the project's (or a CDN's) public URL for the bucket.
+
+The local stack must run the Storage API: start it with
+`npx supabase@2.121.0 start -x realtime,imgproxy,edge-runtime,logflare,vector,supavisor`.
+
 ## Error responses
 
 Every error is `{"detail": "..."}`. SQL text, constraint and table names, and stack traces never
@@ -141,6 +180,10 @@ stay generic.
   `tenant_members` row exists for (user, tenant, role) and `tenants.is_active` is true,
   refusing with 403 otherwise; and the same membership check in `current_tax_rate_bps()`,
   in the same change.
+- **Abandoned raw uploads stay in `product-uploads`.** A file uploaded through a signed URL
+  but never registered is not removed (registration always removes it). **Milestone B**
+  (not implemented yet): a scheduled sweep that deletes objects in `product-uploads` older
+  than 24 hours.
 - **Two-decimal currencies only (v1).** Every amount is integer hundredths of the major unit
   (`*_cents`). `company_settings.currency` accepts only USD, CAD, EUR, GBP, MXN, AUD, NZD and
   CHF (`SUPPORTED_CURRENCIES` in `app/models/settings.py`); zero-decimal (JPY) and

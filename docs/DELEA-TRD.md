@@ -326,7 +326,8 @@ Every authenticated request runs in **one transaction** as `authenticated`, with
 ### 6.2 Routes (all under `/api/v1`)
 | Route | owner | staff | cpa |
 |---|---|---|---|
-| `products` (list/get · create/update/delete) | ✓ · ✓ | read | — |
+| `products` (list with `q`, `is_published`, `metal`, `low_stock`; get · create/update/delete) | ✓ · ✓ | read | — |
+| `products/{id}/images` (uploads, register, primary, order, delete; images are read with the product) | ✓ | read | — |
 | `materials` (list with `q`, `low_stock`; get · writes) | ✓ · ✓ | read | — |
 | `customers` (list/get · create/update · delete) | ✓ · ✓ · ✓ | ✓ · ✓ · — | — |
 | `expenses` (list with date range / category / deductible; get; `export.csv` · writes) | ✓ · ✓ | — | read |
@@ -389,6 +390,7 @@ All amounts are integer cents. v1 supports two-decimal currencies only: every am
 ### 6.6 Known limitations
 - **Token expiry:** a removed member, or a tenant that is no longer active, keeps API access until their access token expires (about an hour; `jwt_expiry`, 3600 s locally), because RLS and the backend trust the token's `tenant_id` and `app_role` claims. Deleting the `tenant_members` row, changing the role or setting `tenants.is_active = false` doesn't affect tokens already issued. Only `current_tenant_currency()` re-checks the membership today.
   - **Milestone B, required before the first paying customer (not implemented yet):** in the `user_session` setup, one primary-key lookup per request that checks the `tenant_members` row exists for (user, tenant, role) and `tenants.is_active` is true, refusing with 403 otherwise. In the same change, add the same membership check to `current_tax_rate_bps()`.
+- **Abandoned raw uploads:** a file uploaded to `product-uploads` through a signed URL but never registered stays there (registration always deletes it). **Milestone B (not implemented yet):** a scheduled sweep that deletes objects in `product-uploads` older than 24 hours.
 - **Multi-tenant users:** a user in several tenants gets their oldest membership.
 - **Direct database API: closed.** `public` isn't exposed over REST or GraphQL (Schema §9 "No direct data API"), so the API-only rules can't be bypassed with a user's JWT. Hosted projects need the same Data API settings; see the provisioning runbook.
 - **No restock on refund or cancel (v1):** refund and cancel only set their timestamps.

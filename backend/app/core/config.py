@@ -29,6 +29,11 @@ class Settings(BaseSettings):
 
     jwt_audience: str = "authenticated"
 
+    # Public base URL of the product-images bucket; image URLs are this plus the stored path.
+    # Hosted, set it to the project's (or a CDN's) public URL for the bucket. Empty: derived
+    # from SUPABASE_URL, which is right for the local stack.
+    product_images_base_url: str = ""
+
     # Comma-separated list of exact origins. A wildcard is never allowed.
     cors_origins: str = "http://localhost:5173,http://localhost:5174"
 
@@ -42,6 +47,13 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def product_images_public_base(self) -> str:
+        base = self.product_images_base_url or (
+            f"{self.supabase_url.rstrip('/')}/storage/v1/object/public/product-images"
+        )
+        return base.rstrip("/")
 
     @property
     def supabase_jwks_url(self) -> str:

@@ -10,6 +10,7 @@ from app.api.v1 import (
     expenses,
     invoices,
     materials,
+    product_images,
     products,
     settings,
     stripe_webhooks,
@@ -18,6 +19,7 @@ from app.api.v1 import (
 api_router = APIRouter()
 for module in (
     products,
+    product_images,
     materials,
     customers,
     invoices,

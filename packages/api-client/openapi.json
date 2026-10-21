@@ -79,6 +79,40 @@
             }
           },
           {
+            "name": "metal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MetalType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Metal"
+            }
+          },
+          {
+            "name": "low_stock",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "true: stock below the low-stock threshold",
+              "title": "Low Stock"
+            },
+            "description": "true: stock below the low-stock threshold"
+          },
+          {
             "name": "q",
             "in": "query",
             "required": false,
@@ -321,6 +355,296 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/products/{product_id}/images/uploads": {
+      "post": {
+        "tags": [
+          "product images"
+        ],
+        "summary": "Create Upload",
+        "operationId": "create_upload_api_v1_products__product_id__images_uploads_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Product Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadTicket"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/products/{product_id}/images": {
+      "post": {
+        "tags": [
+          "product images"
+        ],
+        "summary": "Register Image",
+        "operationId": "register_image_api_v1_products__product_id__images_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Product Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductImageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/products/{product_id}/images/{image_id}/primary": {
+      "post": {
+        "tags": [
+          "product images"
+        ],
+        "summary": "Set Primary Image",
+        "operationId": "set_primary_image_api_v1_products__product_id__images__image_id__primary_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Product Id"
+            }
+          },
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Image Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/products/{product_id}/images/order": {
+      "put": {
+        "tags": [
+          "product images"
+        ],
+        "summary": "Reorder Images",
+        "operationId": "reorder_images_api_v1_products__product_id__images_order_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Product Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageOrder"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/products/{product_id}/images/{image_id}": {
+      "delete": {
+        "tags": [
+          "product images"
+        ],
+        "summary": "Delete Image",
+        "operationId": "delete_image_api_v1_products__product_id__images__image_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Product Id"
+            }
+          },
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Image Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductOut"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -3460,6 +3784,35 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "ImageOrder": {
+        "properties": {
+          "image_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Image Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "image_ids"
+        ],
+        "title": "ImageOrder"
+      },
+      "ImageType": {
+        "type": "string",
+        "enum": [
+          "image/jpeg",
+          "image/png",
+          "image/webp"
+        ],
+        "title": "ImageType"
+      },
       "InvoiceCounts": {
         "properties": {
           "quote": {
@@ -4256,13 +4609,6 @@
             "title": "Low Stock Threshold",
             "default": 3
           },
-          "image_urls": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Image Urls"
-          },
           "icon": {
             "anyOf": [
               {
@@ -4296,6 +4642,51 @@
           "price_cents"
         ],
         "title": "ProductCreate"
+      },
+      "ProductImageOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "is_primary": {
+            "type": "boolean",
+            "title": "Is Primary"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "thumb_url": {
+            "type": "string",
+            "title": "Thumb Url"
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "position",
+          "is_primary",
+          "url",
+          "thumb_url",
+          "width",
+          "height"
+        ],
+        "title": "ProductImageOut",
+        "description": "One image, ordered by position. URLs are the public base URL plus the stored path."
       },
       "ProductOut": {
         "properties": {
@@ -4366,13 +4757,6 @@
             "type": "integer",
             "title": "Low Stock Threshold"
           },
-          "image_urls": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Image Urls"
-          },
           "icon": {
             "anyOf": [
               {
@@ -4401,6 +4785,13 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/ProductImageOut"
+            },
+            "type": "array",
+            "title": "Images"
           }
         },
         "type": "object",
@@ -4416,7 +4807,6 @@
           "sale_ends_at",
           "stock_qty",
           "low_stock_threshold",
-          "image_urls",
           "icon",
           "is_published",
           "sort_order",
@@ -4538,20 +4928,6 @@
             ],
             "title": "Low Stock Threshold"
           },
-          "image_urls": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Image Urls"
-          },
           "icon": {
             "anyOf": [
               {
@@ -4592,6 +4968,62 @@
         "type": "object",
         "title": "ProductUpdate",
         "description": "PATCH body: only the fields sent are changed."
+      },
+      "RegisterRequest": {
+        "properties": {
+          "upload_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Upload Id"
+          },
+          "content_type": {
+            "$ref": "#/components/schemas/ImageType"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "upload_id",
+          "content_type"
+        ],
+        "title": "RegisterRequest"
+      },
+      "UploadRequest": {
+        "properties": {
+          "content_type": {
+            "$ref": "#/components/schemas/ImageType"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "content_type"
+        ],
+        "title": "UploadRequest"
+      },
+      "UploadTicket": {
+        "properties": {
+          "upload_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Upload Id"
+          },
+          "upload_url": {
+            "type": "string",
+            "title": "Upload Url"
+          },
+          "max_bytes": {
+            "type": "integer",
+            "title": "Max Bytes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "upload_id",
+          "upload_url",
+          "max_bytes"
+        ],
+        "title": "UploadTicket"
       },
       "ValidationError": {
         "properties": {

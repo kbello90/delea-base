@@ -12,6 +12,7 @@ dependencies = [
   "pydantic-settings>=2.6",
   "pyjwt[crypto]>=2.10",
   "psycopg[binary,pool]>=3.2",
+  "pillow==13.0.0",  # product image validation and WebP variants
 ]
 
 [project.optional-dependencies]

@@ -1,5 +1,8 @@
 """Product schemas. Mirrors public.products (Schema §4); money is integer cents.
 
+Images are managed only through the image endpoints (product_images table); there is no
+writable image field on a product.
+
 Request models forbid unknown fields, so a client-sent `tenant_id` is rejected (422) and
 can never reach the database. The tenant always comes from the verified token.
 """
@@ -42,7 +45,6 @@ class ProductCreate(BaseModel):
     sale_ends_at: datetime | None = None
     stock_qty: Int32 = 0
     low_stock_threshold: Int32 = 3
-    image_urls: list[str] = Field(default_factory=list)
     icon: str | None = None
     is_published: bool = False
     sort_order: Int32 = 0
@@ -62,7 +64,6 @@ class ProductUpdate(BaseModel):
     sale_ends_at: datetime | None = None
     stock_qty: Int32 | None = None
     low_stock_threshold: Int32 | None = None
-    image_urls: list[str] | None = None
     icon: str | None = None
     is_published: bool | None = None
     sort_order: Int32 | None = None
@@ -71,6 +72,18 @@ class ProductUpdate(BaseModel):
 # Columns that may be null in the database; for every other PATCH field an explicit null
 # is rejected rather than passed through as a not-null violation.
 NULLABLE_FIELDS = frozenset({"description", "sale_price_cents", "sale_ends_at", "icon"})
+
+
+class ProductImageOut(BaseModel):
+    """One image, ordered by position. URLs are the public base URL plus the stored path."""
+
+    id: UUID
+    position: int
+    is_primary: bool
+    url: str  # 1200 px WebP
+    thumb_url: str  # 400 px WebP
+    width: int
+    height: int
 
 
 class ProductOut(BaseModel):
@@ -85,9 +98,9 @@ class ProductOut(BaseModel):
     sale_ends_at: datetime | None
     stock_qty: int
     low_stock_threshold: int
-    image_urls: list[str]
     icon: str | None
     is_published: bool
     sort_order: int
     created_at: datetime
     updated_at: datetime
+    images: list[ProductImageOut] = Field(default_factory=list)
