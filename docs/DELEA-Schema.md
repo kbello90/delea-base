@@ -346,7 +346,7 @@ All accepted as recommended on 2026-10-20.
 
 Smaller choices I made that you can veto: separate `quote_number` and `invoice_number` series (a quote gets `QTE-…` at creation and an `INV-…` number when paid, matching the demo's two number formats); `reorder_list` as a small table so the `add_to_reorder_list` automation has somewhere to write; and one SKU per metal rather than a variant model.
 
-## 9. As built (supabase/migrations; last updated with migration 20261020001200)
+## 9. As built (supabase/migrations; last updated with migration 20261020001300)
 
 The migrations in `supabase/migrations/` are now the source of truth. Where the SQL in §3–§7 differs from them, the migrations win, and the differences are:
 
@@ -365,7 +365,11 @@ The migrations in `supabase/migrations/` are now the source of truth. Where the 
   - **Later updates:** they never decrement again, and there's no restock on refund or cancel in v1.
   - **Invoices inserted directly as paid** (service role only) have no lines at insert time, so they never decrement stock. Those paths must create the quote, add the lines, then advance it.
 - **Tax rate for staff.** `current_tax_rate_bps()` (SECURITY DEFINER, `search_path = ''`) returns `default_tax_rate_bps` for the caller's tenant (from the JWT) when `app_role` is owner or staff. It raises 42501 for anyone else, cpa included. `EXECUTE` is granted to `authenticated` only. Staff get the rate without access to `company_settings`.
-- **Deleting a paid invoice (open).** The owner's `FOR ALL` policy on `invoices` still allows deleting an invoice past quote, and its lines are cascade-deleted. The line guard can't see the parent once it's being deleted. A trigger that blocks this for app_role callers (service role exempt) is proposed and not yet applied. Until then, FastAPI must refuse it (Schema §6 note).
+- **Only quotes can be deleted (migration 20261020001300).** A before-delete trigger on `invoices` refuses callers with an `app_role` when the invoice is past `quote`, with 42501 "only quotes can be deleted; cancel or refund this invoice instead". The owner's DELETE policy is deliberately unchanged, so this message is what users see rather than a silent 0 rows. The service role is exempt. Deleting a quote still cascades its lines; the line guard lets the cascaded deletes through because the parent is already gone.
+- **Deletes that would damage history are refused by the API, not the database.** The FK actions themselves are unchanged. FastAPI checks first and returns 409 with a clear message for:
+  - a product on any invoice line ("unpublish it instead"). Deleting it would empty the line's `product_id`, so a quote would never decrement stock;
+  - a customer with invoices, which would be detached from their history;
+  - a material used by products, whose `product_materials` rows would cascade away.
 - **Document numbering.**
   - Format is `QTE-YYYY-NNN` / `INV-YYYY-NNN`, zero-padded to at least 3 digits and never truncated.
   - Numbers are always assigned by trigger; client-supplied values are ignored.

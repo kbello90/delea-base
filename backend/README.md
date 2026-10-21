@@ -105,7 +105,7 @@ reach the client.
 | valid token without a membership (no `tenant_id` / `app_role`) | 403 |
 | role not allowed (`require_role`), RLS violation, insufficient privilege | 403 |
 | no row, or a row hidden by RLS | 404 |
-| unique violation, foreign-key violation, trigger exception (`P0001`) | 409 |
+| unique violation, foreign-key violation, trigger exception (`P0001`), `ConflictError` (e.g. "only quotes can be edited", deletes that would damage history) | 409 |
 | check / not-null violation, invalid value, request validation | 422 |
 | JWKS or database unreachable | 503 |
 

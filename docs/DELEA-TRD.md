@@ -332,11 +332,20 @@ Every authenticated request runs in **one transaction** as `authenticated`, with
 | `expenses` (list with date range / category / deductible; get; `export.csv` · writes) | ✓ · ✓ | — | read |
 | `settings/company` (get · patch) | ✓ · ✓ | — | — |
 | `settings/brand` (get · patch) | ✓ · ✓ | read | — |
+| `invoices` (list/get/`export.csv`) | ✓ | ✓ | read (`items` null) |
+| `invoices` create (`pay_now`), `PUT /{id}/items`, `POST /{id}/status` | ✓ | ✓ | — |
+| `invoices` tax-rate override, `/{id}/refund`, `/{id}/cancel`, delete (quotes only) | ✓ | — | — |
 | `dashboard/summary` | ✓ | — | — |
 
 **Also:**
 - **Health:** `GET /health` (liveness) and `GET /health/ready` (database check) sit outside `/api/v1`.
-- **Invoices:** the database side is in place (migration 20261020001200: tax-rate function, quote-only lines, stock decrement); the endpoints are next.
+- **Invoices:**
+  - **Client input:** the client sends only `customer_id` (optional for walk-in), `items [{product_id, qty}]`, notes, due date, an owner-only tax-rate override and `pay_now`. Everything else is computed by the server; money, status or number fields are a 422.
+  - **Quote-only changes:** `PUT /items` is quote-only (409 "only quotes can be edited").
+  - **Status moves:** they pass the database's messages through: backward → 422, insufficient stock → 409, with nothing changed and no number used.
+  - **`pay_now`:** atomic.
+  - **Line snapshots:** the product name and unit price. There's no SKU column on line items.
+- **Deletes that would damage history** (a product on invoice lines, a customer with invoices, a material used by products) return 409 with a clear message.
 
 ### 6.3 Error mapping
 Every error response is `{"detail": "..."}`, never with SQL text or stack traces.
@@ -346,7 +355,7 @@ Every error response is `{"detail": "..."}`, never with SQL text or stack traces
 | missing, invalid or expired token | 401 |
 | no membership, wrong role, RLS violation, insufficient privilege | 403 |
 | no row, or a row hidden by RLS | 404 |
-| unique, foreign-key or `P0001` | 409 |
+| unique, foreign-key or `P0001`; a delete that would damage history; editing a non-quote | 409 |
 | check, not-null, invalid value, request validation | 422 |
 | JWKS or database unreachable | 503 |
 
@@ -380,4 +389,4 @@ All amounts are integer cents. Rounding is half-up, in integer arithmetic: `(a �
 - **Token expiry:** an access token stays valid until it expires (`jwt_expiry`, 3600 s locally). Removing or changing someone's membership takes effect at their next token refresh. We'll revisit this with a shorter expiry, or a membership re-check on sensitive requests.
 - **Multi-tenant users:** a user in several tenants gets their oldest membership.
 - **Direct database API: closed.** `public` isn't exposed over REST or GraphQL (Schema §9 "No direct data API"), so the API-only rules can't be bypassed with a user's JWT. Hosted projects need the same Data API settings; see the provisioning runbook.
-- **Deleting a paid invoice:** the database still allows the owner to delete an invoice past quote. FastAPI must refuse it until the proposed guard trigger is applied (Schema §9).
+- **No restock on refund or cancel (v1):** refund and cancel only set their timestamps.
