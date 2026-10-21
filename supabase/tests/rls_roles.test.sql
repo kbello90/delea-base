@@ -123,7 +123,7 @@ insert into cases values
   ('invoices',
    $q$insert into public.invoices (tenant_id, customer_name) values ('11111111-1111-1111-1111-111111111111', 'T')$q$,
    $q$update public.invoices set notes = 'X' where tenant_id = '11111111-1111-1111-1111-111111111111'$q$,
-   $q$delete from public.invoices where tenant_id = '11111111-1111-1111-1111-111111111111'$q$),
+   $q$delete from public.invoices where tenant_id = '11111111-1111-1111-1111-111111111111' and order_status = 'quote'$q$),  -- app users may delete only quotes (20261020001300)
   ('invoice_line_items',
    $q$insert into public.invoice_line_items (invoice_id, tenant_id, description, qty, unit_price_cents, line_total_cents) values ('a7000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'T', 1, 1, 1)$q$,
    $q$update public.invoice_line_items set description = description where invoice_id = 'a7000000-0000-0000-0000-000000000002'$q$,
