@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from psycopg.rows import dict_row
 
 from app.api.deps import CurrentClaims, DbConn, require_role
-from app.core.errors import NotFoundError
+from app.core.errors import ConflictError, NotFoundError
 from app.db.sql_helpers import like_pattern, patch_changes, update_statement
 from app.models.material import NULLABLE_FIELDS, MaterialCreate, MaterialOut, MaterialUpdate
 
@@ -111,6 +111,27 @@ async def update_material(
 
 @router.delete("/{material_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[OwnerOnly])
 async def delete_material(material_id: UUID, claims: CurrentClaims, conn: DbConn) -> Response:
+    # Deleting would cascade away the material's product links (product_materials), so a
+    # material that products use is kept. Reorder-list entries alone don't block it.
+    # Lock the row first: a concurrent insert of a referencing row must wait for this
+    # transaction, so a reference can't appear between the count and the delete.
+    cur = await conn.execute(
+        "select id from public.materials where id = %s and tenant_id = %s for update",
+        (material_id, claims.tenant_id),
+    )
+    if await cur.fetchone() is None:
+        raise NotFoundError("Material not found")
+    cur = await conn.execute(
+        "select count(distinct product_id) from public.product_materials "
+        "where material_id = %s and tenant_id = %s",
+        (material_id, claims.tenant_id),
+    )
+    (references,) = await cur.fetchone()
+    if references:
+        raise ConflictError(
+            f"This material is used by {references} product(s); "
+            "remove it from those products first."
+        )
     cur = await conn.execute(
         "delete from public.materials where id = %s and tenant_id = %s returning id",
         (material_id, claims.tenant_id),

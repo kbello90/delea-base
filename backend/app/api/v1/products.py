@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from psycopg.rows import dict_row
 
 from app.api.deps import CurrentClaims, DbConn, require_role
-from app.core.errors import NotFoundError
+from app.core.errors import ConflictError, NotFoundError
 from app.db.sql_helpers import like_pattern, patch_changes, update_statement
 from app.models.product import NULLABLE_FIELDS, ProductCreate, ProductOut, ProductUpdate
 
@@ -119,6 +119,24 @@ async def update_product(
 
 @router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[OwnerOnly])
 async def delete_product(product_id: UUID, claims: CurrentClaims, conn: DbConn) -> Response:
+    # Lock the row first: a concurrent insert of a referencing row must wait for this
+    # transaction, so a reference can't appear between the count and the delete.
+    cur = await conn.execute(
+        "select id from public.products where id = %s and tenant_id = %s for update",
+        (product_id, claims.tenant_id),
+    )
+    if await cur.fetchone() is None:
+        raise NotFoundError("Product not found")
+    cur = await conn.execute(
+        "select count(*) from public.invoice_line_items where product_id = %s and tenant_id = %s",
+        (product_id, claims.tenant_id),
+    )
+    (references,) = await cur.fetchone()
+    if references:
+        raise ConflictError(
+            f"This product appears on {references} invoice line(s). "
+            "Unpublish it instead (set is_published to false)."
+        )
     cur = await conn.execute(
         "delete from public.products where id = %s and tenant_id = %s returning id",
         (product_id, claims.tenant_id),

@@ -26,6 +26,14 @@ class NotFoundError(Exception):
         self.detail = detail
 
 
+class ConflictError(Exception):
+    """The request conflicts with existing data (409). The message is shown to the client."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+        self.detail = detail
+
+
 @dataclass(frozen=True)
 class MappedError:
     status_code: int
@@ -99,6 +107,11 @@ async def _pool_timeout_handler(request: Request, exc: Exception) -> JSONRespons
     return JSONResponse({"detail": detail}, status_code=code)
 
 
+async def _conflict_handler(request: Request, exc: Exception) -> JSONResponse:
+    assert isinstance(exc, ConflictError)
+    return JSONResponse({"detail": exc.detail}, status_code=status.HTTP_409_CONFLICT)
+
+
 async def _not_found_handler(request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, NotFoundError)
     return JSONResponse({"detail": exc.detail}, status_code=status.HTTP_404_NOT_FOUND)
@@ -108,3 +121,4 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(psycopg.Error, _db_error_handler)
     app.add_exception_handler(PoolTimeout, _pool_timeout_handler)
     app.add_exception_handler(NotFoundError, _not_found_handler)
+    app.add_exception_handler(ConflictError, _conflict_handler)

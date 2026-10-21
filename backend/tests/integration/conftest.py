@@ -142,15 +142,26 @@ _TEST_ROWS = (
     ("materials", "name"),
     ("customers", "first_name"),
     ("expenses", "description"),
+    ("invoices", "customer_name"),
 )
 
 
 @pytest.fixture(autouse=True)
 def _cleanup_test_rows(db: psycopg.Connection) -> Iterator[None]:
-    """Remove every row the tests created (IT- prefix), whatever the test did."""
+    """Remove every row the tests created (IT- prefix), whatever the test did, and put the
+    document counters back (creating an invoice advances them)."""
+    counters = db.execute(
+        "select tenant_id, next_quote_number, next_invoice_number from public.company_settings"
+    ).fetchall()
     yield
     for table, column in _TEST_ROWS:
         db.execute(f"delete from public.{table} where {column} like %s", (f"{TEST_SKU_PREFIX}%",))
+    for tenant_id, next_quote, next_invoice in counters:
+        db.execute(
+            "update public.company_settings set next_quote_number = %s, next_invoice_number = %s "
+            "where tenant_id = %s",
+            (next_quote, next_invoice, tenant_id),
+        )
 
 
 # Seed tables whose rows the tests must never change (updated_at is ignored: a no-op PATCH

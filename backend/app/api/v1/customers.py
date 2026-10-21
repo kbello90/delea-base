@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from psycopg.rows import dict_row
 
 from app.api.deps import CurrentClaims, DbConn, require_role
-from app.core.errors import NotFoundError
+from app.core.errors import ConflictError, NotFoundError
 from app.db.sql_helpers import like_pattern, patch_changes, update_statement
 from app.models.customer import (
     NULLABLE_FIELDS,
@@ -140,7 +140,26 @@ async def update_customer(
 
 @router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[OwnerOnly])
 async def delete_customer(customer_id: UUID, claims: CurrentClaims, conn: DbConn) -> Response:
-    # Invoices keep their customer_name snapshot; their customer_id is set to null.
+    # Deleting would set customer_id to null on the customer's invoices (FK set null),
+    # silently detaching their history, so a customer with invoices is kept.
+    # Lock the row first: a concurrent insert of a referencing row must wait for this
+    # transaction, so a reference can't appear between the count and the delete.
+    cur = await conn.execute(
+        "select id from public.customers where id = %s and tenant_id = %s for update",
+        (customer_id, claims.tenant_id),
+    )
+    if await cur.fetchone() is None:
+        raise NotFoundError("Customer not found")
+    cur = await conn.execute(
+        "select count(*) from public.invoices where customer_id = %s and tenant_id = %s",
+        (customer_id, claims.tenant_id),
+    )
+    (references,) = await cur.fetchone()
+    if references:
+        raise ConflictError(
+            f"This customer has {references} invoice(s); deleting would detach them "
+            "from their history."
+        )
     cur = await conn.execute(
         "delete from public.customers where id = %s and tenant_id = %s returning id",
         (customer_id, claims.tenant_id),

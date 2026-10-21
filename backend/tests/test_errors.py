@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from psycopg import errors
 
 from app.core.errors import (
+    ConflictError,
     NotFoundError,
     is_trigger_raise,
     map_db_error,
@@ -109,6 +110,10 @@ def build_app() -> FastAPI:
     def missing() -> None:
         raise NotFoundError("Product not found")
 
+    @app.get("/conflict")
+    def conflict() -> None:
+        raise ConflictError("only quotes can be edited")
+
     return app
 
 
@@ -119,6 +124,7 @@ def build_app() -> FastAPI:
         ("/rls", 403, "Not allowed"),
         ("/internal", 500, "Internal server error"),
         ("/missing", 404, "Product not found"),
+        ("/conflict", 409, "only quotes can be edited"),
     ],
 )
 def test_handlers_return_generic_json(path: str, status_code: int, detail: str) -> None:
