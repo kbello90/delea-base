@@ -6,7 +6,7 @@ import { ErrorState } from "../components/ErrorState";
 import { PageHeader } from "../components/PageHeader";
 import { useApi } from "../lib/api";
 import { formatMoney } from "../lib/money";
-import { useCurrency } from "../lib/useCurrency";
+import { useCurrency, type CurrencyState } from "../lib/useCurrency";
 import "./dashboard.css";
 import { PeriodToggle } from "./PeriodToggle";
 import { TrendChart } from "./TrendChart";
@@ -35,21 +35,29 @@ function isEmptyTenant(s: Summary): boolean {
   return noInvoices && s.ytd.revenue_cents === 0 && s.ytd.expenses_cents === 0;
 }
 
-function Metric({ id, label, value, note }: { id: string; label: string; value: string; note?: string }) {
+/** `value` null: the amount isn't known yet (currency still loading), so a placeholder is shown. */
+function Metric({ id, label, value, note }: { id: string; label: string; value: string | null; note?: string | null }) {
   return (
-    <div className="metric" role="group" aria-labelledby={`${id}-label`}>
+    <div className="metric" role="group" aria-labelledby={`${id}-label`} aria-busy={value === null}>
       <div className="metric__label" id={`${id}-label`}>
         {label}
       </div>
-      <div className="metric__value">{value}</div>
+      {value === null ? (
+        <div className="skeleton">
+          <div className="skeleton__line skeleton__line--value" />
+        </div>
+      ) : (
+        <div className="metric__value">{value}</div>
+      )}
       {note && <div className="metric__note">{note}</div>}
     </div>
   );
 }
 
-function Figures({ summary, period, currency }: { summary: Summary; period: Period; currency: string }) {
+function Figures({ summary, period, currency }: { summary: Summary; period: Period; currency: string | null }) {
   const p = summary[period];
-  const money = (cents: number) => formatMoney(cents, currency);
+  // No currency yet: no amount is formatted at all.
+  const money = (cents: number) => (currency ? formatMoney(cents, currency) : null);
   const quiet = p.revenue_cents === 0 && p.expenses_cents === 0;
   return (
     <>
@@ -65,7 +73,7 @@ function Figures({ summary, period, currency }: { summary: Summary; period: Peri
           id="expenses"
           label="Expenses"
           value={money(p.expenses_cents)}
-          note={`${money(p.deductible_expenses_cents)} tax deductible`}
+          note={currency ? `${money(p.deductible_expenses_cents)} tax deductible` : null}
         />
         <Metric
           id="net"
@@ -116,6 +124,30 @@ function Skeleton() {
   );
 }
 
+function Money({ summary, period, currency }: { summary: Summary; period: Period; currency: CurrencyState }) {
+  if (currency.status === "error") {
+    return (
+      <ErrorState
+        title="Amounts can't be shown"
+        error={currency.error}
+        message="The business currency couldn't be loaded, so no amounts are shown. Try again in a moment."
+        onRetry={currency.retry}
+      />
+    );
+  }
+  const code = currency.status === "success" ? currency.currency : null;
+  return (
+    <>
+      <Figures summary={summary} period={period} currency={code} />
+      {code ? (
+        <Trend currency={code} />
+      ) : (
+        <div className="skeleton skeleton--chart" role="status" aria-label="Loading chart" />
+      )}
+    </>
+  );
+}
+
 export function DashboardPage() {
   const api = useApi();
   const currency = useCurrency();
@@ -145,10 +177,7 @@ export function DashboardPage() {
             }
           />
         ) : (
-          <>
-            <Figures summary={s} period={period} currency={currency} />
-            <Trend currency={currency} />
-          </>
+          <Money summary={s} period={period} currency={currency} />
         ))}
       {s && <Details summary={s} />}
     </>

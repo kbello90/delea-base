@@ -6,6 +6,8 @@ export type AuthState =
   | { status: "signedOut" }
   | {
       status: "signedIn";
+      /** The token's subject: changes when a different user signs in. */
+      userId: string | null;
       email: string | null;
       /** From the token, for navigation only (see claims.ts). Null: no business membership. */
       claims: UiClaims | null;

@@ -1,8 +1,7 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  COMPANY_RESPONSE,
   fakeApi,
   fakeBackend,
   jsonResponse,
@@ -89,9 +88,13 @@ describe("dashboard figures", () => {
     expect(screen.getByText(/Periods are UTC\. Month to date from Oct 1, 2026; year to date from Jan 1, 2026\./)).toBeInTheDocument();
   });
 
-  it("formats in the tenant's currency from company settings", async () => {
-    await renderDashboard({ "/api/v1/settings/company": () => jsonResponse(200, { ...COMPANY_RESPONSE, currency: "EUR" }) });
-    await waitFor(() => expect(metric("Revenue").getByText("€98.00")).toBeInTheDocument());
+  it("formats in the tenant's currency from GET /settings/currency", async () => {
+    const { fetch } = await renderDashboard({ "/api/v1/settings/currency": () => jsonResponse(200, { currency: "EUR" }) });
+    expect(await metric("Revenue").findByText("€98.00")).toBeInTheDocument();
+    expect(metric("Net profit").getByText("-€815.00")).toBeInTheDocument();
+    expect(screen.queryByText(/\$\d/)).not.toBeInTheDocument();
+    const paths = fetch.mock.calls.map(([request]) => new URL(request.url).pathname);
+    expect(paths).not.toContain("/api/v1/settings/company");
   });
 
   it("links the low-stock counts and lists every invoice status", async () => {
@@ -241,6 +244,56 @@ describe("dashboard states", () => {
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("You don't have access to this page");
     const paths = fetch.mock.calls.map(([request]) => new URL(request.url).pathname);
     expect(paths).not.toContain("/api/v1/dashboard/summary");
-    expect(paths).not.toContain("/api/v1/settings/company");
+  });
+});
+
+describe("currency states: money is never formatted without a known currency", () => {
+  it("while the currency loads, the money figures are skeletons and no amount is shown", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    renderApp({
+      path: "/dashboard",
+      fetch: fakeApi({
+        "/api/v1/settings/currency": async () => {
+          await gate;
+          return jsonResponse(200, { currency: "EUR" });
+        },
+      }),
+    });
+    const revenue = await screen.findByRole("group", { name: "Revenue" });
+    expect(revenue).toHaveAttribute("aria-busy", "true");
+    expect(document.querySelectorAll(".metric__value")).toHaveLength(0);
+    expect(screen.queryByText(/[$€]\d/)).not.toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Loading chart" })).toBeInTheDocument();
+    // Non-money figures don't wait for the currency.
+    expect(screen.getByRole("region", { name: "Invoices by status" })).toBeInTheDocument();
+
+    release();
+    expect(await metric("Revenue").findByText("€98.00")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Revenue" })).toHaveAttribute("aria-busy", "false");
+  });
+
+  it.each([
+    [403, "not a member of this tenant with this role"], // the function refusing a stale membership
+    [500, "Internal server error"],
+  ])("a %i on the currency shows a message with retry and no amounts", async (status, detail) => {
+    let recovered = false;
+    renderApp({
+      path: "/dashboard",
+      fetch: fakeApi({
+        "/api/v1/settings/currency": () =>
+          recovered ? jsonResponse(200, { currency: "GBP" }) : jsonResponse(status, { detail }),
+      }),
+    });
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Amounts can't be shown");
+    expect(alert).toHaveTextContent("The business currency couldn't be loaded, so no amounts are shown.");
+    expect(screen.queryByRole("group", { name: "Revenue" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/[$€£]\d/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+
+    recovered = true;
+    await userEvent.setup().click(within(alert).getByRole("button", { name: "Try again" }));
+    expect(await metric("Revenue").findByText("£98.00")).toBeInTheDocument();
   });
 });

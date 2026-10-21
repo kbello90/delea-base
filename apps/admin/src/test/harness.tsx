@@ -19,8 +19,20 @@ export function makeToken(claims: Record<string, unknown>): string {
 
 export const TENANT_A = "11111111-1111-1111-1111-111111111111";
 
-export function tokenFor(role: AppRole): string {
-  return makeToken({ tenant_id: TENANT_A, app_role: role });
+export const TENANT_B = "22222222-2222-2222-2222-222222222222";
+
+/** A member's token; each role (and tenant) is a different user unless `sub` says otherwise. */
+export function tokenFor(role: AppRole, tenant = TENANT_A, sub = `user-${role}-${tenant.slice(0, 1)}`): string {
+  return makeToken({ sub, tenant_id: tenant, app_role: role });
+}
+
+/** The tenant_id in a request's bearer token (for fakes that answer per tenant). */
+export function tenantOf(request: Request): string | null {
+  const token = request.headers.get("Authorization")?.replace(/^Bearer /, "");
+  const part = token?.split(".")[1];
+  if (!part) return null;
+  const payload = JSON.parse(atob(part.replace(/-/g, "+").replace(/_/g, "/"))) as { tenant_id?: string };
+  return payload.tenant_id ?? null;
 }
 
 /** A fake AuthBackend holding one session. signIn succeeds unless `control.signInResult` is set. */
@@ -128,6 +140,7 @@ type Responder = (request: Request) => Response | Promise<Response>;
 const DEFAULT_RESPONSES: Record<string, unknown> = {
   "/api/v1/settings/brand": DEFAULT_BRAND_RESPONSE,
   "/api/v1/settings/company": COMPANY_RESPONSE,
+  "/api/v1/settings/currency": { currency: "USD" },
   "/api/v1/dashboard/summary": SUMMARY_RESPONSE,
   "/api/v1/dashboard/monthly": MONTHLY_RESPONSE,
 };

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AuthBackend, SessionInfo } from "./authBackend";
 import { AuthContext, type AuthContextValue, type AuthState } from "./authContext";
-import { readUiClaims } from "./claims";
+import { readSubject, readUiClaims } from "./claims";
 
 function toState(session: SessionInfo | null, noMembership: boolean): AuthState {
   if (!session) return { status: "signedOut" };
   return {
     status: "signedIn",
+    userId: readSubject(session.accessToken),
     email: session.email,
     claims: noMembership ? null : readUiClaims(session.accessToken),
   };

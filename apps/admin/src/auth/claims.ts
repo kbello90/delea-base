@@ -38,3 +38,9 @@ export function readUiClaims(accessToken: string): UiClaims | null {
   if (!ROLES.includes(appRole as AppRole)) return null;
   return { tenantId, appRole: appRole as AppRole };
 }
+
+/** The token's subject (the user id), to tell users apart; null if absent. Cosmetic like the above. */
+export function readSubject(accessToken: string): string | null {
+  const sub = decodePayload(accessToken)?.sub;
+  return typeof sub === "string" && sub ? sub : null;
+}

@@ -40,6 +40,3 @@ export function formatMoney(cents: number, currency: string, locale = "en-US"): 
     .map((part) => (part.type === "fraction" ? fraction : part.value))
     .join("");
 }
-
-/** Shown until the tenant's currency has loaded. */
-export const FALLBACK_CURRENCY = "USD";

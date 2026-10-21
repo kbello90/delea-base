@@ -13,5 +13,7 @@ export function RequireAuth() {
     return <Navigate to="/sign-in" replace state={{ from: location.pathname + location.search }} />;
   }
   if (!state.claims) return <NoAccessPage />;
-  return <Outlet />;
+  // Keyed by user: another user's session remounts the whole signed-in app, so every query
+  // hook starts on that user's fresh QueryClient (see QueryProvider) and nothing stale renders.
+  return <Outlet key={state.userId ?? state.email ?? "unknown"} />;
 }

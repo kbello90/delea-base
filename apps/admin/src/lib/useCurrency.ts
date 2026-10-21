@@ -2,25 +2,28 @@ import { unwrap } from "@delea/api-client";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../auth/authContext";
 import { useApi } from "./api";
-import { FALLBACK_CURRENCY } from "./money";
 
-export const companySettingsQueryKey = ["settings", "company"] as const;
+export type CurrencyState =
+  | { status: "pending" }
+  | { status: "error"; error: unknown; retry: () => void }
+  | { status: "success"; currency: string };
 
 /**
- * The tenant's currency code, for formatMoney. USD until it has loaded, or if it can't be read.
- *
- * Read from GET /settings/company, which only the owner may call; other roles get the fallback
- * for now. A follow-up task adds GET /settings/currency for every role and switches this hook.
+ * The tenant's currency from GET /settings/currency (owner, staff and cpa). There is no
+ * fallback: money is only formatted once the real currency is known, so callers show
+ * skeletons while pending and a message with retry on error.
  */
-export function useCurrency(): string {
+export function useCurrency(): CurrencyState {
   const api = useApi();
   const { state } = useAuth();
-  const isOwner = state.status === "signedIn" && state.claims?.appRole === "owner";
-  const { data } = useQuery({
-    queryKey: companySettingsQueryKey,
-    queryFn: () => unwrap(api.GET("/api/v1/settings/company")),
-    enabled: isOwner,
+  const isMember = state.status === "signedIn" && state.claims !== null;
+  const query = useQuery({
+    queryKey: ["settings", "currency"],
+    queryFn: () => unwrap(api.GET("/api/v1/settings/currency")),
+    enabled: isMember,
     staleTime: 5 * 60_000,
   });
-  return data?.currency ?? FALLBACK_CURRENCY;
+  if (query.isSuccess) return { status: "success", currency: query.data.currency };
+  if (query.isError) return { status: "error", error: query.error, retry: () => void query.refetch() };
+  return { status: "pending" };
 }
