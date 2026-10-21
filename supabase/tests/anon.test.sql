@@ -72,7 +72,7 @@ create temp table public_tables as
   from pg_class c
   where c.relnamespace = 'public'::regnamespace and c.relkind = 'r';
 
-select is((select count(*)::int from public_tables), 16, 'checking all 16 public tables');
+select is((select count(*)::int from public_tables), 17, 'checking all 17 public tables');
 
 -- Even with tenant claims present, anon is anon.
 select set_config('request.jwt.claims', json_build_object(

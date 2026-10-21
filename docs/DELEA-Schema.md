@@ -346,7 +346,7 @@ All accepted as recommended on 2026-10-20.
 
 Smaller choices I made that you can veto: separate `quote_number` and `invoice_number` series (a quote gets `QTE-…` at creation and an `INV-…` number when paid, matching the demo's two number formats); `reorder_list` as a small table so the `add_to_reorder_list` automation has somewhere to write; and one SKU per metal rather than a variant model.
 
-## 9. As built (supabase/migrations; last updated with migration 20261020001300)
+## 9. As built (supabase/migrations; last updated with migration 20261020001500)
 
 The migrations in `supabase/migrations/` are now the source of truth. Where the SQL in §3–§7 differs from them, the migrations win, and the differences are:
 
@@ -365,6 +365,12 @@ The migrations in `supabase/migrations/` are now the source of truth. Where the 
   - **Later updates:** they never decrement again, and there's no restock on refund or cancel in v1.
   - **Invoices inserted directly as paid** (service role only) have no lines at insert time, so they never decrement stock. Those paths must create the quote, add the lines, then advance it.
 - **Tax rate for staff.** `current_tax_rate_bps()` (SECURITY DEFINER, `search_path = ''`) returns `default_tax_rate_bps` for the caller's tenant (from the JWT) when `app_role` is owner or staff. It raises 42501 for anyone else, cpa included. `EXECUTE` is granted to `authenticated` only. Staff get the rate without access to `company_settings`.
+- **Currency for every role (migration 20261020001400).** `current_tenant_currency()` (SECURITY DEFINER, `search_path = ''`) returns `company_settings.currency` for the caller's tenant to owner, staff and cpa. It also checks that a `tenant_members` row exists for (token user, tenant, role), so a removed member's still-valid token is refused (42501), as are a missing or malformed `tenant_id`. `EXECUTE` is granted to `authenticated` only.
+- **Product images (migration 20261020001500).** `products.image_urls` is dropped; images live in `product_images` (tenant, product, position, `is_primary`, the two object paths and the large variant's size).
+  - **Paths only:** the table stores object paths in the public `product-images` bucket, constrained to `{tenant_id}/{product_id}/{id}-1200.webp` and `-400.webp`. Public URLs are built by the backend from a setting.
+  - **Rules:** one primary image per product; positions unique per product (deferrable, so a reorder can swap); at most 10 images per product (deferred constraint trigger, P0001); composite FK to `products (tenant_id, id)` with cascade.
+  - **RLS:** owner all, staff read, cpa nothing, like `products`.
+  - **Storage:** private bucket `product-uploads` (raw uploads, JPEG/PNG/WebP) and public bucket `product-images` (WebP), both 5 MiB. Four RESTRICTIVE policies on `storage.objects` deny anon and authenticated any insert, update, delete or select in either bucket, so no permissive policy can open them later. Clients upload raw files only through signed URLs the backend issues; the backend (service key) writes the variants.
 - **Only quotes can be deleted (migration 20261020001300).** A before-delete trigger on `invoices` refuses callers with an `app_role` when the invoice is past `quote`, with 42501 "only quotes can be deleted; cancel or refund this invoice instead". The owner's DELETE policy is deliberately unchanged, so this message is what users see rather than a silent 0 rows. The service role is exempt. Deleting a quote still cascades its lines; the line guard lets the cascaded deletes through because the parent is already gone.
 - **Deletes that would damage history are refused by the API, not the database.** The FK actions themselves are unchanged. FastAPI checks first and returns 409 with a clear message for:
   - a product on any invoice line ("unpublish it instead"). Deleting it would empty the line's `product_id`, so a quote would never decrement stock;

@@ -68,9 +68,10 @@ jobs:
           cache: pip
           cache-dependency-path: backend/pyproject.toml
 
-      # Local stack only (no hosted project, no secrets). Studio and analytics aren't needed here.
+      # Local stack only (no hosted project, no secrets). Studio and analytics aren't needed here;
+      # Storage is (product images).
       - name: Start the local Supabase stack
-        run: $SUPABASE start -x realtime,storage-api,imgproxy,edge-runtime,logflare,vector,supavisor,studio
+        run: $SUPABASE start -x realtime,imgproxy,edge-runtime,logflare,vector,supavisor,studio
 
       - name: pgTAP tests
         run: $SUPABASE test db

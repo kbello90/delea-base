@@ -80,11 +80,11 @@ select tables_are(
   'public',
   array[
     'tenants', 'tenant_members', 'tenant_domains', 'brand_config', 'company_settings',
-    'products', 'materials', 'product_materials',
+    'products', 'product_images', 'materials', 'product_materials',
     'customers', 'invoices', 'invoice_line_items',
     'expenses', 'automation_rules', 'reorder_list', 'automation_events', 'stripe_events'
   ],
-  'public contains exactly the 16 Schema tables'
+  'public contains exactly the 17 Schema tables'
 );
 
 -- Every function in public pins search_path (covers every SECURITY DEFINER function).
