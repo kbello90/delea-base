@@ -62,7 +62,7 @@ async def test_formulas(settings: Settings) -> None:
             )[0]
 
             # Baseline and final reading both go through the owner's user session (RLS on),
-            # exactly like the endpoint. Tenant A's rows are inserted as that owner too.
+            # exactly like the endpoint.
             await apply_user_scope(aconn, owner)
             before = await fetch_summary(aconn, TENANT_A)
             month_start = before["month_start"]
@@ -70,6 +70,10 @@ async def test_formulas(settings: Settings) -> None:
             last_month = month_start - timedelta(days=1)  # previous month (maybe last year)
             last_year = year_start - timedelta(days=1)
 
+            # Fixture rows go in as the table owner with no app_role: app users may only create
+            # quotes (migration 20261020001200), and these must be paid and backdated.
+            await aconn.execute("reset role")
+            await aconn.execute("select set_config('request.jwt.claims', '', true)")
             rows = _Rows(aconn)
             await rows.invoice(TENANT_A, 10000, 800, "paid", now)
             await rows.invoice(TENANT_A, 20000, 1600, "shipped", last_month)
@@ -95,8 +99,7 @@ async def test_formulas(settings: Settings) -> None:
                 (TENANT_A,),
             )
 
-            # Tenant B's rows arrive after the baseline, so any leak would show in the deltas.
-            await aconn.execute("reset role")
+            # Tenant B's rows arrive after the baseline too, so any leak would show in the deltas.
             await rows.invoice(TENANT_B, 640000, 51200, "paid", now)
             await rows.expense(TENANT_B, today, 32000)
             await aconn.execute(

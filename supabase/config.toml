@@ -8,9 +8,14 @@ project_id = "delea-base"
 [api]
 enabled = true
 port = 55321
-# The ai schema is deliberately not exposed over the REST API (Schema §7).
-schemas = ["public", "graphql_public"]
-extra_search_path = ["public", "extensions"]
+# No application schema is exposed over the Data API (REST / GraphQL): every read and write
+# goes through FastAPI (TRD §1.3). Exposing `public` would let any signed-in user write
+# through PostgREST under RLS alone, bypassing the API's rules (server-computed totals,
+# owner-only actions). The ai schema is never exposed (Schema §7). `public` is also kept out
+# of the search path, so GraphQL can't reflect public tables either.
+# Hosted projects: set the same in the dashboard's Data API settings (infra runbook).
+schemas = ["graphql_public"]
+extra_search_path = ["extensions"]
 max_rows = 1000
 
 [db]
