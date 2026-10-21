@@ -70,7 +70,9 @@ Redis (Enterprise-tier only, or shared/namespaced on lower tiers if/when caching
 ### 1.3 Request patterns
 
 - **Admin app → backend:** all writes (product CRUD, invoices, expenses, automation rules, brand config) go through FastAPI, which validates against the tenant's JWT claims and RLS-scoped Postgres role. This is where business logic (e.g., "can't delete a material referenced by a paid invoice") lives — not in the DB alone.
-- **Admin → Supabase directly (authenticated reads only):** simple reads in `apps/admin` (e.g., dashboard listing views) can go through the Supabase JS client with RLS enforcing tenant isolation, skipping FastAPI for latency. Anything that mutates data or triggers business logic (Stripe checkout, invoice creation, automation triggers) always routes through FastAPI.
+- **Admin → FastAPI only (locked; reverses the earlier "admin may read Supabase directly" decision):** `apps/admin` reads and writes only through FastAPI. The Supabase JS client is used for **Auth only** (sign-in, token refresh), never for table access.
+  - **Why:** the Supabase Data API (REST and GraphQL) is closed for `public`, so a signed-in user can't bypass FastAPI's rules. Those rules include server-computed totals, owner-only refund/cancel/tax override and quote-only edits. With the Data API open, RLS alone would have allowed those writes.
+  - **Cost:** one extra hop for reads. FastAPI is in the same region as the database.
 - **Storefront → FastAPI public endpoints only (locked):** `apps/storefront` never queries Supabase directly. It calls public, unauthenticated FastAPI endpoints (`GET /api/v1/public/products`, `/api/v1/public/brand`, order tracking by `public_token`) that resolve the tenant from the request hostname via `tenant_domains`. The `anon` Postgres role has no table grants, so one tenant's catalog can never be read by asking for another tenant's id. The storefront's `supabaseClient.ts` stays in the tree but is unused in v1.
 - **AI assistant:** `apps/admin` only (never exposed on the public storefront in v1). Frontend sends a natural-language query to a FastAPI endpoint (`/api/v1/ai/query`; all v1 routes mount under `/api/v1`), which calls the LLM with a **read-only, pre-scoped** data context — see §3.2 for exactly how "read-only" is enforced. Demo-stage: this is a direct API call from FastAPI to the LLM provider with seeded/live data stuffed into context. Post-first-customer (per PRD, deferred): this becomes a separate FastAPI + LangChain microservice with LangSmith tracing, same read-only contract, just with tool-calling and observability instead of a single stuffed prompt.
 
@@ -334,7 +336,7 @@ Every authenticated request runs in **one transaction** as `authenticated`, with
 
 **Also:**
 - **Health:** `GET /health` (liveness) and `GET /health/ready` (database check) sit outside `/api/v1`.
-- **Invoices:** waiting on the migration that lets staff read the tax rate and delete quote line items.
+- **Invoices:** the database side is in place (migration 20261020001200: tax-rate function, quote-only lines, stock decrement); the endpoints are next.
 
 ### 6.3 Error mapping
 Every error response is `{"detail": "..."}`, never with SQL text or stack traces.
@@ -377,4 +379,5 @@ All amounts are integer cents. Rounding is half-up, in integer arithmetic: `(a �
 ### 6.6 Known limitations
 - **Token expiry:** an access token stays valid until it expires (`jwt_expiry`, 3600 s locally). Removing or changing someone's membership takes effect at their next token refresh. We'll revisit this with a shorter expiry, or a membership re-check on sensitive requests.
 - **Multi-tenant users:** a user in several tenants gets their oldest membership.
-- **Direct database API:** until the follow-up migration closes it, the Supabase REST API still exposes `public` to signed-in users. The API-only rules (owner-only refund, cancel and tax override; server-computed totals) are enforced only through FastAPI.
+- **Direct database API: closed.** `public` isn't exposed over REST or GraphQL (Schema §9 "No direct data API"), so the API-only rules can't be bypassed with a user's JWT. Hosted projects need the same Data API settings; see the provisioning runbook.
+- **Deleting a paid invoice:** the database still allows the owner to delete an invoice past quote. FastAPI must refuse it until the proposed guard trigger is applied (Schema §9).

@@ -28,6 +28,18 @@ reserves the 543xx range. To see the reserved ranges on your machine:
 Never run `supabase link` or `supabase db push` against a hosted project from a dev machine
 without going through the provisioning runbook (`infra/scripts/provision-enterprise.md`).
 
+## Hosted projects (shared and Enterprise): close the Data API
+
+`config.toml` only configures the local stack. On every hosted project, the shared one and each
+Enterprise one, open the dashboard's **Data API** settings and either disable the Data API, or:
+
+- remove `public` from **Exposed schemas**, so only `graphql_public` remains, and never add `ai`;
+- remove `public` from **Extra search path**. `pg_graphql`, enabled by default on hosted
+  projects, exposes every schema on the search path through `/graphql/v1`.
+
+Then check with a real user token: `GET /rest/v1/products` must fail, and a GraphQL
+`productsCollection` query must return no data. Auth (`/auth/v1`) is unaffected.
+
 ## Access model in one paragraph
 
 - **RLS:** every table in `public` has RLS enabled. Policies read
@@ -61,21 +73,27 @@ select set_config('app.tenant_id', '<tenant_id from the validated JWT>', true);
 **not** grant `ai_readonly` to `postgres`. The pgTAP tests make that grant inside their own
 rolled-back transaction, for local testing only.
 
-**2. In-store order entry by staff has to follow a fixed order.** Once an invoice is past
-`quote`, staff can't change its money columns (`subtotal_cents`, `tax_rate_bps`, `tax_cents`,
-`total_cents`), and can't add, edit or delete its line items. Only the owner or the service role
-can. Staff can still move `order_status` forward and edit non-financial fields such as `notes`.
+**2. Order entry has to follow a fixed order, for every app user.** Owner and staff (any
+`app_role`) can only create an invoice as a `quote`, and can only change its line items while
+it is a quote. So an order is:
 
-So a staff member taking an in-store order must:
+1. create the invoice as a `quote`;
+2. add the line items and set the totals (the tax rate comes from `current_tax_rate_bps()`);
+3. move it to `paid` (or further), which decrements stock.
 
-1. create the invoice as a `quote`,
-2. add the line items and set the totals,
-3. then mark it `paid`.
+After that, its lines are frozen for everyone except the service role. Corrections go through
+cancel or refund plus a new invoice. Staff additionally can't change the money columns past
+`quote`.
 
-The alternative is to go through a FastAPI endpoint that does the whole thing with the service
-role. Inserting an invoice directly as `paid` and then adding line items fails for staff.
+**3. No direct data API.** `public` isn't exposed over REST or GraphQL (see `config.toml`).
+The admin app uses the Supabase client for Auth only; all data goes through FastAPI.
 
 ## Other rules enforced in the database
+
+- **Stock:** when an invoice first leaves `quote`, each product's stock drops by the summed
+  quantity of its lines. The products are locked `FOR UPDATE`, so concurrent sales can't
+  oversell. Insufficient stock is refused, naming the SKU and the quantity available. There's
+  no restock on refund or cancel in v1.
 
 - **Numbering:** on insert, `quote_number` = `QTE-YYYY-NNN` from
   `company_settings.next_quote_number`. When the status first moves past `quote`,

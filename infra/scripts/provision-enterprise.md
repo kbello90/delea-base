@@ -13,7 +13,13 @@ backend; only environment values differ.
    Management API). Record its project ref, URL, anon key, service role key, and DB
    connection string.
 
-2. **Apply migrations and seed brand config.**
+2. **Close the Data API, then apply migrations and seed brand config.**
+   In the new project's dashboard, Data API settings:
+   - remove `public` from the **exposed schemas**, so only `graphql_public` is left, or disable the Data API entirely;
+   - remove `public` from the **extra search path**.
+
+   Both are needed: `pg_graphql`, which is enabled by default on hosted projects, exposes every schema on the search path through `/graphql/v1`. Never expose `ai`. Then check with a real user token: `GET /rest/v1/products` must fail, and a GraphQL `productsCollection` query must return no data. The app only uses Auth directly; everything else goes through FastAPI (TRD §1.3).
+
    Apply the same migration stream used by the shared project:
    `supabase db push --project-ref <ref>`.
    Then seed the customer's brand config. RLS stays enabled even on a single-tenant project.

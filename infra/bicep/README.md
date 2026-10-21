@@ -37,7 +37,7 @@ az deployment group create \
 ## Enterprise provisioning runbook (TRD §2.3)
 
 1. Create the customer's Supabase project.
-2. Apply migrations (`supabase db push --project-ref <ref>`) and seed brand config.
+2. In the project's Data API settings, remove `public` from the exposed schemas **and** from the extra search path (or disable the Data API). Then apply migrations (`supabase db push --project-ref <ref>`) and seed brand config.
 3. Run this template with `enterprise.<customer>.bicepparam` to create the App Service (+ Redis).
 4. Set the App Service environment variables from the new project's keys.
 5. Point the customer's Vercel domains at the shared frontend projects.

@@ -346,12 +346,26 @@ All accepted as recommended on 2026-10-20.
 
 Smaller choices I made that you can veto: separate `quote_number` and `invoice_number` series (a quote gets `QTE-…` at creation and an `INV-…` number when paid, matching the demo's two number formats); `reorder_list` as a small table so the `add_to_reorder_list` automation has somewhere to write; and one SKU per metal rather than a variant model.
 
-## 9. As built (supabase/migrations, commit 21626de)
+## 9. As built (supabase/migrations; last updated with migration 20261020001200)
 
 The migrations in `supabase/migrations/` are now the source of truth. Where the SQL in §3–§7 differs from them, the migrations win, and the differences are:
 
 - **Same-tenant references.** Every parent/child reference uses a composite `(tenant_id, id)` foreign key, so a child row can never point at a parent in another tenant (foreign-key checks bypass RLS, so RLS alone cannot stop this). Parents (`products`, `materials`, `customers`, `invoices`, `automation_rules`) carry `unique (tenant_id, id)`. "Set null" actions use column lists so `tenant_id` is never nulled.
-- **Staff financial guard.** Once an invoice's `order_status` is past `quote`, staff cannot change `subtotal_cents`, `tax_rate_bps`, `tax_cents` or `total_cents`, and cannot insert, update or delete its line items. Only the owner or the service role can. Staff can still advance the status and edit non-financial fields such as notes. The guard identifies staff from the `app_role` claim, so the service role and migration role are never blocked.
+- **Staff financial guard.** Once an invoice's `order_status` is past `quote`, staff cannot change `subtotal_cents`, `tax_rate_bps`, `tax_cents` or `total_cents`. The owner and the service role can. Staff can still advance the status and edit non-financial fields such as notes. The guard identifies staff from the `app_role` claim, so the service role and migration role are never blocked.
+- **Line items are quote-only (migration 20261020001200).** Once an invoice is past `quote`, nobody with an `app_role` (owner, staff or cpa) can insert, update or delete its line items. Only the service role (no `app_role`: webhooks, seed, maintenance) can. This replaces the earlier rule that let the owner edit lines past quote. **Why:** stock is decremented when an invoice becomes paid, so editing lines afterwards would desync stock and totals. A paid invoice is corrected by cancel or refund plus a new invoice.
+  - **Policies:** owner and staff get INSERT, UPDATE and DELETE only on lines whose invoice (same tenant) is a quote. Reads are unchanged: owner and staff read all of the tenant's lines; cpa still reads none.
+  - **Trigger:** `invoice_line_items_quote_only_guard` blocks the same writes for any app_role. It's a backstop if a policy is ever widened.
+  - **What callers see:** an insert on a non-quote invoice fails with 42501 ("line items can only change while the invoice is a quote"). An update or delete is filtered to 0 rows by the policy.
+  - **Consequence:** an app user can't delete a product that appears on a paid invoice. Its `on delete set null (product_id)` would change that invoice's line. Unpublish the product instead.
+- **Invoices start as quotes.** A caller with an `app_role` can only insert an invoice with `order_status = 'quote'`, and gets 23514 otherwise. The service role is exempt: seed, storefront checkout, webhooks. App users therefore always reach "paid" through the status transition, which is where stock moves.
+- **Stock decrement.** When an invoice first leaves `quote` (`old = 'quote' and new > 'quote'`, including a skip straight to shipped), each product's `stock_qty` drops by the sum of its lines' `qty`.
+  - **Concurrency:** the product rows are locked `FOR UPDATE` in id order first, so two simultaneous sales of the same product serialize. The second sale sees the first one's decrement.
+  - **Lines:** lines without a product are skipped.
+  - **Insufficient stock:** raises P0001 "insufficient stock for SKU ...: N available, M requested", and the whole transition rolls back.
+  - **Later updates:** they never decrement again, and there's no restock on refund or cancel in v1.
+  - **Invoices inserted directly as paid** (service role only) have no lines at insert time, so they never decrement stock. Those paths must create the quote, add the lines, then advance it.
+- **Tax rate for staff.** `current_tax_rate_bps()` (SECURITY DEFINER, `search_path = ''`) returns `default_tax_rate_bps` for the caller's tenant (from the JWT) when `app_role` is owner or staff. It raises 42501 for anyone else, cpa included. `EXECUTE` is granted to `authenticated` only. Staff get the rate without access to `company_settings`.
+- **Deleting a paid invoice (open).** The owner's `FOR ALL` policy on `invoices` still allows deleting an invoice past quote, and its lines are cascade-deleted. The line guard can't see the parent once it's being deleted. A trigger that blocks this for app_role callers (service role exempt) is proposed and not yet applied. Until then, FastAPI must refuse it (Schema §6 note).
 - **Document numbering.**
   - Format is `QTE-YYYY-NNN` / `INV-YYYY-NNN`, zero-padded to at least 3 digits and never truncated.
   - Numbers are always assigned by trigger; client-supplied values are ignored.
@@ -361,6 +375,10 @@ The migrations in `supabase/migrations/` are now the source of truth. Where the 
 - **Stock events.** "Low" means strictly below the threshold. `stock_low` and `material_low` fire only when an update crosses the threshold, never on insert.
 - **Domains.** `tenant_domains.domain` includes the port (for example `localhost:5173`), because the Host header carries it.
 - **Functions.** `EXECUTE` is revoked from `public`, `anon` and `authenticated` on every function in `public`, so `ai_readonly` holds no execute grants. The `grant ai_readonly to postgres` needed by the local tests is made inside each test transaction and is not in any migration, so it cannot reach production.
+- **No direct data API.** Neither `public` nor `ai` is exposed through the Supabase Data API. Locally, `supabase/config.toml` sets `[api] schemas = ["graphql_public"]` and `extra_search_path = ["extensions"]`. Every read and write goes through FastAPI (TRD §1.3).
+  - **REST:** `/rest/v1` returns 404 for every table.
+  - **GraphQL:** `pg_graphql` reflects the schemas on the search path, so `public` must stay off the search path too. Verified with `pg_graphql` enabled.
+  - **Hosted projects:** the same settings are made in the Data API dashboard (see the provisioning runbook).
 - **Local ports.** `supabase/config.toml` uses 553xx instead of the CLI defaults (543xx), because Windows reserves 54269–54368. The local API is on 55321, the database on 55322, and Studio on 55323.
 - **Seed.** Tenant A "DELEA Demo" uses 800 bps (8%) tax to match the demo; tenant B "Aurora Gems" is a small second tenant for isolation tests.
 
