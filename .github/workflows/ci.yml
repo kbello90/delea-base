@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   frontend:
-    name: Frontend (lint + build)
+    name: Frontend (lint + typecheck + test + build)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -26,6 +26,8 @@ jobs:
           pnpm --filter @delea/api-client gen
           git diff --exit-code -- packages/api-client/src/schema.d.ts
       - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
       - run: pnpm build
 
   backend:
