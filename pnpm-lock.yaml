@@ -21,16 +21,16 @@ importers:
         specifier: workspace:*
         version: link:../../packages/ui
       '@supabase/supabase-js':
-        specifier: ^2.47.0
+        specifier: 2.118.0
         version: 2.118.0
       react:
-        specifier: ^18.3.1
+        specifier: 18.3.1
         version: 18.3.1
       react-dom:
-        specifier: ^18.3.1
+        specifier: 18.3.1
         version: 18.3.1(react@18.3.1)
       react-router-dom:
-        specifier: ^6.28.0
+        specifier: 6.30.6
         version: 6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
     devDependencies:
       '@delea/config':
@@ -54,6 +54,9 @@ importers:
       vite:
         specifier: ^6.0.7
         version: 6.4.4
+      vitest:
+        specifier: 3.2.7
+        version: 3.2.7
 
   apps/storefront:
     dependencies:
