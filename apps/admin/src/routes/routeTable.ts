@@ -12,12 +12,12 @@ export interface AppRoute {
 }
 
 export const ROUTES: readonly AppRoute[] = [
-  { path: "/dashboard", label: "Dashboard", roles: ["owner"], glyph: "◆", slice: 7 },
-  { path: "/products", label: "Products", roles: ["owner", "staff"], glyph: "○", slice: 2 },
-  { path: "/materials", label: "Materials", roles: ["owner", "staff"], glyph: "▤", slice: 3 },
-  { path: "/customers", label: "Customers", roles: ["owner", "staff"], glyph: "◇", slice: 4 },
-  { path: "/invoices", label: "Invoices", roles: ["owner", "staff", "cpa"], glyph: "▢", slice: 5 },
-  { path: "/expenses", label: "Expenses", roles: ["owner", "cpa"], glyph: "▥", slice: 6 },
+  { path: "/dashboard", label: "Dashboard", roles: ["owner"], glyph: "◆", slice: 2 },
+  { path: "/products", label: "Products", roles: ["owner", "staff"], glyph: "○", slice: 3 },
+  { path: "/materials", label: "Materials", roles: ["owner", "staff"], glyph: "▤", slice: 4 },
+  { path: "/customers", label: "Customers", roles: ["owner", "staff"], glyph: "◇", slice: 5 },
+  { path: "/invoices", label: "Invoices", roles: ["owner", "staff", "cpa"], glyph: "▢", slice: 6 },
+  { path: "/expenses", label: "Expenses", roles: ["owner", "cpa"], glyph: "▥", slice: 7 },
   { path: "/settings", label: "Settings", roles: ["owner"], glyph: "⚙", slice: 8 },
 ];
 

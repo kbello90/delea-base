@@ -1,3 +1,12 @@
+// Self-hosted fonts (no Google Fonts request): the families and weights docs/delea-demo.html uses.
+import "@fontsource/fraunces/400.css";
+import "@fontsource/fraunces/500.css";
+import "@fontsource/fraunces/600.css";
+import "@fontsource/fraunces/500-italic.css";
+import "@fontsource/archivo/400.css";
+import "@fontsource/archivo/500.css";
+import "@fontsource/archivo/600.css";
+import "@fontsource/archivo/700.css";
 import "@delea/ui/tokens.css";
 import "./styles/app.css";
 import { StrictMode } from "react";
