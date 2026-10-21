@@ -2118,6 +2118,32 @@
           }
         ]
       }
+    },
+    "/api/v1/dashboard/monthly": {
+      "get": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Dashboard Monthly",
+        "operationId": "dashboard_monthly_api_v1_dashboard_monthly_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonthlyTrend"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -4009,6 +4035,58 @@
         ],
         "title": "MetalType",
         "description": "Matches the `metal_type` Postgres enum."
+      },
+      "MonthTotals": {
+        "properties": {
+          "month_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Month Start"
+          },
+          "revenue_cents": {
+            "type": "integer",
+            "title": "Revenue Cents"
+          },
+          "expenses_cents": {
+            "type": "integer",
+            "title": "Expenses Cents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "month_start",
+          "revenue_cents",
+          "expenses_cents"
+        ],
+        "title": "MonthTotals"
+      },
+      "MonthlyTrend": {
+        "properties": {
+          "currency_unit": {
+            "type": "string",
+            "const": "cents",
+            "title": "Currency Unit"
+          },
+          "period_basis": {
+            "type": "string",
+            "const": "UTC",
+            "title": "Period Basis"
+          },
+          "months": {
+            "items": {
+              "$ref": "#/components/schemas/MonthTotals"
+            },
+            "type": "array",
+            "title": "Months"
+          }
+        },
+        "type": "object",
+        "required": [
+          "currency_unit",
+          "period_basis",
+          "months"
+        ],
+        "title": "MonthlyTrend"
       },
       "OrderStatus": {
         "type": "string",

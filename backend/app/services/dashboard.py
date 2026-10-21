@@ -11,6 +11,8 @@ since tenants have no timezone setting yet):
 - net_profit:  revenue - expenses (pre income tax; tax collected excluded from both).
 - low stock:   products with stock_qty < low_stock_threshold; materials with
                qty_on_hand < reorder_threshold.
+- monthly trend: the last 6 UTC calendar months (oldest first, the current month to date),
+               each with revenue and expenses by the same rules as above.
 - invoice counts: by order_status over invoices that are neither refunded nor cancelled, plus
                separate refunded and cancelled counts (both set counts as cancelled).
 """
@@ -126,3 +128,48 @@ async def fetch_summary(conn: AsyncConnection, tenant_id: str) -> dict[str, Any]
             )
         },
     }
+
+
+MONTHS_IN_TREND = 6
+
+MONTHLY_SQL = """
+with bounds as (
+  select
+    date_trunc('month', now() at time zone 'UTC') as current_month,
+    (now() at time zone 'UTC')::date as today
+),
+months as (
+  select m as month_start, m + interval '1 month' as month_end
+  from bounds b,
+       generate_series(b.current_month - make_interval(months => %(back)s), b.current_month,
+                       interval '1 month') as m
+)
+select
+  m.month_start::date as month_start,
+  coalesce((
+    select sum(i.subtotal_cents)
+    from public.invoices i
+    where i.tenant_id = %(tenant_id)s
+      and i.paid_at >= m.month_start at time zone 'UTC'
+      and i.paid_at < m.month_end at time zone 'UTC'
+      and i.refunded_at is null
+      and i.cancelled_at is null
+  ), 0)::bigint as revenue_cents,
+  coalesce((
+    select sum(e.amount_cents)
+    from public.expenses e, bounds b
+    where e.tenant_id = %(tenant_id)s
+      and e.expense_date >= m.month_start::date
+      and e.expense_date < m.month_end::date
+      and e.expense_date <= b.today
+  ), 0)::bigint as expenses_cents
+from months m
+order by m.month_start
+"""
+
+
+async def fetch_monthly(conn: AsyncConnection, tenant_id: str) -> dict[str, Any]:
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(MONTHLY_SQL, {"tenant_id": tenant_id, "back": MONTHS_IN_TREND - 1})
+        rows = await cur.fetchall()
+    return {"currency_unit": "cents", "period_basis": "UTC", "months": rows}

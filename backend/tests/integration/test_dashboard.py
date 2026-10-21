@@ -16,17 +16,37 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.core.security import TokenClaims
 from app.db.session import apply_user_scope
-from app.services.dashboard import fetch_summary
+from app.services.dashboard import fetch_monthly, fetch_summary
 
 from .support import TENANT_A, TENANT_B, TestUser, assert_access
 
 pytestmark = pytest.mark.integration
 
 SUMMARY = "/api/v1/dashboard/summary"
+MONTHLY = "/api/v1/dashboard/monthly"
 
 
-def test_role_matrix(client: TestClient, users: dict[str, TestUser]) -> None:
-    assert_access(client, users, "GET", SUMMARY, {"owner_a": 200, "owner_b": 200})
+@pytest.mark.parametrize("path", [SUMMARY, MONTHLY])
+def test_role_matrix(client: TestClient, users: dict[str, TestUser], path: str) -> None:
+    assert_access(client, users, "GET", path, {"owner_a": 200, "owner_b": 200})
+
+
+def test_monthly_api_shape_matches_the_summary(
+    client: TestClient, users: dict[str, TestUser]
+) -> None:
+    for owner in ("owner_a", "owner_b"):
+        headers = users[owner].headers
+        trend = client.get(MONTHLY, headers=headers).json()
+        summary = client.get(SUMMARY, headers=headers).json()
+        assert trend["currency_unit"] == "cents" and trend["period_basis"] == "UTC"
+        months = [m["month_start"] for m in trend["months"]]
+        assert len(months) == 6 and months == sorted(months)
+        assert all(m.endswith("-01") for m in months)
+        # The last month is the current UTC month, with exactly the summary's MTD figures.
+        assert months[-1] == summary["month_start"][:10]
+        current = trend["months"][-1]
+        assert current["revenue_cents"] == summary["mtd"]["revenue_cents"]
+        assert current["expenses_cents"] == summary["mtd"]["expenses_cents"]
 
 
 def test_api_matches_the_service_and_is_per_tenant(
@@ -146,6 +166,54 @@ async def test_formulas(settings: Settings) -> None:
         "refunded": 1,
         "cancelled": 1,
     }
+
+
+@pytest.mark.anyio
+async def test_monthly_formulas(settings: Settings) -> None:
+    owner = TokenClaims(sub=str(uuid.uuid4()), tenant_id=TENANT_A, app_role="owner")
+    async with await psycopg.AsyncConnection.connect(
+        settings.database_url, autocommit=True
+    ) as aconn:
+        async with aconn.transaction(force_rollback=True):
+            await aconn.execute("alter table public.invoices disable trigger invoices_30_numbering")
+            now = (await (await aconn.execute("select now()")).fetchone())[0]
+            today = (
+                await (await aconn.execute("select (now() at time zone 'UTC')::date")).fetchone()
+            )[0]
+
+            await apply_user_scope(aconn, owner)
+            before = await fetch_monthly(aconn, TENANT_A)
+            starts = [m["month_start"] for m in before["months"]]
+            # A moment inside the previous month, and one just before the 6-month window.
+            last_month = starts[-1] - timedelta(days=1)
+            too_old = starts[0] - timedelta(days=1)
+
+            await aconn.execute("reset role")
+            await aconn.execute("select set_config('request.jwt.claims', '', true)")
+            rows = _Rows(aconn)
+            await rows.invoice(TENANT_A, 10000, 800, "paid", now)
+            await rows.invoice(TENANT_A, 20000, 1600, "shipped", f"{last_month} 12:00+00")
+            await rows.invoice(TENANT_A, 40000, 3200, "paid", f"{too_old} 12:00+00")  # outside
+            await rows.invoice(TENANT_A, 80000, 6400, "paid", now, refunded=True)  # excluded
+            await rows.invoice(TENANT_A, 160000, 12800, "paid", now, cancelled=True)  # excluded
+            await rows.invoice(TENANT_A, 320000, 25600, "quote")  # never paid
+            await rows.expense(TENANT_A, today, 1000)
+            await rows.expense(TENANT_A, today, 2000, deductible=False)
+            await rows.expense(TENANT_A, last_month, 4000)
+            await rows.expense(TENANT_A, too_old, 8000)  # outside
+            await rows.expense(TENANT_A, today + timedelta(days=40), 16000)  # future: no
+            await rows.invoice(TENANT_B, 640000, 51200, "paid", now)  # other tenant
+            await rows.expense(TENANT_B, today, 32000)
+
+            await apply_user_scope(aconn, owner)
+            after = await fetch_monthly(aconn, TENANT_A)
+
+    assert [m["month_start"] for m in after["months"]] == starts
+    deltas = [
+        (a["revenue_cents"] - b["revenue_cents"], a["expenses_cents"] - b["expenses_cents"])
+        for a, b in zip(after["months"], before["months"], strict=True)
+    ]
+    assert deltas == [(0, 0), (0, 0), (0, 0), (0, 0), (20000, 4000), (10000, 3000)]
 
 
 class _Rows:
