@@ -171,6 +171,57 @@ def test_a_non_srgb_profile_is_converted_to_srgb() -> None:
     assert g > 200 and r < 60 and b < 60, (r, g, b)
 
 
+# Display P3 primaries, D50-adapted (as in Apple's Display P3 profile). The test profile uses
+# linear tone curves, so the expected sRGB value can be computed exactly below.
+P3_RED = (0.5151, 0.2412, -0.0011)
+P3_GREEN = (0.2919, 0.6922, 0.0419)
+P3_BLUE = (0.1572, 0.0666, 0.7841)
+
+
+def _matrix(red, green, blue) -> list[list[float]]:
+    """RGB -> XYZ: the primaries are the columns."""
+    return [[red[i], green[i], blue[i]] for i in range(3)]
+
+
+def _inverse(m: list[list[float]]) -> list[list[float]]:
+    (a, b, c), (d, e, f), (g, h, i) = m
+    det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
+    return [
+        [(e * i - f * h) / det, (c * h - b * i) / det, (b * f - c * e) / det],
+        [(f * g - d * i) / det, (a * i - c * g) / det, (c * d - a * f) / det],
+        [(d * h - e * g) / det, (b * g - a * h) / det, (a * e - b * d) / det],
+    ]
+
+
+def _apply(m: list[list[float]], v: list[float]) -> list[float]:
+    return [sum(m[row][k] * v[k] for k in range(3)) for row in range(3)]
+
+
+def _srgb_encode(linear: float) -> int:
+    linear = min(1.0, max(0.0, linear))
+    value = 12.92 * linear if linear <= 0.0031308 else 1.055 * linear ** (1 / 2.4) - 0.055
+    return round(value * 255)
+
+
+def test_a_display_p3_image_keeps_its_colours_after_conversion_to_srgb() -> None:
+    p3 = icc_profile("Display P3 (linear, test)", P3_RED, P3_GREEN, P3_BLUE)
+    pixel = (200, 120, 60)  # inside the sRGB gamut, so nothing is clipped
+    source = encode(Image.new("RGB", (64, 64), pixel), "PNG", icc_profile=p3)
+    assert decode(source).info["icc_profile"] == p3
+
+    # Expected, computed without LittleCMS: P3 linear -> XYZ (D50) -> sRGB linear -> sRGB.
+    xyz = _apply(_matrix(P3_RED, P3_GREEN, P3_BLUE), [c / 255 for c in pixel])
+    srgb_linear = _apply(_inverse(_matrix(SRGB_RED, SRGB_GREEN, SRGB_BLUE)), xyz)
+    expected = tuple(_srgb_encode(c) for c in srgb_linear)
+    # Dropping the profile without converting would visibly change the colour.
+    assert max(abs(e - p) for e, p in zip(expected, pixel, strict=True)) > 30, expected
+
+    result = decode(process_product_image(source).large)
+    assert "icc_profile" not in result.info
+    actual = result.convert("RGB").getpixel((32, 32))
+    assert all(abs(a - e) <= 3 for a, e in zip(actual, expected, strict=True)), (actual, expected)
+
+
 def test_an_srgb_profile_leaves_the_pixels_alone() -> None:
     srgb = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
     source = encode(Image.new("RGB", (64, 64), (200, 30, 40)), "PNG", icc_profile=srgb)
