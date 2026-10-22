@@ -184,6 +184,11 @@ stay generic.
   but never registered is not removed (registration always removes it). **Milestone B**
   (not implemented yet): a scheduled sweep that deletes objects in `product-uploads` older
   than 24 hours.
+- **Error responses have no machine-readable code.** An error body is only
+  `{"detail": "<message>"}`, so the admin app tells a duplicate value apart from other 409s
+  by matching the message text. **Milestone B** (not implemented yet): a stable `code` field
+  on every error response (for example `duplicate_value`, `in_use`), and the frontend
+  switches on `code` instead of message text.
 - **Two-decimal currencies only (v1).** Every amount is integer hundredths of the major unit
   (`*_cents`). `company_settings.currency` accepts only USD, CAD, EUR, GBP, MXN, AUD, NZD and
   CHF (`SUPPORTED_CURRENCIES` in `app/models/settings.py`); zero-decimal (JPY) and
