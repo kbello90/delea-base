@@ -20,6 +20,17 @@
 .dl-button--ghost:hover {
   background: var(--surface-2);
 }
+.dl-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.dl-button:disabled:hover {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+.dl-button--ghost:disabled:hover {
+  background: transparent;
+}
 
 .dl-card {
   background: var(--surface);

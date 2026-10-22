@@ -189,6 +189,14 @@ async def check_documents(conn: AsyncConnection, tenant_id: UUID) -> list[str]:
         if any(t is not None and t > now for t in (created, paid, refunded, cancelled)):
             problems.append(f"invoice {iid}: a timestamp is in the future")
 
+    ((unrecorded,),) = await _rows(
+        conn,
+        "select count(*) from public.invoices "
+        "where tenant_id = %s and paid_at is not null and payment_method is null",
+        (tenant_id,),
+    )
+    if unrecorded:
+        problems.append(f"{unrecorded} paid invoice(s) have no payment method")
     ((next_quote, next_invoice),) = await _rows(
         conn,
         "select next_quote_number, next_invoice_number from public.company_settings "

@@ -6,7 +6,14 @@ from datetime import date
 import pytest
 from pydantic import ValidationError
 
-from app.models.invoice import InvoiceCreate, InvoiceItemsReplace, InvoiceStatusChange
+from app.models.invoice import (
+    InvoiceCreate,
+    InvoiceItemsReplace,
+    InvoicePreview,
+    InvoiceStatusChange,
+    InvoiceUpdate,
+    PaymentMethod,
+)
 from app.services.invoices import WALK_IN_NAME, customer_display_name, due_date_for
 
 ITEM = {"product_id": str(uuid.uuid4()), "qty": 1}
@@ -115,3 +122,40 @@ def test_customer_display_name() -> None:
 )
 def test_due_date_from_payment_terms(terms: str | None, expected: date | None) -> None:
     assert due_date_for(terms, date(2026, 10, 20)) == expected
+
+
+def test_payment_method_values_match_the_enum() -> None:
+    assert [m.value for m in PaymentMethod] == ["cash", "card", "bank_transfer", "other"]
+    with pytest.raises(ValidationError):
+        InvoiceCreate(items=[ITEM], pay_now=True, payment_method="cheque")
+    change = InvoiceStatusChange(status="paid", payment_method="cash")
+    assert change.payment_method == PaymentMethod.cash
+    assert InvoiceStatusChange(status="shipped").payment_method is None
+
+
+def test_preview_takes_what_create_prices_and_nothing_else() -> None:
+    body = InvoicePreview(items=[ITEM], tax_rate_bps=500)
+    assert body.customer_id is None and body.tax_rate_bps == 500
+    for forged in (
+        {"pay_now": True},
+        {"notes": "x"},
+        {"total_cents": 1},
+        {"due_date": "2027-01-01"},
+    ):
+        with pytest.raises(ValidationError):
+            InvoicePreview(items=[ITEM], **forged)
+
+
+def test_invoice_update_takes_notes_due_date_and_payment_method_only() -> None:
+    assert InvoiceUpdate(notes=None).model_dump(exclude_unset=True) == {"notes": None}
+    assert InvoiceUpdate(payment_method="card").payment_method == PaymentMethod.card
+    for forged in (
+        {"total_cents": 1},
+        {"order_status": "paid"},
+        {"customer_id": str(uuid.uuid4())},
+        {"tax_rate_bps": 0},
+        {"items": [ITEM]},
+        {"notes": "x" * 5001},
+    ):
+        with pytest.raises(ValidationError):
+            InvoiceUpdate(**forged)

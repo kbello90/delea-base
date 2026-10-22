@@ -145,9 +145,7 @@ async def test_concurrent_sales_cannot_oversell(settings: Settings, db, last_uni
     assert isinstance(error, errors.RaiseException)
     mapped = map_db_error(error)
     assert mapped.status_code == 409
-    assert (
-        mapped.detail == f"insufficient stock for SKU {last_unit['sku']}: 0 available, 1 requested"
-    )
+    assert mapped.detail == f"Not enough stock for SKU {last_unit['sku']}: 0 available, 1 needed."
 
     stock = db.execute(
         "select stock_qty from public.products where id = %s", (last_unit["product_id"],)
@@ -200,9 +198,46 @@ async def test_sale_waits_for_a_concurrent_stock_change(
 
     assert "error" in result, "the sale must see the committed stock of 0 and fail"
     assert map_db_error(result["error"]).detail == (
-        f"insufficient stock for SKU {last_unit['sku']}: 0 available, 1 requested"
+        f"Not enough stock for SKU {last_unit['sku']}: 0 available, 1 needed."
     )
     stock = db.execute(
         "select stock_qty from public.products where id = %s", (last_unit["product_id"],)
     ).fetchone()[0]
     assert stock == 0
+
+
+# ---------------------------------------------------------------------------
+# Line items of a paid invoice can't change, even for the owner writing to the database
+# directly (not through the API's quote check).
+# ---------------------------------------------------------------------------
+SARAH_PAID_INVOICE = "a7000000-0000-0000-0000-000000000001"
+
+
+@pytest.mark.anyio
+async def test_paid_invoice_lines_are_refused_by_the_database(settings: Settings, db) -> None:
+    before = db.execute(
+        "select count(*), sum(qty) from public.invoice_line_items where invoice_id = %s",
+        (SARAH_PAID_INVOICE,),
+    ).fetchone()
+    pool = create_pool(settings)
+    await open_pool(pool)
+    try:
+        with pytest.raises(errors.InsufficientPrivilege) as info:
+            async with user_session(pool, claims(TENANT_A, "owner")) as conn:
+                await conn.execute(
+                    "insert into public.invoice_line_items (invoice_id, tenant_id, description, "
+                    "qty, unit_price_cents, line_total_cents) values (%s, %s, 'Extra', 1, 1, 1)",
+                    (SARAH_PAID_INVOICE, TENANT_A),
+                )
+    finally:
+        await pool.close()
+    mapped = map_db_error(info.value)
+    assert (mapped.status_code, mapped.detail) == (
+        403,
+        "line items can only change while the invoice is a quote",
+    )
+    after = db.execute(
+        "select count(*), sum(qty) from public.invoice_line_items where invoice_id = %s",
+        (SARAH_PAID_INVOICE,),
+    ).fetchone()
+    assert after == before

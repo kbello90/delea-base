@@ -188,6 +188,7 @@ create table invoices (
   due_date date,                                             -- set from customers.payment_terms; null = due on receipt
   public_token uuid not null default gen_random_uuid(),      -- unguessable link for shopper order tracking; see §8 item 4
   notes text,
+  payment_method payment_method,                             -- cash/card/bank_transfer/other; null on quotes (migration 20261022000200)
   paid_at timestamptz,
   refunded_at timestamptz,                                   -- see §8 item 6
   cancelled_at timestamptz,                                  -- see §8 item 6
@@ -265,7 +266,9 @@ create table stripe_events (
 ```
 
 **Invoice rules enforced in the database:**
-- `order_status` moves forward only along `quote → paid → in_production → shipped → delivered`, enforced by a `before update` trigger. A forward skip such as `paid → shipped` is allowed, since not every piece is made to order. Backward moves are rejected.
+- `order_status` moves forward only along `quote → paid → in_production → shipped → delivered`, enforced by a `before update` trigger. A forward skip such as `paid → shipped` is allowed, since not every piece is made to order. Backward moves are rejected ("This invoice can't move back to paid.").
+- **Closed invoices** (migration 20261022000200, `invoices_08_closed_guard`, every caller): a cancelled or refunded invoice keeps its status, a cancelled one can't be refunded and a refunded one can't be cancelled (P0001).
+- **`payment_method`** (enum `cash`, `card`, `bank_transfer`, `other`; same migration): null while the invoice is a quote (check `invoices_payment_method_only_when_paid`), recorded when it's paid, null on invoices paid before the column existed. The staff financial guard also stops staff changing a method that is set.
 - Setting `paid` stamps `paid_at` and assigns `invoice_number` from `company_settings.next_invoice_number` (row-locked increment). `quote_number` is assigned from `next_quote_number` on insert.
 - `order_placed` and `order_status_changed` events are inserted into `automation_events` by a trigger on `invoices`. `stock_low` and `material_low` events are inserted by triggers on `products` and `materials` when a stock update crosses below its threshold. The FastAPI automation service drains the queue; the database never sends email itself.
 
@@ -361,7 +364,7 @@ The migrations in `supabase/migrations/` are now the source of truth. Where the 
 - **Stock decrement.** When an invoice first leaves `quote` (`old = 'quote' and new > 'quote'`, including a skip straight to shipped), each product's `stock_qty` drops by the sum of its lines' `qty`.
   - **Concurrency:** the product rows are locked `FOR UPDATE` in id order first, so two simultaneous sales of the same product serialize. The second sale sees the first one's decrement.
   - **Lines:** lines without a product are skipped.
-  - **Insufficient stock:** raises P0001 "insufficient stock for SKU ...: N available, M requested", and the whole transition rolls back.
+  - **Insufficient stock:** raises P0001 "Not enough stock for SKU ...: N available, M needed.", and the whole transition rolls back.
   - **Later updates:** they never decrement again, and there's no restock on refund or cancel in v1.
   - **Invoices inserted directly as paid** (service role only) have no lines at insert time, so they never decrement stock. Those paths must create the quote, add the lines, then advance it.
 - **Tax rate for staff.** `current_tax_rate_bps()` (SECURITY DEFINER, `search_path = ''`) returns `default_tax_rate_bps` for the caller's tenant (from the JWT) when `app_role` is owner or staff. It raises 42501 for anyone else, cpa included. `EXECUTE` is granted to `authenticated` only. Staff get the rate without access to `company_settings`.

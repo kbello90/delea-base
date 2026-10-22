@@ -16,6 +16,7 @@ export function ConfirmDialog({
   busyLabel = "Working…",
   onConfirm,
   busy = false,
+  confirmDisabled = false,
   error = null,
   errorAction,
   danger = false,
@@ -28,6 +29,8 @@ export function ConfirmDialog({
   busyLabel?: string;
   onConfirm: () => void;
   busy?: boolean;
+  /** Disables only the confirm button (e.g. until a required choice is made). */
+  confirmDisabled?: boolean;
   error?: string | null;
   errorAction?: ReactNode;
   danger?: boolean;
@@ -58,7 +61,7 @@ export function ConfirmDialog({
             <Button
               type="button"
               className={danger ? "dl-button--danger" : undefined}
-              disabled={busy}
+              disabled={busy || confirmDisabled}
               aria-busy={busy}
               onClick={onConfirm}
             >

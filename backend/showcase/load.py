@@ -284,10 +284,12 @@ async def _insert_sales(conn: AsyncConnection, tid: uuid.UUID, history: History)
             )
         await _stamp_events(conn, tid, inv.created_at)
         for status, at in inv.steps:
+            # The first step is the payment, which records how it was paid.
             await conn.execute(
-                "update public.invoices set order_status = %s::public.order_status "
+                "update public.invoices set order_status = %s::public.order_status, "
+                "payment_method = coalesce(payment_method, %s::public.payment_method) "
                 "where id = %s and tenant_id = %s",
-                (status, inv.id, tid),
+                (status, inv.payment_method, inv.id, tid),
             )
             await _stamp_events(conn, tid, at)
         for column, at in (("refunded_at", inv.refunded_at), ("cancelled_at", inv.cancelled_at)):

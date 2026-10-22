@@ -69,9 +69,20 @@ jobs:
           cache-dependency-path: backend/pyproject.toml
 
       # Local stack only (no hosted project, no secrets). Studio and analytics aren't needed here;
-      # Storage is (product images).
+      # Storage is (product images). Docker Hub can refuse image pulls under its rate limit
+      # ("toomanyrequests"), so starting is tried up to 3 times, clearing any half-started stack
+      # and pausing in between. No registry credentials are used.
       - name: Start the local Supabase stack
-        run: $SUPABASE start -x realtime,imgproxy,edge-runtime,logflare,vector,supavisor,studio
+        run: |
+          for attempt in 1 2 3; do
+            if $SUPABASE start -x realtime,imgproxy,edge-runtime,logflare,vector,supavisor,studio; then
+              exit 0
+            fi
+            echo "::warning::Supabase start failed (attempt $attempt of 3)"
+            $SUPABASE stop --no-backup || true
+            if [ "$attempt" -lt 3 ]; then sleep 30; fi
+          done
+          exit 1
 
       - name: pgTAP tests
         run: $SUPABASE test db

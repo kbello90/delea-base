@@ -273,7 +273,7 @@ def test_trigger_message_is_surfaced_for_backward_status(db) -> None:
         )
     mapped = map_db_error(info.value)
     assert mapped.status_code == 422
-    assert mapped.detail == "order_status cannot move backward (paid -> quote)"
+    assert mapped.detail == "This invoice can't move back to quote."
 
 
 @pytest.mark.anyio

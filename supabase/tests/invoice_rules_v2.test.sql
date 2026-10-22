@@ -293,8 +293,8 @@ select is(pg_temp.stock('T-X'), 2, 'a later move (paid -> shipped) does not decr
 
 select pg_temp.set_claims('11111111-1111-1111-1111-111111111111', 'owner');
 select pg_temp.exec_as('authenticated',
-  $q$update public.invoices set refunded_at = now(), cancelled_at = now() where id = 'd0000000-0000-0000-0000-000000000001'$q$);
-select is(pg_temp.stock('T-X'), 2, 'refund / cancel does not restock (v1)');
+  $q$update public.invoices set refunded_at = now() where id = 'd0000000-0000-0000-0000-000000000001'$q$);
+select is(pg_temp.stock('T-X'), 2, 'a refund does not restock (v1)');
 
 -- Insufficient stock: the whole transition fails, nothing moves.
 select pg_temp.set_claims('11111111-1111-1111-1111-111111111111', 'staff');
@@ -307,7 +307,7 @@ select pg_temp.exec_as('authenticated', $q$
     ('d0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'e0000000-0000-0000-0000-00000000000b', 'Y', 1, 1000, 1000)$q$);
 select throws_ok(format('select pg_temp.exec_as(%L, %L)', 'authenticated',
   $q$update public.invoices set order_status = 'paid' where id = 'd0000000-0000-0000-0000-000000000002'$q$),
-  'P0001', 'insufficient stock for SKU T-Y: 0 available, 1 requested',
+  'P0001', 'Not enough stock for SKU T-Y: 0 available, 1 needed.',
   'insufficient stock names the SKU and the available quantity');
 select is((select order_status::text from public.invoices where id = 'd0000000-0000-0000-0000-000000000002'),
           'quote', 'the invoice stays a quote');
@@ -323,7 +323,7 @@ select pg_temp.exec_as('authenticated', $q$
     ('d0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'e0000000-0000-0000-0000-00000000000a', 'X', 2, 1000, 2000)$q$);
 select throws_ok(format('select pg_temp.exec_as(%L, %L)', 'authenticated',
   $q$update public.invoices set order_status = 'paid' where id = 'd0000000-0000-0000-0000-000000000003'$q$),
-  'P0001', 'insufficient stock for SKU T-X: 2 available, 4 requested',
+  'P0001', 'Not enough stock for SKU T-X: 2 available, 4 needed.',
   'two lines of 2 against stock 2 are refused (quantities summed)');
 select is(pg_temp.stock('T-X'), 2, 'stock unchanged after the refused sale');
 

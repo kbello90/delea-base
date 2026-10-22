@@ -125,7 +125,7 @@ def test_role_matrix(client: TestClient, users: dict[str, TestUser], db) -> None
         json={"status": "quote"},
     )
 
-    paid = create(client, owner, body["items"], pay_now=True)
+    paid = create(client, owner, body["items"], pay_now=True, payment_method="card")
     assert_access(
         client, users, "POST", f"{INVOICES}/{paid['id']}/refund", {"owner_a": 200, "owner_b": 404}
     )
@@ -345,7 +345,9 @@ def test_put_items_replaces_and_reprices_a_quote(client, users, db) -> None:
 
 def test_put_items_on_a_paid_invoice_is_409(client, users, db) -> None:
     p = product(db)
-    paid = create(client, users["owner_a"], [{"product_id": p, "qty": 1}], pay_now=True)
+    paid = create(
+        client, users["owner_a"], [{"product_id": p, "qty": 1}], pay_now=True, payment_method="card"
+    )
     response = client.put(
         f"{INVOICES}/{paid['id']}/items",
         json={"items": [{"product_id": p, "qty": 5}]},
@@ -366,7 +368,9 @@ def test_skip_to_shipped_decrements_stock_once(client, users, db) -> None:
         client, users["staff_a"], [{"product_id": p, "qty": 3}, {"product_id": p, "qty": 1}]
     )
     url = f"{INVOICES}/{quote['id']}/status"
-    shipped = client.post(url, json={"status": "shipped"}, headers=users["staff_a"].headers)
+    shipped = client.post(
+        url, json={"status": "shipped", "payment_method": "card"}, headers=users["staff_a"].headers
+    )
     assert shipped.status_code == 200, shipped.text
     assert shipped.json()["invoice_number"].startswith("INV-") and shipped.json()["paid_at"]
     assert stock(db, p) == 6
@@ -374,7 +378,7 @@ def test_skip_to_shipped_decrements_stock_once(client, users, db) -> None:
     assert delivered.status_code == 200 and stock(db, p) == 6
     backward = client.post(url, json={"status": "paid"}, headers=users["staff_a"].headers)
     assert backward.status_code == 422
-    assert backward.json()["detail"] == "order_status cannot move backward (delivered -> paid)"
+    assert backward.json()["detail"] == "This invoice can't move back to paid."
 
 
 def test_insufficient_stock_keeps_a_quote_and_burns_no_number(client, users, db) -> None:
@@ -383,14 +387,12 @@ def test_insufficient_stock_keeps_a_quote_and_burns_no_number(client, users, db)
     before = counters(db)
     response = client.post(
         f"{INVOICES}/{quote['id']}/status",
-        json={"status": "paid"},
+        json={"status": "paid", "payment_method": "card"},
         headers=users["owner_a"].headers,
     )
     assert response.status_code == 409
     sku = db.execute("select sku from public.products where id = %s", (p,)).fetchone()[0]
-    assert (
-        response.json()["detail"] == f"insufficient stock for SKU {sku}: 1 available, 2 requested"
-    )
+    assert response.json()["detail"] == f"Not enough stock for SKU {sku}: 1 available, 2 needed."
     after = client.get(f"{INVOICES}/{quote['id']}", headers=users["owner_a"].headers).json()
     assert (after["order_status"], after["invoice_number"]) == ("quote", None)
     assert counters(db) == before and stock(db, p) == 1
@@ -400,7 +402,12 @@ def test_pay_now_is_atomic(client, users, db) -> None:
     p = product(db, stock=5)
     cust = customer(db)
     paid = create(
-        client, users["staff_a"], [{"product_id": p, "qty": 2}], customer_id=cust, pay_now=True
+        client,
+        users["staff_a"],
+        [{"product_id": p, "qty": 2}],
+        customer_id=cust,
+        pay_now=True,
+        payment_method="cash",
     )
     assert paid["order_status"] == "paid" and paid["invoice_number"].startswith("INV-")
     assert stock(db, p) == 3
@@ -408,10 +415,15 @@ def test_pay_now_is_atomic(client, users, db) -> None:
     before = counters(db)
     response = client.post(
         INVOICES,
-        json={"customer_id": cust, "pay_now": True, "items": [{"product_id": p, "qty": 4}]},
+        json={
+            "customer_id": cust,
+            "pay_now": True,
+            "payment_method": "card",
+            "items": [{"product_id": p, "qty": 4}],
+        },
         headers=users["staff_a"].headers,
     )
-    assert response.status_code == 409 and "insufficient stock" in response.json()["detail"]
+    assert response.status_code == 409 and "Not enough stock" in response.json()["detail"]
     assert (
         db.execute(
             "select count(*) from public.invoices where customer_id = %s", (cust,)
@@ -432,7 +444,7 @@ def test_refund_and_cancel_rules(client, users, db) -> None:
     assert refund_quote.status_code == 409
     assert refund_quote.json() == {"detail": "only paid invoices can be refunded"}
 
-    paid = create(client, owner, [{"product_id": p, "qty": 1}], pay_now=True)
+    paid = create(client, owner, [{"product_id": p, "qty": 1}], pay_now=True, payment_method="card")
     url = f"{INVOICES}/{paid['id']}"
     assert client.post(f"{url}/refund", headers=staff.headers).status_code == 403
     refunded = client.post(f"{url}/refund", headers=owner.headers)
@@ -441,8 +453,13 @@ def test_refund_and_cancel_rules(client, users, db) -> None:
     assert stock(db, p) == 99  # no restock in v1
 
     assert client.post(f"{url}/cancel", headers=staff.headers).status_code == 403
-    assert client.post(f"{url}/cancel", headers=owner.headers).status_code == 200
-    again = client.post(f"{url}/cancel", headers=owner.headers)
+
+    other = create(
+        client, owner, [{"product_id": p, "qty": 1}], pay_now=True, payment_method="card"
+    )
+    other_url = f"{INVOICES}/{other['id']}"
+    assert client.post(f"{other_url}/cancel", headers=owner.headers).status_code == 200
+    again = client.post(f"{other_url}/cancel", headers=owner.headers)
     assert again.status_code == 409 and again.json() == {
         "detail": "this invoice is already cancelled"
     }
@@ -460,7 +477,7 @@ def test_delete_quote_only(client, users, db) -> None:
         == 0
     )
 
-    paid = create(client, owner, [{"product_id": p, "qty": 1}], pay_now=True)
+    paid = create(client, owner, [{"product_id": p, "qty": 1}], pay_now=True, payment_method="card")
     response = client.delete(f"{INVOICES}/{paid['id']}", headers=owner.headers)
     assert response.status_code == 403
     assert response.json() == {
@@ -477,7 +494,14 @@ def test_list_filters(client, users, db) -> None:
     cust = customer(db)
     p = product(db)
     quote = create(client, owner, [{"product_id": p, "qty": 1}], customer_id=cust)
-    paid = create(client, owner, [{"product_id": p, "qty": 1}], customer_id=cust, pay_now=True)
+    paid = create(
+        client,
+        owner,
+        [{"product_id": p, "qty": 1}],
+        customer_id=cust,
+        pay_now=True,
+        payment_method="card",
+    )
 
     def ids(**params) -> set[str]:
         response = client.get(INVOICES, params={"limit": 100, **params}, headers=owner.headers)
@@ -497,13 +521,25 @@ def test_list_filters(client, users, db) -> None:
     assert bad.status_code == 422
 
 
+def header_after(row: dict, column: str) -> str:
+    header = list(row.keys())
+    return header[header.index(column) + 1]
+
+
 def test_csv_export(client, users, db) -> None:
     owner = users["owner_a"]
     cust = customer(db)
     # A customer name that a spreadsheet would execute as a formula.
     db.execute("update public.customers set first_name = '=IT-HYPERLINK(1)' where id = %s", (cust,))
     p = product(db, price=1999)
-    paid = create(client, owner, [{"product_id": p, "qty": 1}], customer_id=cust, pay_now=True)
+    paid = create(
+        client,
+        owner,
+        [{"product_id": p, "qty": 1}],
+        customer_id=cust,
+        pay_now=True,
+        payment_method="card",
+    )
     try:
         response = client.get(
             f"{INVOICES}/export.csv",
@@ -516,6 +552,8 @@ def test_csv_export(client, users, db) -> None:
         assert len(rows) == 1
         row = rows[0]
         assert row["invoice_number"] == paid["invoice_number"]
+        assert row["payment_method"] == "card"
+        assert header_after(row, "paid_at") == "payment_method"
         assert row["customer_name"] == "'=IT-HYPERLINK(1) Tester"
         assert (row["subtotal"], row["tax"], row["total"]) == ("19.99", "1.60", "21.59")
         # The tenant's currency, as the column just before the first amount.
@@ -554,3 +592,302 @@ def test_csv_export_currency_is_the_tenants(client, users, db) -> None:
             "update public.company_settings set currency = 'USD' where tenant_id = %s",
             (TENANT_B,),
         )
+
+
+# ---------------------------------------------------------------------------
+# Preview: the same numbers as create, and nothing written
+# ---------------------------------------------------------------------------
+def footprint(db) -> tuple:
+    """Everything a create or a sale would touch in tenant A."""
+    return db.execute(
+        "select (select count(*) from public.invoices where tenant_id = %(t)s), "
+        "(select count(*) from public.invoice_line_items where tenant_id = %(t)s), "
+        "(select count(*) from public.automation_events where tenant_id = %(t)s), "
+        "(select sum(stock_qty) from public.products where tenant_id = %(t)s), "
+        "(select next_quote_number from public.company_settings where tenant_id = %(t)s), "
+        "(select next_invoice_number from public.company_settings where tenant_id = %(t)s)",
+        {"t": TENANT_A},
+    ).fetchone()
+
+
+PRICED = ("subtotal_cents", "tax_rate_bps", "tax_cents", "total_cents")
+LINE = ("product_id", "description", "qty", "unit_price_cents", "line_total_cents")
+
+
+def preview(client, user: TestUser, status_code=200, **body) -> dict:
+    response = client.post(f"{INVOICES}/preview", json=body, headers=user.headers)
+    assert response.status_code == status_code, response.text
+    return response.json()
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["retail_on_sale", "wholesale_minimum", "tax_exempt", "owner_override", "walk_in"],
+)
+def test_preview_matches_create_exactly_and_writes_nothing(client, users, db, case: str) -> None:
+    owner, staff = users["owner_a"], users["staff_a"]
+    a = product(db, price=10000, sale=9000)
+    b = product(db, price=333)
+    body: dict = {"items": [{"product_id": a, "qty": 1}, {"product_id": b, "qty": 3}]}
+    user = staff
+    if case == "retail_on_sale":
+        body["customer_id"] = customer(db)
+    elif case == "wholesale_minimum":
+        body["customer_id"] = customer(db, wholesale=True, bps=1500)
+    elif case == "tax_exempt":
+        body["customer_id"] = customer(db, wholesale=True, bps=500, exempt=True)
+    elif case == "owner_override":
+        body["tax_rate_bps"], user = 625, owner
+
+    before = footprint(db)
+    priced = preview(client, user, **body)
+    assert footprint(db) == before  # no invoice, line, event, stock change or number
+
+    created = create(client, user, body.pop("items"), **body)
+    assert {k: priced[k] for k in PRICED} == {k: created[k] for k in PRICED}
+    # Stored lines are read back in id order, so compare them as sets of rows.
+    assert sorted(tuple(ln[k] for k in LINE) for ln in priced["lines"]) == sorted(
+        tuple(ln[k] for k in LINE) for ln in created["items"]
+    )
+    assert priced["stock_shortages"] == []
+
+
+def test_preview_rules(client, users, db) -> None:
+    owner, staff, cpa = users["owner_a"], users["staff_a"], users["cpa_a"]
+    p = product(db, stock=2)
+    items = [{"product_id": p, "qty": 2}, {"product_id": p, "qty": 1}]
+    before = footprint(db)
+    # Quantities are summed per product, as the database checks when paying.
+    sku = db.execute("select sku from public.products where id = %s", (p,)).fetchone()[0]
+    assert preview(client, staff, items=items)["stock_shortages"] == [
+        {"product_id": p, "sku": sku, "available": 2, "needed": 3}
+    ]
+    detail = preview(client, staff, 403, items=items, tax_rate_bps=0)["detail"]
+    assert detail == "only the owner can override the tax rate"
+    refused = client.post(f"{INVOICES}/preview", json={"items": items}, headers=cpa.headers)
+    assert refused.status_code == 403
+    preview(client, owner, 404, items=[{"product_id": SEED_B_PRODUCT, "qty": 1}])
+    preview(client, owner, 404, items=items, customer_id=SEED_B_CUSTOMER)
+    for forged in ({"pay_now": True}, {"total_cents": 1}, {"notes": "x"}):
+        preview(client, owner, 422, items=items, **forged)
+    assert footprint(db) == before
+
+
+def test_items_preview_uses_the_quotes_customer_and_stored_rate(client, users, db) -> None:
+    owner, staff = users["owner_a"], users["staff_a"]
+    a, b = product(db, price=1000), product(db, price=2500)
+    quote = create(
+        client,
+        owner,
+        [{"product_id": a, "qty": 1}],
+        customer_id=customer(db, wholesale=True, bps=1000),
+        tax_rate_bps=1000,
+    )
+    url = f"{INVOICES}/{quote['id']}/items"
+    items = [{"product_id": b, "qty": 2}, {"product_id": a, "qty": 1}]
+    before = footprint(db)
+    priced = client.post(f"{url}/preview", json={"items": items}, headers=staff.headers)
+    assert priced.status_code == 200, priced.text
+    assert footprint(db) == before
+    replaced = client.put(url, json={"items": items}, headers=staff.headers).json()
+    assert {k: priced.json()[k] for k in PRICED} == {k: replaced[k] for k in PRICED}
+    assert priced.json()["tax_rate_bps"] == 1000  # the owner's override stays in force
+
+    paid = create(client, owner, [{"product_id": a, "qty": 1}], pay_now=True, payment_method="card")
+    refused = client.post(
+        f"{INVOICES}/{paid['id']}/items/preview", json={"items": items}, headers=owner.headers
+    )
+    assert refused.status_code == 409 and refused.json() == {"detail": "only quotes can be edited"}
+    for name, expected in (("cpa_a", 403), ("owner_b", 404)):
+        response = client.post(f"{url}/preview", json={"items": items}, headers=users[name].headers)
+        assert response.status_code == expected, name
+
+
+# ---------------------------------------------------------------------------
+# Payment method
+# ---------------------------------------------------------------------------
+def method_of(db, invoice_id: str) -> str | None:
+    return db.execute(
+        "select payment_method::text from public.invoices where id = %s", (invoice_id,)
+    ).fetchone()[0]
+
+
+def test_payment_method_is_required_when_paying_and_refused_otherwise(client, users, db) -> None:
+    staff = users["staff_a"]
+    p = product(db, stock=10)
+    line = [{"product_id": p, "qty": 1}]
+    before = footprint(db)
+    response = client.post(INVOICES, json={"items": line, "pay_now": True}, headers=staff.headers)
+    assert response.status_code == 422
+    assert response.json() == {"detail": "a payment method is required to take payment"}
+    response = client.post(
+        INVOICES, json={"items": line, "payment_method": "cash"}, headers=staff.headers
+    )
+    assert response.status_code == 422
+    assert response.json() == {"detail": "the payment method is recorded only when a quote is paid"}
+    bad = client.post(
+        INVOICES,
+        json={"items": line, "pay_now": True, "payment_method": "cheque"},
+        headers=staff.headers,
+    )
+    assert bad.status_code == 422
+    assert footprint(db) == before  # nothing created, no number used
+
+    sale = create(client, staff, line, pay_now=True, payment_method="cash")
+    assert sale["payment_method"] == "cash" and method_of(db, sale["id"]) == "cash"
+
+    quote = create(client, staff, line)
+    assert quote["payment_method"] is None
+    url = f"{INVOICES}/{quote['id']}/status"
+    missing = client.post(url, json={"status": "paid"}, headers=staff.headers)
+    assert missing.status_code == 422
+    current = client.get(f"{INVOICES}/{quote['id']}", headers=staff.headers).json()
+    assert current["order_status"] == "quote"
+    paid = client.post(
+        url, json={"status": "paid", "payment_method": "bank_transfer"}, headers=staff.headers
+    )
+    assert paid.status_code == 200 and paid.json()["payment_method"] == "bank_transfer"
+    later = client.post(
+        url, json={"status": "shipped", "payment_method": "cash"}, headers=staff.headers
+    )
+    assert later.status_code == 422
+    moved = client.post(url, json={"status": "shipped"}, headers=staff.headers)
+    assert moved.status_code == 200 and moved.json()["payment_method"] == "bank_transfer"
+
+
+def test_only_the_owner_corrects_a_payment_method(client, users, db) -> None:
+    owner, staff, cpa = users["owner_a"], users["staff_a"], users["cpa_a"]
+    p = product(db)
+    sale = create(client, staff, [{"product_id": p, "qty": 1}], pay_now=True, payment_method="cash")
+    url = f"{INVOICES}/{sale['id']}"
+    refused = client.patch(url, json={"payment_method": "card"}, headers=staff.headers)
+    assert refused.status_code == 403
+    assert refused.json() == {"detail": "only the owner can change the payment method"}
+    by_cpa = client.patch(url, json={"payment_method": "card"}, headers=cpa.headers)
+    assert by_cpa.status_code == 403
+    assert method_of(db, sale["id"]) == "cash"
+    fixed = client.patch(url, json={"payment_method": "card"}, headers=owner.headers)
+    assert fixed.status_code == 200 and fixed.json()["payment_method"] == "card"
+    cleared = client.patch(url, json={"payment_method": None}, headers=owner.headers)
+    assert cleared.status_code == 422 and method_of(db, sale["id"]) == "card"
+
+    quote = create(client, owner, [{"product_id": p, "qty": 1}])
+    on_quote = client.patch(
+        f"{INVOICES}/{quote['id']}", json={"payment_method": "card"}, headers=owner.headers
+    )
+    assert on_quote.status_code == 409
+    assert on_quote.json() == {
+        "detail": "A quote has no payment method; it is recorded when it is paid."
+    }
+
+
+# ---------------------------------------------------------------------------
+# Cancelled and refunded invoices
+# ---------------------------------------------------------------------------
+def snapshot(db, invoice_id: str) -> tuple:
+    return db.execute(
+        "select order_status::text, refunded_at, cancelled_at, updated_at "
+        "from public.invoices where id = %s",
+        (invoice_id,),
+    ).fetchone()
+
+
+CANCELLED = {"detail": "This invoice is cancelled, so its status can't change."}
+REFUNDED = {"detail": "This invoice is refunded, so its status can't change."}
+
+
+def test_cancelled_and_refunded_invoices_are_closed(client, users, db) -> None:
+    owner, staff = users["owner_a"], users["staff_a"]
+    p = product(db)
+    line = [{"product_id": p, "qty": 1}]
+    cancelled = create(client, owner, line, pay_now=True, payment_method="card")
+    refunded = create(client, owner, line, pay_now=True, payment_method="card")
+    c_url, r_url = f"{INVOICES}/{cancelled['id']}", f"{INVOICES}/{refunded['id']}"
+    assert client.post(f"{c_url}/cancel", headers=owner.headers).status_code == 200
+    assert client.post(f"{r_url}/refund", headers=owner.headers).status_code == 200
+    before = (snapshot(db, cancelled["id"]), snapshot(db, refunded["id"]))
+
+    for user in (owner, staff):
+        for target in ("in_production", "shipped", "delivered"):
+            moved = client.post(f"{c_url}/status", json={"status": target}, headers=user.headers)
+            assert moved.status_code == 409 and moved.json() == CANCELLED
+            moved = client.post(f"{r_url}/status", json={"status": target}, headers=user.headers)
+            assert moved.status_code == 409 and moved.json() == REFUNDED
+
+    refund = client.post(f"{c_url}/refund", headers=owner.headers)
+    assert refund.status_code == 409
+    assert refund.json() == {"detail": "A cancelled invoice can't be refunded."}
+    cancel = client.post(f"{r_url}/cancel", headers=owner.headers)
+    assert cancel.status_code == 409
+    assert cancel.json() == {"detail": "A refunded invoice can't be cancelled."}
+    assert (snapshot(db, cancelled["id"]), snapshot(db, refunded["id"])) == before
+
+    # A cancelled quote can't be paid either (and no number or stock is used).
+    quote = create(client, owner, line)
+    assert client.post(f"{INVOICES}/{quote['id']}/cancel", headers=owner.headers).status_code == 200
+    stock_before, numbers_before = stock(db, p), counters(db)
+    pay = client.post(
+        f"{INVOICES}/{quote['id']}/status",
+        json={"status": "paid", "payment_method": "cash"},
+        headers=staff.headers,
+    )
+    assert pay.status_code == 409 and pay.json() == CANCELLED
+    assert (stock(db, p), counters(db)) == (stock_before, numbers_before)
+
+
+# ---------------------------------------------------------------------------
+# Notes and due date
+# ---------------------------------------------------------------------------
+def test_notes_at_any_status_due_date_on_quotes_only(client, users, db) -> None:
+    owner, staff, cpa = users["owner_a"], users["staff_a"], users["cpa_a"]
+    p = product(db)
+    quote = create(client, owner, [{"product_id": p, "qty": 1}], notes="first")
+    q_url = f"{INVOICES}/{quote['id']}"
+    edited = client.patch(
+        q_url, json={"notes": "Engrave 'M'", "due_date": "2027-02-01"}, headers=staff.headers
+    )
+    assert edited.status_code == 200, edited.text
+    assert (edited.json()["notes"], edited.json()["due_date"]) == ("Engrave 'M'", "2027-02-01")
+    assert edited.json()["total_cents"] == quote["total_cents"]
+    cleared = client.patch(q_url, json={"notes": None, "due_date": None}, headers=owner.headers)
+    assert (cleared.json()["notes"], cleared.json()["due_date"]) == (None, None)
+
+    sale = create(client, owner, [{"product_id": p, "qty": 1}], pay_now=True, payment_method="card")
+    s_url = f"{INVOICES}/{sale['id']}"
+    assert client.post(f"{s_url}/cancel", headers=owner.headers).status_code == 200
+    noted = client.patch(s_url, json={"notes": "Changed their mind"}, headers=staff.headers)
+    assert noted.status_code == 200 and noted.json()["notes"] == "Changed their mind"
+    due = client.patch(s_url, json={"due_date": "2027-02-01"}, headers=owner.headers)
+    assert due.status_code == 409
+    assert due.json() == {"detail": "The due date can only change while the invoice is a quote."}
+    assert client.get(s_url, headers=owner.headers).json()["due_date"] == sale["due_date"]
+
+    assert client.patch(q_url, json={"notes": "x"}, headers=cpa.headers).status_code == 403
+    assert client.patch(q_url, json={}, headers=owner.headers).status_code == 422
+    for forged in (
+        {"total_cents": 1},
+        {"order_status": "paid"},
+        {"customer_id": customer(db)},
+        {"tax_rate_bps": 0},
+        {"tenant_id": TENANT_B},
+    ):
+        assert client.patch(q_url, json=forged, headers=owner.headers).status_code == 422
+    other_tenant = client.patch(
+        f"{INVOICES}/{SEED_B_INVOICE}", json={"notes": "x"}, headers=owner.headers
+    )
+    assert other_tenant.status_code == 404
+
+
+def test_new_endpoints_role_matrix(client, users, db) -> None:
+    owner = users["owner_a"]
+    p = product(db)
+    quote = create(client, owner, [{"product_id": p, "qty": 1}])
+    items = {"items": [{"product_id": p, "qty": 1}]}
+    writers = {"owner_a": 200, "staff_a": 200, "owner_b": 404}
+    assert_access(client, users, "POST", f"{INVOICES}/preview", writers, json=items)
+    assert_access(
+        client, users, "POST", f"{INVOICES}/{quote['id']}/items/preview", writers, json=items
+    )
+    assert_access(
+        client, users, "PATCH", f"{INVOICES}/{quote['id']}", writers, json={"notes": "matrix"}
+    )

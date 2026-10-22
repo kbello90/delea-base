@@ -68,7 +68,9 @@ describe("brand theming", () => {
     renderApp({ path: "/invoices", backend: fakeBackend(tokenFor("cpa")), fetch });
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Invoices");
     expect(screen.getByTestId("brand-name")).toHaveTextContent("DELEA");
-    expect(fetch).not.toHaveBeenCalled();
+    // The invoices page loads its own data; the brand config is never asked for.
+    const paths = fetch.mock.calls.map(([request]) => new URL(request.url).pathname);
+    expect(paths).not.toContain("/api/v1/settings/brand");
     expect(root().getPropertyValue("--brand")).toBe("");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });

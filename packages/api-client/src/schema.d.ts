@@ -249,7 +249,7 @@ export interface paths {
          * @description Create a quote and its lines in one transaction; `pay_now` also moves it to paid.
          *
          *     If anything fails (including insufficient stock on pay_now), nothing is kept: no invoice,
-         *     no lines, no document number used.
+         *     no lines, no document number used. `pay_now` needs a payment method; a quote has none.
          */
         post: operations["create_invoice_api_v1_invoices_post"];
         delete?: never;
@@ -299,6 +299,32 @@ export interface paths {
         delete: operations["delete_invoice_api_v1_invoices__invoice_id__delete"];
         options?: never;
         head?: never;
+        /**
+         * Update Invoice
+         * @description Edit the notes (any status), the due date (quotes only) or, for the owner, the payment
+         *     method of a paid invoice. Money, lines and status have their own endpoints.
+         */
+        patch: operations["update_invoice_api_v1_invoices__invoice_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/invoices/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Invoice
+         * @description Price lines exactly as create would, and list any stock shortages. Writes nothing and
+         *     uses no document number. The tax override is owner-only here too.
+         */
+        post: operations["preview_invoice_api_v1_invoices_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -323,6 +349,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/{invoice_id}/items/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Items
+         * @description Price replacement lines for a quote as PUT /items would (its customer, its stored tax
+         *     rate). Writes nothing.
+         */
+        post: operations["preview_items_api_v1_invoices__invoice_id__items_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/{invoice_id}/status": {
         parameters: {
             query?: never;
@@ -334,9 +381,11 @@ export interface paths {
         put?: never;
         /**
          * Change Status
-         * @description Move the status forward (skips allowed). The database enforces the order and, when an
+         * @description Move the status forward (skips allowed). Leaving quote is the payment, so it needs a
+         *     payment method; any other move refuses one. The database enforces the order and, when an
          *     invoice leaves quote, assigns its number and decrements stock; its messages pass through
-         *     (backward: 422; insufficient stock: 409, with nothing changed).
+         *     (backward: 422; insufficient stock: 409, with nothing changed). Cancelled or refunded
+         *     invoices keep their status (409).
          */
         post: operations["change_status_api_v1_invoices__invoice_id__status_post"];
         delete?: never;
@@ -945,6 +994,7 @@ export interface components {
              * @default false
              */
             pay_now: boolean;
+            payment_method?: components["schemas"]["PaymentMethod"] | null;
         };
         /** InvoiceItemsReplace */
         InvoiceItemsReplace: {
@@ -1004,6 +1054,7 @@ export interface components {
             due_date: string | null;
             /** Notes */
             notes: string | null;
+            payment_method: components["schemas"]["PaymentMethod"] | null;
             /** Paid At */
             paid_at: string | null;
             /** Refunded At */
@@ -1023,9 +1074,48 @@ export interface components {
             /** Items */
             items?: components["schemas"]["InvoiceLineOut"][] | null;
         };
+        /**
+         * InvoicePreview
+         * @description What the client is about to create: priced without writing anything.
+         */
+        InvoicePreview: {
+            /** Customer Id */
+            customer_id?: string | null;
+            /** Items */
+            items: components["schemas"]["LineItemIn"][];
+            /** Tax Rate Bps */
+            tax_rate_bps?: number | null;
+        };
+        /** InvoicePreviewOut */
+        InvoicePreviewOut: {
+            /** Lines */
+            lines: components["schemas"]["PreviewLineOut"][];
+            /** Subtotal Cents */
+            subtotal_cents: number;
+            /** Tax Rate Bps */
+            tax_rate_bps: number;
+            /** Tax Cents */
+            tax_cents: number;
+            /** Total Cents */
+            total_cents: number;
+            /** Stock Shortages */
+            stock_shortages: components["schemas"]["StockShortage"][];
+        };
         /** InvoiceStatusChange */
         InvoiceStatusChange: {
             status: components["schemas"]["OrderStatus"];
+            payment_method?: components["schemas"]["PaymentMethod"] | null;
+        };
+        /**
+         * InvoiceUpdate
+         * @description PATCH: notes (any status), due date (quotes only), payment method (owner, once paid).
+         */
+        InvoiceUpdate: {
+            /** Notes */
+            notes?: string | null;
+            /** Due Date */
+            due_date?: string | null;
+            payment_method?: components["schemas"]["PaymentMethod"] | null;
         };
         /**
          * Language
@@ -1150,6 +1240,13 @@ export interface components {
          */
         OrderStatus: "quote" | "paid" | "in_production" | "shipped" | "delivered";
         /**
+         * PaymentMethod
+         * @description Matches the `payment_method` enum. Recorded when an invoice is paid; null on quotes and
+         *     on invoices paid before it existed.
+         * @enum {string}
+         */
+        PaymentMethod: "cash" | "card" | "bank_transfer" | "other";
+        /**
          * PaymentTerms
          * @enum {string}
          */
@@ -1166,6 +1263,22 @@ export interface components {
             deductible_expenses_cents: number;
             /** Net Profit Cents */
             net_profit_cents: number;
+        };
+        /** PreviewLineOut */
+        PreviewLineOut: {
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Description */
+            description: string;
+            /** Qty */
+            qty: number;
+            /** Unit Price Cents */
+            unit_price_cents: number;
+            /** Line Total Cents */
+            line_total_cents: number;
         };
         /** ProductCreate */
         ProductCreate: {
@@ -1313,6 +1426,23 @@ export interface components {
              */
             upload_id: string;
             content_type: components["schemas"]["ImageType"];
+        };
+        /**
+         * StockShortage
+         * @description A product the lines need more of than is in stock now (summed across lines).
+         */
+        StockShortage: {
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Sku */
+            sku: string;
+            /** Available */
+            available: number;
+            /** Needed */
+            needed: number;
         };
         /** UploadRequest */
         UploadRequest: {
@@ -2217,6 +2347,74 @@ export interface operations {
             };
         };
     };
+    update_invoice_api_v1_invoices__invoice_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoiceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_invoice_api_v1_invoices_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicePreview"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicePreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     replace_items_api_v1_invoices__invoice_id__items_put: {
         parameters: {
             query?: never;
@@ -2239,6 +2437,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InvoiceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_items_api_v1_invoices__invoice_id__items_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoiceItemsReplace"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicePreviewOut"];
                 };
             };
             /** @description Validation Error */

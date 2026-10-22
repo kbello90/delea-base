@@ -144,6 +144,16 @@ class Invoice:
     def status(self) -> str:
         return self.steps[-1][0] if self.steps else "quote"
 
+    @property
+    def payment_method(self) -> str | None:
+        """Wholesale pays by bank transfer; retail mostly by card, about one sale in four in
+        cash. Derived from the id, so it draws nothing from the random sequence."""
+        if not self.steps:
+            return None
+        if not self.is_retail:
+            return "bank_transfer"
+        return "cash" if self.id.int % 4 == 0 else "card"
+
 
 @dataclass
 class History:

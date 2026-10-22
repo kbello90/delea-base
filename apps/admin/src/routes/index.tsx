@@ -4,6 +4,10 @@ import { SignInPage } from "../auth/SignInPage";
 import { CustomerPage, NewCustomerPage } from "../customers/CustomerFormPage";
 import { CustomersPage } from "../customers/CustomersPage";
 import { DashboardPage } from "../dashboard/DashboardPage";
+import { InvoicePage } from "../invoices/InvoicePage";
+import { InvoicesPage } from "../invoices/InvoicesPage";
+import { EditQuoteLinesPage, NewQuotePage } from "../invoices/QuoteFormPage";
+import { SellPage } from "../invoices/SellPage";
 import { MaterialsPage } from "../materials/MaterialsPage";
 import { NewProductPage, ProductPage } from "../products/ProductFormPage";
 import { ProductsPage } from "../products/ProductsPage";
@@ -18,6 +22,7 @@ const PAGES: Record<string, JSX.Element> = {
   "/products": <ProductsPage />,
   "/materials": <MaterialsPage />,
   "/customers": <CustomersPage />,
+  "/invoices": <InvoicesPage />,
 };
 
 export const appRoutes: RouteObject[] = [
@@ -69,6 +74,39 @@ export const appRoutes: RouteObject[] = [
             element: (
               <RequireRole roles={["owner", "staff"]}>
                 <CustomerPage />
+              </RequireRole>
+            ),
+          },
+          // Invoice sub-pages: owner and staff sell, quote and edit lines; cpa reads the record.
+          {
+            path: "/invoices/sell",
+            element: (
+              <RequireRole roles={["owner", "staff"]}>
+                <SellPage />
+              </RequireRole>
+            ),
+          },
+          {
+            path: "/invoices/new",
+            element: (
+              <RequireRole roles={["owner", "staff"]}>
+                <NewQuotePage />
+              </RequireRole>
+            ),
+          },
+          {
+            path: "/invoices/:invoiceId",
+            element: (
+              <RequireRole roles={["owner", "staff", "cpa"]}>
+                <InvoicePage />
+              </RequireRole>
+            ),
+          },
+          {
+            path: "/invoices/:invoiceId/edit",
+            element: (
+              <RequireRole roles={["owner", "staff"]}>
+                <EditQuoteLinesPage />
               </RequireRole>
             ),
           },

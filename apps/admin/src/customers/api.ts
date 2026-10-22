@@ -110,3 +110,14 @@ export function useDeleteCustomer() {
     },
   });
 }
+
+/** Name or company search for pickers (first 8 matches). Email- or phone-like text is never sent. */
+export function useCustomerSearch(q: string, refuse: (q: string) => boolean) {
+  const api = useApi();
+  const text = q.trim();
+  return useQuery({
+    queryKey: ["customers", "search", text],
+    enabled: text.length > 0 && !refuse(text),
+    queryFn: () => unwrap(api.GET("/api/v1/customers", { params: { query: { q: text, limit: 8 } } })),
+  });
+}

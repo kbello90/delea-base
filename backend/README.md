@@ -165,7 +165,7 @@ reach the client.
 
 **Trigger messages:** when one of our PL/pgSQL triggers raised the error, the trigger's own
 message is returned with the mapped status. For example, a backward `order_status` returns
-422 "order_status cannot move backward (paid -> quote)". Postgres-generated messages always
+422 "This invoice can't move back to quote.". Postgres-generated messages always
 stay generic.
 
 ## Known limitations

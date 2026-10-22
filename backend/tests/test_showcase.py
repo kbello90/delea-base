@@ -219,6 +219,14 @@ def test_the_history_looks_like_a_working_shop(now: datetime) -> None:
     assert sum(1 for inv in h.invoices if inv.cancelled_at) == 1
     assert statuses["delivered"] > len(h.invoices) / 2
 
+    # Paid sales record how they were paid; quotes don't. Retail is mostly card.
+    methods = Counter(inv.payment_method for inv in h.invoices if inv.is_retail and inv.steps)
+    assert set(methods) == {"card", "cash"} and methods["card"] > methods["cash"]
+    assert {inv.payment_method for inv in h.invoices if not inv.is_retail and inv.steps} == {
+        "bank_transfer"
+    }
+    assert all(inv.payment_method is None for inv in h.invoices if not inv.steps)
+
     # Retail revenue rises month over month across the full months.
     retail = Counter()
     for inv in h.invoices:

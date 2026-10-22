@@ -1385,7 +1385,7 @@
           "invoices"
         ],
         "summary": "Create Invoice",
-        "description": "Create a quote and its lines in one transaction; `pay_now` also moves it to paid.\n\nIf anything fails (including insufficient stock on pay_now), nothing is kept: no invoice,\nno lines, no document number used.",
+        "description": "Create a quote and its lines in one transaction; `pay_now` also moves it to paid.\n\nIf anything fails (including insufficient stock on pay_now), nothing is kept: no invoice,\nno lines, no document number used. `pay_now` needs a payment method; a quote has none.",
         "operationId": "create_invoice_api_v1_invoices_post",
         "security": [
           {
@@ -1595,6 +1595,63 @@
           }
         }
       },
+      "patch": {
+        "tags": [
+          "invoices"
+        ],
+        "summary": "Update Invoice",
+        "description": "Edit the notes (any status), the due date (quotes only) or, for the owner, the payment\nmethod of a paid invoice. Money, lines and status have their own endpoints.",
+        "operationId": "update_invoice_api_v1_invoices__invoice_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "invoice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Invoice Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvoiceUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "invoices"
@@ -1634,6 +1691,53 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/invoices/preview": {
+      "post": {
+        "tags": [
+          "invoices"
+        ],
+        "summary": "Preview Invoice",
+        "description": "Price lines exactly as create would, and list any stock shortages. Writes nothing and\nuses no document number. The tax override is owner-only here too.",
+        "operationId": "preview_invoice_api_v1_invoices_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvoicePreview"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoicePreviewOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/invoices/{invoice_id}/items": {
@@ -1695,13 +1799,72 @@
         }
       }
     },
+    "/api/v1/invoices/{invoice_id}/items/preview": {
+      "post": {
+        "tags": [
+          "invoices"
+        ],
+        "summary": "Preview Items",
+        "description": "Price replacement lines for a quote as PUT /items would (its customer, its stored tax\nrate). Writes nothing.",
+        "operationId": "preview_items_api_v1_invoices__invoice_id__items_preview_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "invoice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Invoice Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvoiceItemsReplace"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoicePreviewOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/invoices/{invoice_id}/status": {
       "post": {
         "tags": [
           "invoices"
         ],
         "summary": "Change Status",
-        "description": "Move the status forward (skips allowed). The database enforces the order and, when an\ninvoice leaves quote, assigns its number and decrements stock; its messages pass through\n(backward: 422; insufficient stock: 409, with nothing changed).",
+        "description": "Move the status forward (skips allowed). Leaving quote is the payment, so it needs a\npayment method; any other move refuses one. The database enforces the order and, when an\ninvoice leaves quote, assigns its number and decrements stock; its messages pass through\n(backward: 422; insufficient stock: 409, with nothing changed). Cancelled or refunded\ninvoices keep their status (409).",
         "operationId": "change_status_api_v1_invoices__invoice_id__status_post",
         "security": [
           {
@@ -3925,6 +4088,16 @@
             "type": "boolean",
             "title": "Pay Now",
             "default": false
+          },
+          "payment_method": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaymentMethod"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -4096,6 +4269,16 @@
             ],
             "title": "Notes"
           },
+          "payment_method": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaymentMethod"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "paid_at": {
             "anyOf": [
               {
@@ -4173,6 +4356,7 @@
           "total_cents",
           "due_date",
           "notes",
+          "payment_method",
           "paid_at",
           "refunded_at",
           "cancelled_at",
@@ -4181,10 +4365,109 @@
         ],
         "title": "InvoiceOut"
       },
+      "InvoicePreview": {
+        "properties": {
+          "customer_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Id"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LineItemIn"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Items"
+          },
+          "tax_rate_bps": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Rate Bps"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "InvoicePreview",
+        "description": "What the client is about to create: priced without writing anything."
+      },
+      "InvoicePreviewOut": {
+        "properties": {
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewLineOut"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "subtotal_cents": {
+            "type": "integer",
+            "title": "Subtotal Cents"
+          },
+          "tax_rate_bps": {
+            "type": "integer",
+            "title": "Tax Rate Bps"
+          },
+          "tax_cents": {
+            "type": "integer",
+            "title": "Tax Cents"
+          },
+          "total_cents": {
+            "type": "integer",
+            "title": "Total Cents"
+          },
+          "stock_shortages": {
+            "items": {
+              "$ref": "#/components/schemas/StockShortage"
+            },
+            "type": "array",
+            "title": "Stock Shortages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lines",
+          "subtotal_cents",
+          "tax_rate_bps",
+          "tax_cents",
+          "total_cents",
+          "stock_shortages"
+        ],
+        "title": "InvoicePreviewOut"
+      },
       "InvoiceStatusChange": {
         "properties": {
           "status": {
             "$ref": "#/components/schemas/OrderStatus"
+          },
+          "payment_method": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaymentMethod"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -4193,6 +4476,48 @@
           "status"
         ],
         "title": "InvoiceStatusChange"
+      },
+      "InvoiceUpdate": {
+        "properties": {
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 5000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "payment_method": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaymentMethod"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "InvoiceUpdate",
+        "description": "PATCH: notes (any status), due date (quotes only), payment method (owner, once paid)."
       },
       "Language": {
         "type": "string",
@@ -4498,6 +4823,17 @@
         "title": "OrderStatus",
         "description": "Matches the `order_status` enum; declaration order is the forward order."
       },
+      "PaymentMethod": {
+        "type": "string",
+        "enum": [
+          "cash",
+          "card",
+          "bank_transfer",
+          "other"
+        ],
+        "title": "PaymentMethod",
+        "description": "Matches the `payment_method` enum. Recorded when an invoice is paid; null on quotes and\non invoices paid before it existed."
+      },
       "PaymentTerms": {
         "type": "string",
         "enum": [
@@ -4540,6 +4876,40 @@
           "net_profit_cents"
         ],
         "title": "PeriodSummary"
+      },
+      "PreviewLineOut": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "qty": {
+            "type": "integer",
+            "title": "Qty"
+          },
+          "unit_price_cents": {
+            "type": "integer",
+            "title": "Unit Price Cents"
+          },
+          "line_total_cents": {
+            "type": "integer",
+            "title": "Line Total Cents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "description",
+          "qty",
+          "unit_price_cents",
+          "line_total_cents"
+        ],
+        "title": "PreviewLineOut"
       },
       "ProductCreate": {
         "properties": {
@@ -4993,6 +5363,36 @@
           "content_type"
         ],
         "title": "RegisterRequest"
+      },
+      "StockShortage": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "available": {
+            "type": "integer",
+            "title": "Available"
+          },
+          "needed": {
+            "type": "integer",
+            "title": "Needed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "sku",
+          "available",
+          "needed"
+        ],
+        "title": "StockShortage",
+        "description": "A product the lines need more of than is in stock now (summed across lines)."
       },
       "UploadRequest": {
         "properties": {

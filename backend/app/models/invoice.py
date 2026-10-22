@@ -23,6 +23,16 @@ class OrderStatus(StrEnum):
     delivered = "delivered"
 
 
+class PaymentMethod(StrEnum):
+    """Matches the `payment_method` enum. Recorded when an invoice is paid; null on quotes and
+    on invoices paid before it existed."""
+
+    cash = "cash"
+    card = "card"
+    bank_transfer = "bank_transfer"
+    other = "other"
+
+
 class LineItemIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -42,6 +52,17 @@ class InvoiceCreate(BaseModel):
     due_date: date | None = None  # default: from the customer's payment terms
     tax_rate_bps: Annotated[int, Field(ge=0, le=10000)] | None = None  # owner-only override
     pay_now: bool = False  # in-store sale: move to paid in the same transaction
+    payment_method: PaymentMethod | None = None  # required with pay_now, refused without
+
+
+class InvoicePreview(BaseModel):
+    """What the client is about to create: priced without writing anything."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    customer_id: UUID | None = None
+    items: Items
+    tax_rate_bps: Annotated[int, Field(ge=0, le=10000)] | None = None  # owner-only override
 
 
 class InvoiceItemsReplace(BaseModel):
@@ -54,6 +75,21 @@ class InvoiceStatusChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: OrderStatus
+    # Required when the invoice leaves quote (that is when it is paid), refused otherwise.
+    payment_method: PaymentMethod | None = None
+
+
+class InvoiceUpdate(BaseModel):
+    """PATCH: notes (any status), due date (quotes only), payment method (owner, once paid)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    notes: Annotated[str, Field(max_length=5000)] | None = None
+    due_date: date | None = None
+    payment_method: PaymentMethod | None = None
+
+
+INVOICE_NULLABLE_FIELDS = frozenset({"notes", "due_date"})
 
 
 class InvoiceLineOut(BaseModel):
@@ -63,6 +99,32 @@ class InvoiceLineOut(BaseModel):
     qty: int
     unit_price_cents: int
     line_total_cents: int
+
+
+class PreviewLineOut(BaseModel):
+    product_id: UUID
+    description: str
+    qty: int
+    unit_price_cents: int
+    line_total_cents: int
+
+
+class StockShortage(BaseModel):
+    """A product the lines need more of than is in stock now (summed across lines)."""
+
+    product_id: UUID
+    sku: str
+    available: int
+    needed: int
+
+
+class InvoicePreviewOut(BaseModel):
+    lines: list[PreviewLineOut]
+    subtotal_cents: int
+    tax_rate_bps: int
+    tax_cents: int
+    total_cents: int
+    stock_shortages: list[StockShortage]
 
 
 class InvoiceOut(BaseModel):
@@ -80,6 +142,7 @@ class InvoiceOut(BaseModel):
     total_cents: int
     due_date: date | None
     notes: str | None
+    payment_method: PaymentMethod | None
     paid_at: datetime | None
     refunded_at: datetime | None
     cancelled_at: datetime | None

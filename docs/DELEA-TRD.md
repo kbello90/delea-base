@@ -335,17 +335,21 @@ Every authenticated request runs in **one transaction** as `authenticated`, with
 | `settings/brand` (get · patch) | ✓ · ✓ | read | — |
 | `settings/currency` (get; via `current_tenant_currency()`) | ✓ | read | read |
 | `invoices` (list/get/`export.csv`) | ✓ | ✓ | read (`items` null) |
-| `invoices` create (`pay_now`), `PUT /{id}/items`, `POST /{id}/status` | ✓ | ✓ | — |
-| `invoices` tax-rate override, `/{id}/refund`, `/{id}/cancel`, delete (quotes only) | ✓ | — | — |
+| `invoices` create (`pay_now`), `POST /preview`, `PUT /{id}/items`, `POST /{id}/items/preview`, `POST /{id}/status`, `PATCH /{id}` (notes, due date) | ✓ | ✓ | — |
+| `invoices` tax-rate override, `/{id}/refund`, `/{id}/cancel`, delete (quotes only), correcting a payment method (`PATCH /{id}`) | ✓ | — | — |
 | `dashboard/summary`, `dashboard/monthly` | ✓ | — | — |
 
 **Also:**
 - **Health:** `GET /health` (liveness) and `GET /health/ready` (database check) sit outside `/api/v1`.
 - **Invoices:**
-  - **Client input:** the client sends only `customer_id` (optional for walk-in), `items [{product_id, qty}]`, notes, due date, an owner-only tax-rate override and `pay_now`. Everything else is computed by the server; money, status or number fields are a 422.
+  - **Client input:** the client sends only `customer_id` (optional for walk-in), `items [{product_id, qty}]`, notes, due date, an owner-only tax-rate override, `pay_now` and, with `pay_now`, a `payment_method`. Everything else is computed by the server; money, status or number fields are a 422.
+  - **Preview:** `POST /preview` (and `POST /{id}/items/preview` for a quote's new lines) prices the lines exactly as create (or `PUT /items`) would and lists stock shortages. It writes nothing and uses no document number; the tax override is owner-only here too. The admin shows only these server totals, never a total of its own.
   - **Quote-only changes:** `PUT /items` is quote-only (409 "only quotes can be edited").
-  - **Status moves:** they pass the database's messages through: backward → 422, insufficient stock → 409, with nothing changed and no number used.
-  - **`pay_now`:** atomic.
+  - **Payment method** (`cash`, `card`, `bank_transfer`, `other`): required when an invoice leaves quote (`pay_now`, or a status move from quote; otherwise 422) and refused on any other move. It's null on quotes (a check constraint) and on invoices paid before it existed. Staff can't change it once set (database guard); the owner can correct it with `PATCH /{id}`. It's a CSV column. Partial payments will be a separate payments table later.
+  - **Notes and due date:** `PATCH /{id}` edits notes at any status and the due date on quotes only (409 otherwise).
+  - **Status moves:** they pass the database's messages through: backward → 422 ("This invoice can't move back to paid."), insufficient stock → 409 ("Not enough stock for SKU …: N available, M needed."), with nothing changed and no number used.
+  - **Cancelled and refunded invoices are closed:** their status can't move, a cancelled invoice can't be refunded and a refunded one can't be cancelled (409), in the API and in a database trigger for every caller.
+  - **`pay_now`:** atomic. An in-store sale is `pay_now` followed by a move to delivered; if that second step fails the sale stays paid and the admin offers a retry.
   - **Line snapshots:** the product name and unit price. There's no SKU column on line items.
 - **Deletes that would damage history** (a product on invoice lines, a customer with invoices, a material used by products) return 409 with a clear message.
 

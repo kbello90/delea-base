@@ -3,9 +3,13 @@
 Roles (RLS: invoices owner all, staff select/insert/update, cpa select; line items owner and
 staff, writes only while the invoice is a quote):
 - read, list, CSV export: owner, staff, cpa (cpa can't read line items: `items` is null)
-- create, replace items, change status: owner, staff
-- tax-rate override, refund, cancel, delete: owner only (API rules; delete is quotes-only in
-  the database too)
+- create, preview, replace items, change status, edit notes / due date: owner, staff
+- tax-rate override, refund, cancel, delete, correcting a payment method: owner only (API
+  rules; delete is quotes-only and a set payment method is owner-only in the database too)
+
+A cancelled or refunded invoice keeps its status, a cancelled one can't be refunded and a
+refunded one can't be cancelled: checked here for a clear message, and enforced by the
+database (invoices_08_closed_guard).
 
 Money is never accepted from the client: prices come from the products, totals from
 app/services/pricing.py, the tax rate from public.current_tax_rate_bps() (or the owner's
@@ -30,15 +34,22 @@ from app.core.csv_export import cents_to_decimal, csv_stream
 from app.core.errors import ConflictError, NotFoundError
 from app.core.security import TokenClaims
 from app.db.session import user_session
-from app.db.sql_helpers import like_pattern
+from app.db.sql_helpers import like_pattern, patch_changes, update_statement
 from app.models.invoice import (
+    INVOICE_NULLABLE_FIELDS,
     InvoiceCreate,
     InvoiceItemsReplace,
     InvoiceLineOut,
     InvoiceOut,
+    InvoicePreview,
+    InvoicePreviewOut,
     InvoiceStatusChange,
+    InvoiceUpdate,
     LineItemIn,
     OrderStatus,
+    PaymentMethod,
+    PreviewLineOut,
+    StockShortage,
 )
 from app.services.currency import fetch_currency
 from app.services.invoices import customer_display_name, due_date_for
@@ -62,7 +73,8 @@ OwnerOnly = Depends(require_role("owner"))
 _COLUMNS = (
     "id, tenant_id, quote_number, invoice_number, order_status::text as order_status, "
     "customer_id, customer_name, source, subtotal_cents, tax_rate_bps, tax_cents, total_cents, "
-    "due_date, notes, paid_at, refunded_at, cancelled_at, created_at, updated_at"
+    "due_date, notes, payment_method::text as payment_method, paid_at, refunded_at, "
+    "cancelled_at, created_at, updated_at"
 )
 _LINE_COLUMNS = "id, product_id, description, qty, unit_price_cents, line_total_cents"
 
@@ -193,6 +205,88 @@ async def _insert_lines(
         )
 
 
+async def _stock_shortages(
+    conn: AsyncConnection, claims: TokenClaims, items: Sequence[LineItemIn]
+) -> list[StockShortage]:
+    """Products the lines need more of than is in stock right now (quantities summed per
+    product, as the database checks when the invoice is paid)."""
+    needed: dict[UUID, int] = {}
+    for item in items:
+        needed[item.product_id] = needed.get(item.product_id, 0) + item.qty
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            "select id, sku, stock_qty from public.products "
+            "where tenant_id = %s and id = any(%s) order by sku",
+            (claims.tenant_id, list(needed)),
+        )
+        rows = await cur.fetchall()
+    return [
+        StockShortage(
+            product_id=row["id"],
+            sku=row["sku"],
+            available=row["stock_qty"],
+            needed=needed[row["id"]],
+        )
+        for row in rows
+        if row["stock_qty"] < needed[row["id"]]
+    ]
+
+
+async def _preview(
+    conn: AsyncConnection,
+    claims: TokenClaims,
+    customer: dict[str, Any] | None,
+    items: Sequence[LineItemIn],
+    default_rate_bps: int,
+    override_bps: int | None,
+) -> InvoicePreviewOut:
+    quote, _ = await _price(conn, claims, customer, items, default_rate_bps, override_bps)
+    return InvoicePreviewOut(
+        lines=[
+            PreviewLineOut(
+                product_id=line.product_id,
+                description=line.description,
+                qty=line.qty,
+                unit_price_cents=line.unit_price_cents,
+                line_total_cents=line.line_total_cents,
+            )
+            for line in quote.lines
+        ],
+        subtotal_cents=quote.subtotal_cents,
+        tax_rate_bps=quote.tax_rate_bps,
+        tax_cents=quote.tax_cents,
+        total_cents=quote.total_cents,
+        stock_shortages=await _stock_shortages(conn, claims, items),
+    )
+
+
+async def _default_rate(conn: AsyncConnection, override_bps: int | None) -> int:
+    """The tenant's tax rate, read only when there is no owner override."""
+    if override_bps is not None:
+        return 0
+    cur = await conn.execute("select public.current_tax_rate_bps()")
+    (rate,) = await cur.fetchone()
+    return rate
+
+
+def _check_payment_method(*, paying: bool, payment_method: PaymentMethod | None) -> None:
+    """Leaving quote is the payment: it needs a method, and nothing else may send one."""
+    if paying and payment_method is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "a payment method is required to take payment"
+        )
+    if not paying and payment_method is not None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "the payment method is recorded only when a quote is paid",
+        )
+
+
+def _refuse_override_unless_owner(claims: TokenClaims, override_bps: int | None) -> None:
+    if override_bps is not None and claims.app_role != "owner":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "only the owner can override the tax rate")
+
+
 # ---------------------------------------------------------------------------
 # List and CSV export filters
 # ---------------------------------------------------------------------------
@@ -269,6 +363,7 @@ CSV_HEADER = (
     "customer_name",
     "created_at",
     "paid_at",
+    "payment_method",
     "due_date",
     "currency",
     "subtotal",
@@ -303,19 +398,19 @@ async def export_invoices_csv(
                 cur = conn.cursor()
                 async for r in cur.stream(
                     "select quote_number, invoice_number, order_status::text, customer_name, "
-                    "created_at, paid_at, due_date, subtotal_cents, tax_rate_bps, tax_cents, "
-                    f"total_cents, refunded_at, cancelled_at, source from public.invoices {_WHERE} "
-                    "order by created_at, id",
+                    "created_at, paid_at, payment_method::text, due_date, subtotal_cents, "
+                    "tax_rate_bps, tax_cents, total_cents, refunded_at, cancelled_at, source "
+                    f"from public.invoices {_WHERE} order by created_at, id",
                     _params(claims, filters),
                 ):
                     yield (
-                        *r[:7],
+                        *r[:8],
                         currency,
-                        cents_to_decimal(r[7]),
-                        r[8],
-                        cents_to_decimal(r[9]),
+                        cents_to_decimal(r[8]),
+                        r[9],
                         cents_to_decimal(r[10]),
-                        *r[11:],
+                        cents_to_decimal(r[11]),
+                        *r[12:],
                     )
         except Exception:
             logger.exception("Invoice CSV export failed mid-stream")
@@ -343,16 +438,13 @@ async def create_invoice(body: InvoiceCreate, claims: CurrentClaims, conn: DbCon
     """Create a quote and its lines in one transaction; `pay_now` also moves it to paid.
 
     If anything fails (including insufficient stock on pay_now), nothing is kept: no invoice,
-    no lines, no document number used.
+    no lines, no document number used. `pay_now` needs a payment method; a quote has none.
     """
-    if body.tax_rate_bps is not None and claims.app_role != "owner":
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "only the owner can override the tax rate")
+    _refuse_override_unless_owner(claims, body.tax_rate_bps)
+    _check_payment_method(paying=body.pay_now, payment_method=body.payment_method)
 
     customer = await _customer(conn, claims, body.customer_id)
-    default_rate = 0
-    if body.tax_rate_bps is None:
-        cur = await conn.execute("select public.current_tax_rate_bps()")
-        (default_rate,) = await cur.fetchone()
+    default_rate = await _default_rate(conn, body.tax_rate_bps)
     quote, today = await _price(conn, claims, customer, body.items, default_rate, body.tax_rate_bps)
 
     due_date = body.due_date or due_date_for(customer and customer["payment_terms"], today)
@@ -378,10 +470,23 @@ async def create_invoice(body: InvoiceCreate, claims: CurrentClaims, conn: DbCon
     if body.pay_now:
         # The database assigns the invoice number and decrements stock (or refuses: 409).
         await conn.execute(
-            "update public.invoices set order_status = 'paid' where id = %s and tenant_id = %s",
-            (invoice_id, claims.tenant_id),
+            "update public.invoices set order_status = 'paid', "
+            "payment_method = %s::public.payment_method where id = %s and tenant_id = %s",
+            (body.payment_method, invoice_id, claims.tenant_id),
         )
     return await _load(conn, claims, invoice_id)
+
+
+@router.post("/preview", response_model=InvoicePreviewOut, dependencies=[Writers])
+async def preview_invoice(
+    body: InvoicePreview, claims: CurrentClaims, conn: DbConn
+) -> InvoicePreviewOut:
+    """Price lines exactly as create would, and list any stock shortages. Writes nothing and
+    uses no document number. The tax override is owner-only here too."""
+    _refuse_override_unless_owner(claims, body.tax_rate_bps)
+    customer = await _customer(conn, claims, body.customer_id)
+    default_rate = await _default_rate(conn, body.tax_rate_bps)
+    return await _preview(conn, claims, customer, body.items, default_rate, body.tax_rate_bps)
 
 
 @router.put("/{invoice_id}/items", response_model=InvoiceOut, dependencies=[Writers])
@@ -427,20 +532,103 @@ async def replace_items(
     return await _load(conn, claims, invoice_id)
 
 
+@router.post(
+    "/{invoice_id}/items/preview", response_model=InvoicePreviewOut, dependencies=[Writers]
+)
+async def preview_items(
+    invoice_id: UUID, body: InvoiceItemsReplace, claims: CurrentClaims, conn: DbConn
+) -> InvoicePreviewOut:
+    """Price replacement lines for a quote as PUT /items would (its customer, its stored tax
+    rate). Writes nothing."""
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            "select order_status::text as order_status, customer_id, tax_rate_bps "
+            "from public.invoices where id = %s and tenant_id = %s",
+            (invoice_id, claims.tenant_id),
+        )
+        invoice = await cur.fetchone()
+    if invoice is None:
+        raise NotFoundError("Invoice not found")
+    if invoice["order_status"] != OrderStatus.quote:
+        raise ConflictError("only quotes can be edited")
+    customer = await _customer(conn, claims, invoice["customer_id"])
+    return await _preview(conn, claims, customer, body.items, invoice["tax_rate_bps"], None)
+
+
+def _refuse_if_closed(row: dict[str, Any]) -> None:
+    """Same messages as the database guard (invoices_08_closed_guard)."""
+    if row["cancelled_at"] is not None:
+        raise ConflictError("This invoice is cancelled, so its status can't change.")
+    if row["refunded_at"] is not None:
+        raise ConflictError("This invoice is refunded, so its status can't change.")
+
+
 @router.post("/{invoice_id}/status", response_model=InvoiceOut, dependencies=[Writers])
 async def change_status(
     invoice_id: UUID, body: InvoiceStatusChange, claims: CurrentClaims, conn: DbConn
 ) -> InvoiceOut:
-    """Move the status forward (skips allowed). The database enforces the order and, when an
+    """Move the status forward (skips allowed). Leaving quote is the payment, so it needs a
+    payment method; any other move refuses one. The database enforces the order and, when an
     invoice leaves quote, assigns its number and decrements stock; its messages pass through
-    (backward: 422; insufficient stock: 409, with nothing changed)."""
-    cur = await conn.execute(
-        "update public.invoices set order_status = %s::public.order_status "
-        "where id = %s and tenant_id = %s returning id",
-        (body.status.value, invoice_id, claims.tenant_id),
-    )
-    if await cur.fetchone() is None:
+    (backward: 422; insufficient stock: 409, with nothing changed). Cancelled or refunded
+    invoices keep their status (409)."""
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            "select order_status::text as order_status, refunded_at, cancelled_at "
+            "from public.invoices where id = %s and tenant_id = %s for update",
+            (invoice_id, claims.tenant_id),
+        )
+        row = await cur.fetchone()
+    if row is None:
         raise NotFoundError("Invoice not found")
+    if body.status != row["order_status"]:
+        _refuse_if_closed(row)
+    _check_payment_method(
+        paying=row["order_status"] == OrderStatus.quote and body.status != OrderStatus.quote,
+        payment_method=body.payment_method,
+    )
+    await conn.execute(
+        "update public.invoices set order_status = %s::public.order_status, "
+        "payment_method = coalesce(%s::public.payment_method, payment_method) "
+        "where id = %s and tenant_id = %s",
+        (body.status.value, body.payment_method, invoice_id, claims.tenant_id),
+    )
+    return await _load(conn, claims, invoice_id)
+
+
+@router.patch("/{invoice_id}", response_model=InvoiceOut, dependencies=[Writers])
+async def update_invoice(
+    invoice_id: UUID, body: InvoiceUpdate, claims: CurrentClaims, conn: DbConn
+) -> InvoiceOut:
+    """Edit the notes (any status), the due date (quotes only) or, for the owner, the payment
+    method of a paid invoice. Money, lines and status have their own endpoints."""
+    changes = patch_changes(body, INVOICE_NULLABLE_FIELDS)
+    if "payment_method" in changes and claims.app_role != "owner":
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "only the owner can change the payment method"
+        )
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            "select order_status::text as order_status from public.invoices "
+            "where id = %s and tenant_id = %s for update",
+            (invoice_id, claims.tenant_id),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            raise NotFoundError("Invoice not found")
+        is_quote = row["order_status"] == OrderStatus.quote
+        if "due_date" in changes and not is_quote:
+            raise ConflictError("The due date can only change while the invoice is a quote.")
+        if "payment_method" in changes and is_quote:
+            raise ConflictError("A quote has no payment method; it is recorded when it is paid.")
+        query = update_statement(
+            "invoices",
+            changes,
+            InvoiceUpdate,
+            "id",
+            casts={"payment_method": "public.payment_method"},
+        )
+        await cur.execute(query, {**changes, "key": invoice_id, "tenant_id": claims.tenant_id})
     return await _load(conn, claims, invoice_id)
 
 
@@ -467,6 +655,8 @@ async def refund_invoice(invoice_id: UUID, claims: CurrentClaims, conn: DbConn) 
         raise ConflictError("only paid invoices can be refunded")
     if row["refunded_at"] is not None:
         raise ConflictError("this invoice is already refunded")
+    if row["cancelled_at"] is not None:
+        raise ConflictError("A cancelled invoice can't be refunded.")
     await conn.execute(
         "update public.invoices set refunded_at = now() where id = %s and tenant_id = %s",
         (invoice_id, claims.tenant_id),
@@ -480,6 +670,8 @@ async def cancel_invoice(invoice_id: UUID, claims: CurrentClaims, conn: DbConn) 
     row = await _lock_for_owner_action(conn, claims, invoice_id)
     if row["cancelled_at"] is not None:
         raise ConflictError("this invoice is already cancelled")
+    if row["refunded_at"] is not None:
+        raise ConflictError("A refunded invoice can't be cancelled.")
     await conn.execute(
         "update public.invoices set cancelled_at = now() where id = %s and tenant_id = %s",
         (invoice_id, claims.tenant_id),
