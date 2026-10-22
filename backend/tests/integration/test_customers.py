@@ -237,3 +237,43 @@ def test_staff_cannot_delete_and_row_survives(
         ).fetchone()[0]
         == 1
     )
+
+
+def test_invoice_count_is_read_only_and_follows_the_invoices(
+    client: TestClient, users: dict[str, TestUser], db
+) -> None:
+    owner, staff = users["owner_a"], users["staff_a"]
+    created = create(client, owner, retail())
+    assert created["invoice_count"] == 0
+    item = f"{CUSTOMERS}/{created['id']}"
+
+    # The seeded customer with one invoice, in the list and the detail.
+    listed = {
+        c["id"]: c for c in client.get(f"{CUSTOMERS}?limit=100", headers=owner.headers).json()
+    }
+    assert listed[SEED_A_SARAH]["invoice_count"] == 1
+    assert (
+        client.get(f"{CUSTOMERS}/{SEED_A_SARAH}", headers=staff.headers).json()["invoice_count"]
+        == 1
+    )
+
+    # A quote for the new customer counts too (any status), for owner and staff alike.
+    product_id = db.execute(
+        "insert into public.products (tenant_id, sku, name, metal, price_cents, stock_qty) "
+        "values (%s, %s, 'IT Count Ring', 'other', 1000, 5) returning id",
+        (TENANT_A, f"IT-{uuid.uuid4().hex[:8].upper()}"),
+    ).fetchone()[0]
+    response = client.post(
+        "/api/v1/invoices",
+        json={"customer_id": created["id"], "items": [{"product_id": str(product_id), "qty": 1}]},
+        headers=owner.headers,
+    )
+    assert response.status_code == 201, response.text
+    assert client.get(item, headers=owner.headers).json()["invoice_count"] == 1
+    assert client.get(item, headers=staff.headers).json()["invoice_count"] == 1
+    # PATCH returns it, and it can't be written.
+    patched = client.patch(item, json={"notes": "IT note"}, headers=owner.headers)
+    assert patched.status_code == 200 and patched.json()["invoice_count"] == 1
+    refused = client.patch(item, json={"invoice_count": 0}, headers=owner.headers)
+    assert refused.status_code == 422
+    db.execute("delete from public.invoices where customer_id = %s", (created["id"],))

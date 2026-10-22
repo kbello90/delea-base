@@ -168,7 +168,7 @@ export function renderApp({
   fetch?: (request: Request) => Promise<Response>;
 } = {}) {
   const api = createApiClient({ baseUrl: API, auth: backend, fetch });
-  const location = { pathname: path };
+  const location = { pathname: path, search: "" };
   const utils = render(
     <AppProviders backend={backend} api={api}>
       <MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>

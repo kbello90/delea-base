@@ -82,7 +82,8 @@ def test_customer_with_invoices_is_409(client: TestClient, users, db) -> None:
     response = client.delete(f"/api/v1/customers/{SEED_SARAH}", headers=users["owner_a"].headers)
     assert response.status_code == 409
     assert response.json() == {
-        "detail": "This customer has 1 invoice(s); deleting would detach them from their history."
+        "detail": "This customer has 1 invoice(s), so they can't be deleted. "
+        "Their invoices stay linked to them to keep your sales history complete."
     }
     assert exists(db, "customers", SEED_SARAH)
 

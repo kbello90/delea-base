@@ -170,3 +170,4 @@ class CustomerOut(BaseModel):
     payment_terms: PaymentTerms
     created_at: datetime
     updated_at: datetime
+    invoice_count: int  # read-only: invoices of any status that reference this customer

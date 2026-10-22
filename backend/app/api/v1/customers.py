@@ -32,7 +32,12 @@ _COLUMNS = (
     "id, tenant_id, customer_type::text as customer_type, first_name, last_name, email, phone, "
     "address_line1, address_line2, city, state, postal_code, country, marketing_opt_in, notes, "
     "company_name, tax_exempt, resale_certificate_number, wholesale_discount_bps, "
-    "payment_terms::text as payment_terms, created_at, updated_at"
+    "payment_terms::text as payment_terms, created_at, updated_at, "
+    # Read-only: how many invoices (any status) point at this customer. RLS applies (owner and
+    # staff read all the tenant's invoices). Same count as the delete check below.
+    "(select count(*) from public.invoices i "
+    " where i.customer_id = customers.id and i.tenant_id = customers.tenant_id)::int "
+    "as invoice_count"
 )
 _CASTS = {"customer_type": "public.customer_type", "payment_terms": "public.payment_terms"}
 
@@ -157,8 +162,8 @@ async def delete_customer(customer_id: UUID, claims: CurrentClaims, conn: DbConn
     (references,) = await cur.fetchone()
     if references:
         raise ConflictError(
-            f"This customer has {references} invoice(s); deleting would detach them "
-            "from their history."
+            f"This customer has {references} invoice(s), so they can't be deleted. "
+            "Their invoices stay linked to them to keep your sales history complete."
         )
     cur = await conn.execute(
         "delete from public.customers where id = %s and tenant_id = %s returning id",

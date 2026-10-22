@@ -744,6 +744,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Invoice Count */
+            invoice_count: number;
         };
         /**
          * CustomerType

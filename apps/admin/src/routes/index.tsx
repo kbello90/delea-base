@@ -1,6 +1,8 @@
 import type { RouteObject } from "react-router-dom";
 import { RequireAuth } from "../auth/RequireAuth";
 import { SignInPage } from "../auth/SignInPage";
+import { CustomerPage, NewCustomerPage } from "../customers/CustomerFormPage";
+import { CustomersPage } from "../customers/CustomersPage";
 import { DashboardPage } from "../dashboard/DashboardPage";
 import { MaterialsPage } from "../materials/MaterialsPage";
 import { NewProductPage, ProductPage } from "../products/ProductFormPage";
@@ -15,6 +17,7 @@ const PAGES: Record<string, JSX.Element> = {
   "/dashboard": <DashboardPage />,
   "/products": <ProductsPage />,
   "/materials": <MaterialsPage />,
+  "/customers": <CustomersPage />,
 };
 
 export const appRoutes: RouteObject[] = [
@@ -49,6 +52,23 @@ export const appRoutes: RouteObject[] = [
             element: (
               <RequireRole roles={["owner", "staff"]}>
                 <ProductPage />
+              </RequireRole>
+            ),
+          },
+          // Customer sub-pages: owner and staff create and edit (only the owner deletes).
+          {
+            path: "/customers/new",
+            element: (
+              <RequireRole roles={["owner", "staff"]}>
+                <NewCustomerPage />
+              </RequireRole>
+            ),
+          },
+          {
+            path: "/customers/:customerId",
+            element: (
+              <RequireRole roles={["owner", "staff"]}>
+                <CustomerPage />
               </RequireRole>
             ),
           },

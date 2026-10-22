@@ -3236,6 +3236,10 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "invoice_count": {
+            "type": "integer",
+            "title": "Invoice Count"
           }
         },
         "type": "object",
@@ -3261,7 +3265,8 @@
           "wholesale_discount_bps",
           "payment_terms",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "invoice_count"
         ],
         "title": "CustomerOut"
       },
