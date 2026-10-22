@@ -95,11 +95,6 @@ export function CustomersPage() {
   const [deleting, setDeleting] = useState<Customer | null>(null);
   const [contactSearch, setContactSearch] = useState(false);
 
-  const onSearch = (q: string) => {
-    const personal = looksLikeContactDetails(q);
-    setContactSearch(personal);
-    set("q", personal ? null : q);
-  };
 
   return (
     <>
@@ -114,7 +109,14 @@ export function CustomersPage() {
       />
 
       <form className="filters" role="search" aria-label="Filter customers" onSubmit={(e) => e.preventDefault()}>
-        <SearchBox id="customer-search" placeholder="Name or company" value={filters.q} onChange={onSearch} />
+        <SearchBox
+          id="customer-search"
+          placeholder="Name or company"
+          value={filters.q}
+          onChange={(q) => set("q", q)}
+          refuse={looksLikeContactDetails}
+          onRefused={setContactSearch}
+        />
         <div className="filter">
           <label htmlFor="filter-type">Type</label>
           <select id="filter-type" value={filters.type ?? ""} onChange={(e) => set("type", e.target.value)}>

@@ -95,6 +95,7 @@ describe("customers list", () => {
 
     await user.type(screen.getByLabelText("Search"), "ava.thompson@example.com");
     expect(await screen.findByText(/Email addresses and phone numbers aren't searched here/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Search")).toHaveValue("ava.thompson@example.com"); // what was typed stays
     await user.clear(screen.getByLabelText("Search"));
     await user.type(screen.getByLabelText("Search"), "555-0110");
     await waitFor(() => expect(screen.getByText(/aren't searched here/)).toBeInTheDocument());
@@ -105,6 +106,27 @@ describe("customers list", () => {
     for (const value of ["ava.thompson", "example.com", "555-0110", "5550110"]) {
       expect(urls.join(" ")).not.toContain(value);
     }
+  });
+
+  it("a refused search after an applied one clears the filter and keeps the typed text", async () => {
+    const { server, location } = renderCustomers();
+    await rowOf("Ava Thompson");
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Search"), "harbor");
+    await waitFor(() => expect(location.search).toContain("q=harbor"));
+    await user.clear(screen.getByLabelText("Search"));
+    await user.type(screen.getByLabelText("Search"), "orders@harbor.example.com");
+    expect(await screen.findByText(/aren't searched here/)).toBeInTheDocument();
+    await waitFor(() => expect(location.search).toBe(""));
+    expect(screen.getByLabelText("Search")).toHaveValue("orders@harbor.example.com");
+    expect(await screen.findByRole("link", { name: "Zoe Bennett" })).toBeInTheDocument(); // filter cleared
+    expect(server.calls.map((c) => c.query.toString()).join(" ")).not.toContain("example.com");
+
+    // Typing a name again applies it and hides the hint.
+    await user.clear(screen.getByLabelText("Search"));
+    await user.type(screen.getByLabelText("Search"), "zoe");
+    await waitFor(() => expect(location.search).toContain("q=zoe"));
+    expect(screen.queryByText(/aren't searched here/)).not.toBeInTheDocument();
   });
 
   it("pages through results 25 at a time", async () => {

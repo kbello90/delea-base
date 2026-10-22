@@ -277,3 +277,28 @@ def test_invoice_count_is_read_only_and_follows_the_invoices(
     refused = client.patch(item, json={"invoice_count": 0}, headers=owner.headers)
     assert refused.status_code == 422
     db.execute("delete from public.invoices where customer_id = %s", (created["id"],))
+
+
+def test_list_sorts_by_company_for_wholesale_and_last_name_for_retail(
+    client: TestClient, users: dict[str, TestUser]
+) -> None:
+    owner = users["owner_a"]
+    tag = uuid.uuid4().hex[:6]
+    bloom = wholesale(first_name=f"IT-{tag}-a", last_name=f"Zz{tag} Young")
+    bloom["company_name"] = f"zz{tag} Bloom Shop"
+    # The IT- prefix (in first_name, for cleanup) sorts the same for all, so the names decide.
+    made = [
+        create(client, owner, retail(first_name=f"IT-{tag}-b", last_name=f"Zz{tag} Carter")),
+        create(client, owner, bloom),
+        create(client, owner, retail(first_name=f"IT-{tag}-a", last_name=f"Zz{tag} Carter")),
+        create(client, owner, retail(first_name=f"IT-{tag}-c", last_name=f"Zz{tag} Adams")),
+    ]
+    rows = client.get(f"{CUSTOMERS}?q=zz{tag}&limit=100", headers=owner.headers).json()
+    names = [(r["company_name"] or r["last_name"], r["first_name"]) for r in rows]
+    assert names == [
+        (f"Zz{tag} Adams", f"IT-{tag}-c"),
+        (f"zz{tag} Bloom Shop", f"IT-{tag}-a"),  # by company (lower case sorts with B), not Young
+        (f"Zz{tag} Carter", f"IT-{tag}-a"),
+        (f"Zz{tag} Carter", f"IT-{tag}-b"),
+    ]
+    assert len(made) == 4

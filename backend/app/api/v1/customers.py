@@ -61,7 +61,11 @@ async def list_customers(
                and (%(pattern)s::text is null
                     or first_name ilike %(pattern)s or last_name ilike %(pattern)s
                     or company_name ilike %(pattern)s or email ilike %(pattern)s)
-             order by last_name nulls last, first_name, id
+             -- The name a customer is known by: the company for wholesale, the last name
+             -- otherwise; then the first name. Case-insensitive.
+             order by lower(case when customer_type = 'wholesale' then company_name
+                                 else last_name end) nulls last,
+                      lower(first_name), id
              limit %(limit)s offset %(offset)s
             """,
             {
