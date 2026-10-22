@@ -111,7 +111,7 @@ export function productServer(initial: Product[] = [], options: { onInvoice?: Se
       if (method === "DELETE") {
         if (options.onInvoice?.has(productId)) {
           return jsonResponse(409, {
-            detail: "This product appears on 2 invoice line(s). Unpublish it instead (set is_published to false).",
+            detail: "This product appears on 2 invoice line(s), so it can't be deleted. Unpublish it instead to hide it from your store while keeping your sales history.",
           });
         }
         products.delete(productId);

@@ -135,7 +135,7 @@ describe("delete", () => {
 
     await user.click(within(dialog).getByRole("button", { name: "Delete product" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-      "This product appears on 2 invoice line(s). Unpublish it instead (set is_published to false).",
+      "This product appears on 2 invoice line(s), so it can't be deleted. Unpublish it instead to hide it from your store while keeping your sales history.",
     );
     await user.click(within(dialog).getByRole("button", { name: "Unpublish instead" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());

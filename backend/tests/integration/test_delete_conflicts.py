@@ -41,8 +41,8 @@ def test_product_on_a_paid_invoice_line_is_409(client: TestClient, users, db) ->
     response = client.delete(f"/api/v1/products/{SEED_NECKLACE}", headers=users["owner_a"].headers)
     assert response.status_code == 409
     assert response.json() == {
-        "detail": "This product appears on 1 invoice line(s). "
-        "Unpublish it instead (set is_published to false)."
+        "detail": "This product appears on 1 invoice line(s), so it can't be deleted. "
+        "Unpublish it instead to hide it from your store while keeping your sales history."
     }
     assert exists(db, "products", SEED_NECKLACE)
 

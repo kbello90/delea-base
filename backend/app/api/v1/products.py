@@ -201,8 +201,8 @@ async def delete_product(
     (references,) = await cur.fetchone()
     if references:
         raise ConflictError(
-            f"This product appears on {references} invoice line(s). "
-            "Unpublish it instead (set is_published to false)."
+            f"This product appears on {references} invoice line(s), so it can't be deleted. "
+            "Unpublish it instead to hide it from your store while keeping your sales history."
         )
     cur = await conn.execute(
         "select large_path, thumb_path from public.product_images "
