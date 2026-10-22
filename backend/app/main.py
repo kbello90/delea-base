@@ -39,7 +39,8 @@ app = FastAPI(title="DELEA API", version="0.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().cors_origin_list,
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    # Every method a route uses (tests/test_cors.py checks this against app.routes).
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
     allow_credentials=False,
 )
