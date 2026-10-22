@@ -20,6 +20,7 @@ dev = [
   "pytest>=8.3",
   "httpx>=0.28",
   "ruff>=0.8",
+  "pyyaml>=6.0",  # showcase loader (showcase/products.yaml)
 ]
 
 [build-system]
@@ -31,6 +32,7 @@ packages = ["app"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]  # the showcase package (tooling, not part of the app wheel)
 markers = [
   "integration: needs the local Supabase stack (npx supabase@2.121.0 start); skipped if unreachable",
 ]

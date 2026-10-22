@@ -1,0 +1,212 @@
+# DELEA Showcase products. Edited by hand; read by backend/scripts/load_showcase.py.
+#
+# - folder: a subfolder of $SHOWCASE_DIR (never committed; no image ever lives in this repo).
+# - images: filenames in that folder, in display order (at most 10). The first is the primary
+#   image. Clean product shots first, text-heavy marketing graphics last.
+# - stock: units on hand TODAY. The loader starts each product at stock + units sold in the
+#   loaded history, so after the sales are replayed it ends exactly here.
+# - prices are in dollars ("38.00"); the loader converts them to integer cents.
+# - "needs-review" marks a guess. Descriptions use only what the photos or names show.
+#
+# Folders not used: "Birthstone Stud Earrings" (empty; its photos are in 7.earring),
+# "Pendant Cursive" (its one image is a byte-identical copy of one in 5.initial letter),
+# "pendant molde" (not in the product list).
+
+products:
+  - sku: DL-NK-LAYER-01
+    folder: "1.Layered"
+    name: Layered Open Circle Necklace
+    description: >-
+      Two fine gold-tone chains worn together, one plain and one finished with an open
+      circle pendant. A simple layered look for every day.
+    metal: other  # needs-review: gold tone; the metal list has no "gold plated" option
+    price: "42.00"
+    sale_price: null
+    stock: 14
+    low_stock_threshold: 4
+    published: true
+    images:
+      - l3.png  # on the polishing cloth with the box
+      - l2.png  # in hand
+      - l1.png  # worn
+
+  - sku: DL-NK-HEART-01
+    folder: "2.Heart birth stone"
+    name: Heart Birthstone Necklace
+    description: >-
+      A dainty gold-tone chain with a small heart-shaped stone. Shown in twelve stone
+      colours, one for each birth month.
+    metal: other  # needs-review: several filenames say "14k gold plated"
+    price: "38.00"
+    sale_price: "32.00"  # needs-review: shows the sale price in the list
+    stock: 22
+    low_stock_threshold: 5
+    published: true
+    images:  # 21 photos in the folder; 10 is the limit. Left out: the 11 single-colour
+             # month shots on the brown backdrop except March (they read as colour options).
+      - 3.png  # on the polishing cloth with the box
+      - 2.png  # in hand
+      - 1.png  # worn
+      - "14 k gold plated heart 2.png"  # all colours, fanned out
+      - "14k gold plated heart.jpg"  # all colours, on cream
+      - 3 14k gold plated heart.jpg
+      - "4  14k gold plated heart.jpg"  # two spaces in the filename
+      - 1. heart march aquamarine.png
+      - top test 1.jpg  # small DELEA logo in the corner
+      - "catalog heart .png"  # text: month colour chart (a space before .png)
+
+  - sku: DL-NK-FLOWER-01
+    folder: "3.flower and birth stone"
+    name: Birth Flower and Birthstone Necklace
+    description: >-
+      Two small charms on a gold-tone chain: a rectangular tag engraved with a flower and a
+      round coloured stone. Made to pair a birth month's flower with its colour.
+    metal: other  # needs-review
+    price: "45.00"
+    sale_price: null
+    stock: 3  # below the threshold: shows on the dashboard as low stock
+    low_stock_threshold: 4
+    published: true
+    images:  # left out: "Flor 2.jpg" and "Flor 4.jpg" carry another brand's watermark
+      - fb3.png  # on the polishing cloth with the box
+      - fb 2.png  # in hand
+      - fb 1.png  # worn
+      - Gemini_Generated_Image_gtf5tugtf5tugtf5.jpg  # worn
+      - promo 2.png  # text
+      - promotional.png  # text
+
+  - sku: DL-NK-HEART-INIT-01
+    folder: "4.Heart initial letter"
+    name: Heart Initial Necklace
+    description: >-
+      A small gold-tone heart charm engraved with a single letter, on a fine chain. A
+      personal piece with a name or a loved one's initial.
+    metal: other  # needs-review
+    price: "34.00"
+    sale_price: null
+    stock: 18
+    low_stock_threshold: 4
+    published: true
+    images:  # left out: "2.png" (225x180, too small), "Jewelry box.png" (a different
+             # necklace; same file is in 6. Zodiac), flor2/flor3/flor5.png (the flower
+             # necklace, with another brand's watermark)
+      - h2.png  # on the polishing cloth with the box
+      - Letter a.jpeg  # plain background, 554x554
+      - h3.png  # in hand
+      - h1.png  # worn
+
+  - sku: DL-NK-SCRIPT-01
+    folder: "5.initial letter"
+    name: Cursive Initial Necklace
+    description: >-
+      A single letter in flowing cursive script, hanging from a gold-tone chain. Shown with
+      the letter K.
+    metal: other  # needs-review
+    price: "36.00"
+    sale_price: null
+    stock: 11
+    low_stock_threshold: 4
+    published: true
+    images:
+      - "IL 5.png"  # on the polishing cloth
+      - I L 4.png  # in hand
+      - I L 1.png  # worn
+      - I L 3.png  # worn, white shirt
+      - initial letter necklace.jpg  # worn
+      - I L 2.png  # worn (close to I L 1.png)
+
+  - sku: DL-NK-ZODIAC-01
+    folder: "6. Zodiac"
+    name: Zodiac and Birthstone Necklace
+    description: >-
+      A zodiac sign charm next to a round coloured stone on a gold-tone chain. Shown for
+      all twelve signs.
+    metal: other  # needs-review
+    price: "44.00"
+    sale_price: null
+    stock: 9
+    low_stock_threshold: 3
+    published: true
+    images:  # left out: "Jewelry box.png" (a different necklace)
+      - 3.png  # on the polishing cloth with the box
+      - promo zodiac 1.jpg  # three signs, no text
+      - 2.png  # in hand
+      - 1.png  # worn
+      - Gemini_Generated_Image_5xv99d5xv99d5xv9.jpg  # worn
+      - Gemini_Generated_Image_uknjukuknjukuknj.jpg  # worn, close-up
+      - promo zodiac 2.png  # text
+      - promo zodiac 3.png  # text
+      - promo zodiac 4.png  # text
+
+  - sku: DL-ER-STUD-01
+    folder: "7.earring"
+    name: Birthstone Stud Earrings
+    description: >-
+      Small round stud earrings with a coloured stone in a gold-tone bezel setting. Shown in
+      twelve colours, one for each birth month.
+    metal: other  # needs-review
+    price: "28.00"
+    sale_price: null
+    stock: 26
+    low_stock_threshold: 6
+    published: true
+    images:
+      - 3.png  # in the open box
+      - 2.png  # between fingertips
+      - 1.png  # worn
+      - Gemini_Generated_Image_rbz29mrbz29mrbz2.jpg  # worn
+      - promo 2.png  # text
+      - promo 1.png  # text: month colour chart
+      - promo 3.png  # text: collage
+
+  - sku: DL-NK-BEZEL-01
+    folder: "Birthstone"
+    name: Birthstone Necklace
+    description: >-
+      A single round coloured stone in a gold-tone bezel setting on a fine chain. Shown in
+      twelve colours, one for each birth month.
+    metal: other  # needs-review
+    price: "36.00"
+    sale_price: null
+    stock: 2  # below the threshold: shows on the dashboard as low stock
+    low_stock_threshold: 4
+    published: true
+    images:  # left out: "1.png" (a supplier spec photo of loose beads with measurements)
+      - birthstone 2.png  # all colours, no text
+      - Birth stones 3.png  # text: month colour chart
+      - birth stone 1.png  # text, with model
+      - birth stone 5.png  # text, with model
+
+  - sku: DL-AC-BOX-01
+    folder: "Jewelry box"
+    name: Portable Jewelry Box
+    description: >-
+      A compact zip-around jewelry box with necklace hooks, an elastic pocket, ring rolls and
+      divided compartments. Shown in pink, blue, black and white.
+    metal: other  # not jewelry
+    price: "24.00"
+    sale_price: null
+    stock: 12
+    low_stock_threshold: 3
+    published: false  # draft until a plain product photo exists
+    images:  # all three are marketing graphics with text; no plain product shot
+      - box jewelry 1.png
+      - box jewelry 2.png
+      - box jewelry 3.png  # labelled features
+
+  - sku: DL-AC-TRAVEL-01
+    folder: "jewelry travel book"
+    name: Travel Jewelry Book
+    description: >-
+      A quilted book-style jewelry case with a snap closure and removable zip pages with
+      clear compartments. Shown in pink, tan and cream.
+    metal: other  # not jewelry
+    price: "32.00"
+    sale_price: null
+    stock: 8
+    low_stock_threshold: 3
+    published: false  # draft until a plain product photo exists
+    images:  # all three are marketing graphics with text; no plain product shot
+      - Travel jewelry book 1.png
+      - Travel jewelry book 2.png  # labelled features
+      - Travel jewelry book 3.png

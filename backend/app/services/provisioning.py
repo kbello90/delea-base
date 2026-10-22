@@ -128,9 +128,19 @@ async def tenant_storage_paths(conn: AsyncConnection, tenant_id: UUID) -> dict[s
     return paths
 
 
+async def refuse_unless_demo(conn: AsyncConnection, tenant_id: UUID) -> None:
+    """Raise unless the tenant is a demo tenant (or doesn't exist)."""
+    cur = await conn.execute("select is_demo from public.tenants where id = %s", (tenant_id,))
+    row = await cur.fetchone()
+    if row is not None and not row[0]:
+        raise ProvisioningError(f"tenant {tenant_id} is not a demo tenant; refusing to delete")
+
+
 async def remove_tenant_storage(conn: AsyncConnection, tenant_id: UUID) -> int:
-    """Remove the tenant's Storage objects (through the Storage API, which also deletes the
-    files). Returns how many were removed."""
+    """Remove a demo tenant's Storage objects (through the Storage API, which also deletes the
+    files). Refuses a tenant that isn't a demo tenant, like delete_demo_tenant. Returns how
+    many were removed."""
+    await refuse_unless_demo(conn, tenant_id)
     removed = 0
     for bucket, paths in (await tenant_storage_paths(conn, tenant_id)).items():
         for start in range(0, len(paths), 500):
@@ -144,13 +154,8 @@ async def delete_demo_tenant(conn: AsyncConnection, tenant_id: UUID) -> bool:
     touched (call remove_tenant_storage first). Refuses a tenant that isn't a demo tenant, so
     a wrong id can never remove a real business. Returns False if there was nothing to do."""
     async with conn.transaction():
+        await refuse_unless_demo(conn, tenant_id)
         cur = await conn.execute(
-            "select is_demo from public.tenants where id = %s for update", (tenant_id,)
+            "delete from public.tenants where id = %s and is_demo returning id", (tenant_id,)
         )
-        row = await cur.fetchone()
-        if row is None:
-            return False
-        if not row[0]:
-            raise ProvisioningError(f"tenant {tenant_id} is not a demo tenant; refusing to delete")
-        await conn.execute("delete from public.tenants where id = %s", (tenant_id,))
-    return True
+        return await cur.fetchone() is not None

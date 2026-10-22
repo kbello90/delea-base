@@ -32,3 +32,9 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Showcase: only the product list and its README are committed. The photos stay outside the
+# repository (SHOWCASE_DIR); backend/tests/test_showcase.py checks this.
+showcase/*
+!showcase/products.yaml
+!showcase/README.md

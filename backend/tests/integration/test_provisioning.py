@@ -15,6 +15,7 @@ from app.services.provisioning import (
     TenantSpec,
     delete_demo_tenant,
     provision_tenant,
+    remove_tenant_storage,
 )
 
 from .support import PASSWORD, TENANT_A, TENANT_B, run_async, sign_in, unverified_claims
@@ -193,6 +194,23 @@ def test_only_a_demo_tenant_can_be_deleted(settings, db) -> None:
         == 1
     )
     assert run_async(_delete(settings, uuid.uuid4())) is False  # nothing to delete
+
+
+async def _remove_storage(settings, tenant_id) -> int:
+    async with await _connect(settings) as conn:
+        return await remove_tenant_storage(conn, tenant_id)
+
+
+def test_storage_of_a_tenant_that_is_not_a_demo_is_never_removed(settings, db) -> None:
+    before = db.execute(
+        "select count(*) from storage.objects where name like %s", (f"{TENANT_A}/%",)
+    ).fetchone()
+    with pytest.raises(ProvisioningError, match="not a demo tenant"):
+        run_async(_remove_storage(settings, uuid.UUID(TENANT_A)))
+    after = db.execute(
+        "select count(*) from storage.objects where name like %s", (f"{TENANT_A}/%",)
+    ).fetchone()
+    assert after == before
 
 
 def test_deleting_a_demo_tenant_removes_all_its_rows(settings, db) -> None:

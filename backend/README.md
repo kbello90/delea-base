@@ -189,6 +189,13 @@ stay generic.
   by matching the message text. **Milestone B** (not implemented yet): a stable `code` field
   on every error response (for example `duplicate_value`, `in_use`), and the frontend
   switches on `code` instead of message text.
+- **The API logs into Postgres as `postgres`.** User and AI sessions switch role, but
+  `service_session` keeps that administrative login. **Milestone B** (not implemented yet): a
+  least-privilege runtime login, separate from the one migrations and the showcase loader use.
+- **Demo deployment.** A public demo lets visitors edit and upload. **Milestone B** (not
+  implemented yet): a scheduled reset that re-runs the showcase loader, and upload and rate
+  limits for `is_demo` tenants. See `showcase/README.md` and TRD §6.7 (provisioning, the demo
+  tenant, and the worker contract: skip `is_demo` tenants and processed events).
 - **Two-decimal currencies only (v1).** Every amount is integer hundredths of the major unit
   (`*_cents`). `company_settings.currency` accepts only USD, CAD, EUR, GBP, MXN, AUD, NZD and
   CHF (`SUPPORTED_CURRENCIES` in `app/models/settings.py`); zero-decimal (JPY) and
