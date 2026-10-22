@@ -207,7 +207,8 @@ create table invoice_line_items (
   description text not null,                                 -- snapshot of the product name at sale time
   qty integer not null check (qty > 0),
   unit_price_cents bigint not null check (unit_price_cents >= 0),
-  line_total_cents bigint not null
+  line_total_cents bigint not null,
+  position integer not null check (position >= 1),           -- entry order, 1..n per invoice; unique (invoice_id, position); assigned on insert when omitted (migration 20261022000300)
 );
 
 create table expenses (

@@ -269,8 +269,8 @@ async def _insert_sales(conn: AsyncConnection, tid: uuid.UUID, history: History)
         for n, line in enumerate(q.lines):
             await conn.execute(
                 "insert into public.invoice_line_items (id, invoice_id, tenant_id, product_id, "
-                "description, qty, unit_price_cents, line_total_cents) "
-                "values (%s, %s, %s, %s, %s, %s, %s, %s)",
+                "description, qty, unit_price_cents, line_total_cents, position) "
+                "values (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
                 (
                     stable_id(tid, "line", f"{inv.id}/{n}"),
                     inv.id,
@@ -280,6 +280,7 @@ async def _insert_sales(conn: AsyncConnection, tid: uuid.UUID, history: History)
                     line.qty,
                     line.unit_price_cents,
                     line.line_total_cents,
+                    n + 1,
                 ),
             )
         await _stamp_events(conn, tid, inv.created_at)

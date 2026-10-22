@@ -95,7 +95,7 @@ async def _load(conn: AsyncConnection, claims: TokenClaims, invoice_id: UUID) ->
         if claims.app_role != "cpa":  # cpa can't read line items (RLS)
             await cur.execute(
                 f"select {_LINE_COLUMNS} from public.invoice_line_items "
-                "where invoice_id = %s and tenant_id = %s order by id",
+                "where invoice_id = %s and tenant_id = %s order by position",
                 (invoice_id, claims.tenant_id),
             )
             invoice.items = [InvoiceLineOut.model_validate(r) for r in await cur.fetchall()]
@@ -189,7 +189,7 @@ async def _insert_lines(
         await cur.executemany(
             "insert into public.invoice_line_items "
             "(invoice_id, tenant_id, product_id, description, qty, unit_price_cents, "
-            "line_total_cents) values (%s, %s, %s, %s, %s, %s, %s)",
+            "line_total_cents, position) values (%s, %s, %s, %s, %s, %s, %s, %s)",
             [
                 (
                     invoice_id,
@@ -199,8 +199,9 @@ async def _insert_lines(
                     line.qty,
                     line.unit_price_cents,
                     line.line_total_cents,
+                    position,
                 )
-                for line in quote.lines
+                for position, line in enumerate(quote.lines, start=1)
             ],
         )
 

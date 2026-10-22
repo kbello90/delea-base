@@ -891,3 +891,36 @@ def test_new_endpoints_role_matrix(client, users, db) -> None:
     assert_access(
         client, users, "PATCH", f"{INVOICES}/{quote['id']}", writers, json={"notes": "matrix"}
     )
+
+
+# ---------------------------------------------------------------------------
+# Lines keep their entry order
+# ---------------------------------------------------------------------------
+def test_lines_come_back_in_the_order_sent(client, users, db) -> None:
+    owner = users["owner_a"]
+    # Created in an order that is neither id order nor name order.
+    c, a, b = product(db), product(db), product(db)
+    sent = [{"product_id": c, "qty": 1}, {"product_id": a, "qty": 2}, {"product_id": b, "qty": 3}]
+    quote = create(client, owner, sent)
+    as_sent = [(i["product_id"], i["qty"]) for i in sent]
+    assert [(i["product_id"], i["qty"]) for i in quote["items"]] == as_sent
+    url = f"{INVOICES}/{quote['id']}"
+    again = client.get(url, headers=owner.headers).json()
+    assert [(i["product_id"], i["qty"]) for i in again["items"]] == as_sent
+
+    # Replacing the lines (the same product twice included) keeps the new order.
+    replacement = [
+        {"product_id": b, "qty": 1},
+        {"product_id": c, "qty": 4},
+        {"product_id": b, "qty": 2},
+    ]
+    replaced = client.put(f"{url}/items", json={"items": replacement}, headers=owner.headers).json()
+    as_replaced = [(i["product_id"], i["qty"]) for i in replacement]
+    assert [(i["product_id"], i["qty"]) for i in replaced["items"]] == as_replaced
+    again = client.get(url, headers=owner.headers).json()
+    assert [(i["product_id"], i["qty"]) for i in again["items"]] == as_replaced
+    positions = db.execute(
+        "select position from public.invoice_line_items where invoice_id = %s order by position",
+        (quote["id"],),
+    ).fetchall()
+    assert [p for (p,) in positions] == [1, 2, 3]
