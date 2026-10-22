@@ -47,7 +47,9 @@ $$;
 select has_column('public', 'tenants', 'is_demo', 'tenants.is_demo exists');
 select col_not_null('public', 'tenants', 'is_demo', 'is_demo is not null');
 select col_default_is('public', 'tenants', 'is_demo', 'false', 'is_demo defaults to false');
-select is((select count(*) from public.tenants where is_demo), 0::bigint, 'the seed tenants are not demo tenants');
+select is((select count(*) from public.tenants where is_demo
+            and id in ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222')),
+          0::bigint, 'the seed tenants are not demo tenants');
 
 -- ===========================================================================
 -- No app role can set it

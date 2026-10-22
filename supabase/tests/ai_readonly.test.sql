@@ -211,7 +211,10 @@ select throws_ok(format('select pg_temp.write_as(%L, %L)', 'ai_readonly',
 from ai_views order by v;
 
 -- The base data is untouched.
-select is((select count(*)::int from public.products), 8, 'products unchanged after the write attempts');
+-- Seed tenants only: other tenants (e.g. a locally loaded showcase) may exist.
+select is((select count(*)::int from public.products
+            where tenant_id in ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222')),
+          8, 'products unchanged after the write attempts');
 
 select * from finish();
 rollback;
