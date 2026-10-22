@@ -1,7 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { renderApp } from "../test/harness";
+import { jsonResponse, renderApp } from "../test/harness";
 import { changedFields, EMPTY_FORM, validateProductForm } from "./productForm";
 import { makeProduct, productServer } from "./testServer";
 
@@ -88,17 +88,30 @@ describe("product form", () => {
     expect(screen.getByRole("heading", { name: "Images" })).toBeInTheDocument();
   });
 
-  it("a duplicate SKU (409) is shown on the SKU field", async () => {
-    const server = productServer([makeProduct({ sku: "TAKEN" })]);
+  async function submitNew(server: ReturnType<typeof productServer>, sku: string) {
     renderApp({ path: "/products/new", fetch: server.fetch });
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText("Name"), "Another");
-    await user.type(screen.getByLabelText("SKU"), "TAKEN");
+    await user.type(screen.getByLabelText("SKU"), sku);
     await user.selectOptions(screen.getByLabelText("Metal"), "other");
     await user.type(screen.getByLabelText("Price"), "10");
     await user.click(screen.getByRole("button", { name: "Create product" }));
+  }
+
+  it("a duplicate-SKU 409 is shown on the SKU field only", async () => {
+    await submitNew(productServer([makeProduct({ sku: "TAKEN" })]), "TAKEN");
     expect(await screen.findByText("This SKU is already used by another product.")).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent("A record with these values already exists");
+    expect(screen.getByLabelText("SKU")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("any other 409 is a form error with the server's message, not a SKU error", async () => {
+    const server = productServer();
+    server.override("POST /api/v1/products", () => jsonResponse(409, { detail: "The request conflicts with a business rule" }));
+    await submitNew(server, "NEW-1");
+    expect(await screen.findByRole("alert")).toHaveTextContent("The request conflicts with a business rule");
+    expect(screen.queryByText("This SKU is already used by another product.")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("SKU")).toHaveAttribute("aria-invalid", "false");
   });
 
   it("editing sends a PATCH with only the changed fields", async () => {

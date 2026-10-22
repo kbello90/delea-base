@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/authContext";
 import { ErrorState } from "../components/ErrorState";
 import { Field } from "../components/Field";
+import { isDuplicateError } from "../lib/apiErrors";
 import { Loading } from "../components/Loading";
 import { PageHeader } from "../components/PageHeader";
 import { useToast } from "../components/toastContext";
@@ -121,11 +122,15 @@ function ProductForm({
   );
 }
 
-/** Server errors: a duplicate SKU (409) belongs on the SKU field; others go on the form. */
-function applyServerError(e: unknown, setErrors: (errors: ProductFormErrors) => void): string {
-  if (e instanceof ApiError && e.status === 409) {
+/**
+ * Server errors: a duplicate (the only unique column a client sets is the SKU) belongs on the
+ * SKU field alone; any other error, including other 409s, goes on the form with the server's
+ * message.
+ */
+function applyServerError(e: unknown, setErrors: (errors: ProductFormErrors) => void): string | null {
+  if (isDuplicateError(e)) {
     setErrors({ sku: "This SKU is already used by another product." });
-    return e.message;
+    return null;
   }
   return e instanceof ApiError ? e.message : "The product couldn't be saved. Try again.";
 }

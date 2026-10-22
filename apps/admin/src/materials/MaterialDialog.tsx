@@ -4,6 +4,7 @@ import { Button } from "@delea/ui";
 import { useState, type FormEvent } from "react";
 import { Field } from "../components/Field";
 import { useToast } from "../components/toastContext";
+import { isDuplicateError } from "../lib/apiErrors";
 import { useCreateMaterial, useUpdateMaterial, type Material, type MaterialCreate, type MaterialUpdate } from "./api";
 import {
   changedFields,
@@ -14,16 +15,13 @@ import {
   type MaterialFormValues,
 } from "./materialForm";
 
-// The backend's message for a unique violation (errors.py, SQLSTATE 23505). On materials the
-// only unique column a client sets is the name. The body has no error code, so match the text.
-const DUPLICATE = "A record with these values already exists";
-
 /**
- * Server errors: a duplicate name (409 with DUPLICATE) belongs on the name field; any other
- * error, including other 409s, goes on the form with the server's message.
+ * Server errors: a duplicate (the only unique column a client sets is the name) belongs on
+ * the name field alone; any other error, including other 409s, goes on the form with the
+ * server's message.
  */
 function applyServerError(e: unknown, setErrors: (errors: MaterialFormErrors) => void): string | null {
-  if (e instanceof ApiError && e.status === 409 && e.message === DUPLICATE) {
+  if (isDuplicateError(e)) {
     setErrors({ name: "Another material already has this name." });
     return null;
   }
