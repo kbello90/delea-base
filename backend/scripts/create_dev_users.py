@@ -10,15 +10,16 @@ The password is public and local-only. The integration tests don't use these use
 create and delete their own.
 """
 
+import asyncio
 import sys
 from pathlib import Path
 
-import httpx
 import psycopg
 
 BACKEND = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND))
 
+from app.core.auth_admin import AuthAdmin  # noqa: E402
 from app.core.config import Settings  # noqa: E402
 
 TENANT_A = "11111111-1111-1111-1111-111111111111"  # "DELEA Demo" in supabase/seed.sql
@@ -56,10 +57,15 @@ def _local_settings() -> Settings | None:
     return settings
 
 
-def _existing_user_ids(auth: httpx.Client) -> dict[str, str]:
-    response = auth.get("/admin/users", params={"page": 1, "per_page": 1000})
-    response.raise_for_status()
-    return {user["email"]: user["id"] for user in response.json()["users"] if user.get("email")}
+async def _ensure_users(settings: Settings) -> list[tuple[str, str, str, str]]:
+    """(email, role, user_id, action) for each dev user, created or with its password reset."""
+    admin = AuthAdmin(settings.supabase_url, settings.supabase_service_role_key)
+    result = []
+    for email, role in DEV_USERS:
+        existed = await admin.find_user_id(email) is not None
+        user_id = await admin.ensure_user(email, DEV_PASSWORD)
+        result.append((email, role, user_id, "updated" if existed else "created"))
+    return result
 
 
 def main() -> int:
@@ -67,26 +73,9 @@ def main() -> int:
     if settings is None:
         return 1
 
-    key = settings.supabase_service_role_key
-    headers = {"apikey": key, "Authorization": f"Bearer {key}"}
-    with (
-        httpx.Client(
-            base_url=f"{settings.supabase_url}/auth/v1", headers=headers, timeout=10
-        ) as auth,
-        psycopg.connect(settings.database_url, autocommit=True) as db,
-    ):
-        existing = _existing_user_ids(auth)
-        for email, role in DEV_USERS:
-            body = {"password": DEV_PASSWORD, "email_confirm": True}
-            if email in existing:
-                user_id = existing[email]
-                auth.put(f"/admin/users/{user_id}", json=body).raise_for_status()
-                action = "updated"
-            else:
-                response = auth.post("/admin/users", json={"email": email, **body})
-                response.raise_for_status()
-                user_id = response.json()["id"]
-                action = "created"
+    users = asyncio.run(_ensure_users(settings))
+    with psycopg.connect(settings.database_url, autocommit=True) as db:
+        for email, role, user_id, action in users:
             # The access token hook reads tenant_members, so the role shows up at next sign-in.
             db.execute(
                 "insert into public.tenant_members (user_id, tenant_id, app_role) "

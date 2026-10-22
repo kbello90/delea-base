@@ -4,6 +4,7 @@ import asyncio
 import uuid
 from dataclasses import dataclass
 
+import httpx
 import jwt
 
 from app.core.security import TokenClaims
@@ -41,6 +42,25 @@ class TestUser:
     def claims(self) -> TokenClaims:
         assert self.tenant_id and self.app_role
         return TokenClaims(sub=self.user_id, tenant_id=self.tenant_id, app_role=self.app_role)
+
+
+def run_async(coro):
+    """Run a coroutine to completion on a selector loop (psycopg async needs one on Windows)."""
+    with asyncio.Runner(loop_factory=asyncio.SelectorEventLoop) as runner:
+        return runner.run(coro)
+
+
+def sign_in(supabase_url: str, anon_key: str, email: str, password: str) -> str:
+    """A fresh access token (the hook reads tenant_members at this moment)."""
+    response = httpx.post(
+        f"{supabase_url}/auth/v1/token",
+        params={"grant_type": "password"},
+        headers={"apikey": anon_key},
+        json={"email": email, "password": password},
+        timeout=10,
+    )
+    response.raise_for_status()
+    return response.json()["access_token"]
 
 
 def unverified_claims(token: str) -> dict:

@@ -184,13 +184,18 @@ _SEED_TABLES = (
 
 
 def _seed_fingerprint(db: psycopg.Connection) -> dict[str, str]:
-    return {
-        table: db.execute(
+    """A hash of tenant A's and B's rows per seed table. Other tenants (the showcase, tenants
+    the tests provision) may come and go; A and B must not change."""
+    fingerprint = {}
+    for table in _SEED_TABLES:
+        column = "id" if table == "tenants" else "tenant_id"
+        fingerprint[table] = db.execute(
             f"select coalesce(md5(string_agg((to_jsonb(t) - 'updated_at')::text, '|' "
-            f"order by (to_jsonb(t) - 'updated_at')::text)), '') from public.{table} t"
+            f"order by (to_jsonb(t) - 'updated_at')::text)), '') from public.{table} t "
+            f"where t.{column} = any(%s::uuid[])",
+            ([TENANT_A, TENANT_B],),
         ).fetchone()[0]
-        for table in _SEED_TABLES
-    }
+    return fingerprint
 
 
 @pytest.fixture(scope="session", autouse=True)
