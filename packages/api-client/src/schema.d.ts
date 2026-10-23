@@ -566,7 +566,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update Company Settings */
+        /**
+         * Update Company Settings
+         * @description Only the fields sent change. A new default tax rate is read when the next quote is
+         *     created; nothing here touches existing invoices.
+         */
         patch: operations["update_company_settings_api_v1_settings_company_patch"];
         trace?: never;
     };
@@ -600,6 +604,41 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/brand/logo/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Logo Upload */
+        post: operations["create_logo_upload_api_v1_settings_brand_logo_uploads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/brand/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register Logo */
+        post: operations["register_logo_api_v1_settings_brand_logo_post"];
+        /** Remove Logo */
+        delete: operations["remove_logo_api_v1_settings_brand_logo_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -680,8 +719,6 @@ export interface components {
             primary_color?: string | null;
             /** Accent Color */
             accent_color?: string | null;
-            /** Logo Url */
-            logo_url?: string | null;
             /** Hero Title */
             hero_title?: string | null;
             /** Hero Subtitle */
@@ -727,8 +764,6 @@ export interface components {
             ein?: string | null;
             /** Address */
             address?: string | null;
-            /** Currency */
-            currency?: string | null;
             default_language?: components["schemas"]["Language"] | null;
             /** Enabled Languages */
             enabled_languages?: components["schemas"]["Language"][] | null;
@@ -1206,6 +1241,36 @@ export interface components {
             product_id: string;
             /** Qty */
             qty: number;
+        };
+        /** LogoRegister */
+        LogoRegister: {
+            /**
+             * Upload Id
+             * Format: uuid
+             */
+            upload_id: string;
+            content_type: components["schemas"]["LogoType"];
+        };
+        /**
+         * LogoType
+         * @enum {string}
+         */
+        LogoType: "image/jpeg" | "image/png" | "image/webp";
+        /** LogoUploadRequest */
+        LogoUploadRequest: {
+            content_type: components["schemas"]["LogoType"];
+        };
+        /** LogoUploadTicket */
+        LogoUploadTicket: {
+            /**
+             * Upload Id
+             * Format: uuid
+             */
+            upload_id: string;
+            /** Upload Url */
+            upload_url: string;
+            /** Max Bytes */
+            max_bytes: number;
         };
         /** MaterialCreate */
         MaterialCreate: {
@@ -3183,6 +3248,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CurrencyOut"];
+                };
+            };
+        };
+    };
+    create_logo_upload_api_v1_settings_brand_logo_uploads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LogoUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogoUploadTicket"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_logo_api_v1_settings_brand_logo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LogoRegister"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandConfigOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_logo_api_v1_settings_brand_logo_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandConfigOut"];
                 };
             };
         };

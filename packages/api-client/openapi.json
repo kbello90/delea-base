@@ -2833,6 +2833,7 @@
           "settings"
         ],
         "summary": "Update Company Settings",
+        "description": "Only the fields sent change. A new default tax rate is read when the next quote is\ncreated; nothing here touches existing invoices.",
         "operationId": "update_company_settings_api_v1_settings_company_patch",
         "requestBody": {
           "content": {
@@ -2957,6 +2958,122 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CurrencyOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/brand/logo/uploads": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Create Logo Upload",
+        "operationId": "create_logo_upload_api_v1_settings_brand_logo_uploads_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogoUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogoUploadTicket"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/brand/logo": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Register Logo",
+        "operationId": "register_logo_api_v1_settings_brand_logo_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogoRegister"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandConfigOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Remove Logo",
+        "operationId": "remove_logo_api_v1_settings_brand_logo_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandConfigOut"
                 }
               }
             }
@@ -3157,19 +3274,6 @@
             ],
             "title": "Accent Color"
           },
-          "logo_url": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 2000,
-                "minLength": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Logo Url"
-          },
           "hero_title": {
             "anyOf": [
               {
@@ -3341,17 +3445,6 @@
               }
             ],
             "title": "Address"
-          },
-          "currency": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Currency"
           },
           "default_language": {
             "anyOf": [
@@ -4943,6 +5036,71 @@
           "qty"
         ],
         "title": "LineItemIn"
+      },
+      "LogoRegister": {
+        "properties": {
+          "upload_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Upload Id"
+          },
+          "content_type": {
+            "$ref": "#/components/schemas/LogoType"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "upload_id",
+          "content_type"
+        ],
+        "title": "LogoRegister"
+      },
+      "LogoType": {
+        "type": "string",
+        "enum": [
+          "image/jpeg",
+          "image/png",
+          "image/webp"
+        ],
+        "title": "LogoType"
+      },
+      "LogoUploadRequest": {
+        "properties": {
+          "content_type": {
+            "$ref": "#/components/schemas/LogoType"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "content_type"
+        ],
+        "title": "LogoUploadRequest"
+      },
+      "LogoUploadTicket": {
+        "properties": {
+          "upload_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Upload Id"
+          },
+          "upload_url": {
+            "type": "string",
+            "title": "Upload Url"
+          },
+          "max_bytes": {
+            "type": "integer",
+            "title": "Max Bytes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "upload_id",
+          "upload_url",
+          "max_bytes"
+        ],
+        "title": "LogoUploadTicket"
       },
       "MaterialCreate": {
         "properties": {

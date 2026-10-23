@@ -1,4 +1,5 @@
-"""Supabase Storage over HTTP with the service-role key (product images, expense receipts).
+"""Supabase Storage over HTTP with the service-role key (product images, expense receipts,
+brand logos).
 
 The key comes from Settings (backend/.env locally; an App Service setting from a @secure()
 Bicep parameter when hosted). It is used only for Storage HTTP calls from the backend: no SQL
@@ -16,6 +17,7 @@ from app.core.config import get_settings
 UPLOADS_BUCKET = "product-uploads"
 IMAGES_BUCKET = "product-images"
 RECEIPTS_BUCKET = "expense-receipts"  # private: read only through short-lived signed URLs
+BRAND_BUCKET = "brand-assets"  # public: processed logos, written only by the backend
 
 
 class StorageError(Exception):

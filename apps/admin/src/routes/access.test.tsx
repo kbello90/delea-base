@@ -27,7 +27,7 @@ const LANDING: Record<AppRole, string> = { owner: "Dashboard", staff: "Products"
 const ROLES: AppRole[] = ["owner", "staff", "cpa"];
 
 // Pages that are built (no placeholder). Placeholders say which slice builds them.
-const BUILT = new Set(["/dashboard", "/products", "/materials", "/customers", "/invoices", "/expenses"]);
+const BUILT = new Set(["/dashboard", "/products", "/materials", "/customers", "/invoices", "/expenses", "/settings"]);
 
 const cases = ROLES.flatMap((role) =>
   PAGES.map((page) => ({ role, ...page, allowed: ALLOWED[role].includes(page.label) })),

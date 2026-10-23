@@ -67,7 +67,7 @@ create table brand_config (
   tagline text,
   primary_color text not null default '#6B2737',
   accent_color text not null default '#B8935B',
-  logo_url text,
+  logo_path text,                                            -- {tenant_id}/logo-{uuid}.webp in the public brand-assets bucket (migration 20261023000200)
   hero_title text,
   hero_subtitle text,
   updated_at timestamptz not null default now()
@@ -78,7 +78,7 @@ create table company_settings (
   legal_name text,
   ein text,                               -- sensitive: restricted to owner (see §6)
   address text,
-  currency char(3) not null default 'USD',
+  currency char(3) not null default 'USD',              -- set at provisioning; a trigger refuses a change once the tenant has data
   default_language text not null default 'en' check (default_language in ('en', 'es', 'fr')),
   enabled_languages text[] not null default '{en}',
   default_tax_rate_bps integer not null default 0,   -- basis points; see §8 item 3

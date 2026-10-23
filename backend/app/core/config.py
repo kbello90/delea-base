@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     # Hosted, set it to the project's (or a CDN's) public URL for the bucket. Empty: derived
     # from SUPABASE_URL, which is right for the local stack.
     product_images_base_url: str = ""
+    # Public base URL of the brand-assets bucket (logos), the same way.
+    brand_assets_base_url: str = ""
 
     # Comma-separated list of exact origins. A wildcard is never allowed.
     cors_origins: str = "http://localhost:5173,http://localhost:5174"
@@ -52,6 +54,13 @@ class Settings(BaseSettings):
     def product_images_public_base(self) -> str:
         base = self.product_images_base_url or (
             f"{self.supabase_url.rstrip('/')}/storage/v1/object/public/product-images"
+        )
+        return base.rstrip("/")
+
+    @property
+    def brand_assets_public_base(self) -> str:
+        base = self.brand_assets_base_url or (
+            f"{self.supabase_url.rstrip('/')}/storage/v1/object/public/brand-assets"
         )
         return base.rstrip("/")
 

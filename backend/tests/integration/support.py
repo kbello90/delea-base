@@ -102,3 +102,15 @@ def assert_access(client, users: dict, method: str, path: str, expected: dict, j
         got[name] = response.status_code
     want = {name: expected.get(name, 403) for name in IDENTITIES}
     assert got == want, f"{method} {path}: got {got}, want {want}"
+
+
+def force_currency(db, tenant_id: str, currency: str) -> None:
+    """Test setup only: set a tenant's currency even though it has data. The currency guard
+    (migration 20261023000200) refuses that for every caller; it is tested on its own in
+    pgTAP, so here triggers are switched off for this one statement."""
+    with db.transaction():
+        db.execute("set local session_replication_role = replica")
+        db.execute(
+            "update public.company_settings set currency = %s where tenant_id = %s",
+            (currency, tenant_id),
+        )

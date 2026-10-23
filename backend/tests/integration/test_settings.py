@@ -1,15 +1,19 @@
 """Settings through the real app with real tokens. Original rows are restored after each test."""
 
+import csv
+import io
+import uuid
 from collections.abc import Iterator
 
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
-from .support import TENANT_A, TENANT_B, TestUser, assert_access
+from .support import TENANT_A, TENANT_B, TestUser, assert_access, force_currency
 
 pytestmark = pytest.mark.integration
 
+INVOICES = "/api/v1/invoices"
 COMPANY = "/api/v1/settings/company"
 BRAND = "/api/v1/settings/brand"
 CURRENCY = "/api/v1/settings/currency"
@@ -18,7 +22,6 @@ _COMPANY_COLS = (
     "legal_name",
     "ein",
     "address",
-    "currency",
     "default_language",
     "enabled_languages",
     "default_tax_rate_bps",
@@ -31,7 +34,7 @@ _BRAND_COLS = (
     "tagline",
     "primary_color",
     "accent_color",
-    "logo_url",
+    "logo_path",
     "hero_title",
     "hero_subtitle",
 )
@@ -96,20 +99,21 @@ def test_company_get_and_patch(client: TestClient, users: dict[str, TestUser], d
     updated = client.patch(
         COMPANY,
         json={
-            "currency": "eur",
             "default_tax_rate_bps": 0,
             "default_language": "fr",
             "enabled_languages": ["fr", "en"],
+            "ein": "20100070970",  # any country's tax ID (here a Peruvian RUC)
         },
         headers=owner.headers,
     )
     assert updated.status_code == 200, updated.text
     body = updated.json()
     assert (body["currency"], body["default_tax_rate_bps"], body["default_language"]) == (
-        "EUR",
+        "USD",
         0,
         "fr",
     )
+    assert body["ein"] == "20100070970"
     # Tenant B untouched.
     b = db.execute(
         "select currency, default_tax_rate_bps from public.company_settings where tenant_id = %s",
@@ -123,9 +127,10 @@ def test_company_get_and_patch(client: TestClient, users: dict[str, TestUser], d
     [
         {"default_tax_rate_bps": 10001},
         {"default_tax_rate_bps": -1},
-        {"currency": "DOLLARS"},
-        {"currency": "JPY"},  # valid ISO code, but not a two-decimal currency
-        {"currency": "KWD"},
+        # The currency is never accepted here, valid code or not (set at provisioning).
+        {"currency": "EUR"},
+        {"currency": "USD"},
+        {"currency": "JPY"},
         {"default_language": "de"},
         {"enabled_languages": ["en", "pt"]},
         # Merged-row rule: tenant A's default is 'en', so it must stay enabled.
@@ -170,7 +175,14 @@ def test_brand_get_and_patch(client: TestClient, users: dict[str, TestUser]) -> 
         client.get(BRAND, headers=users["owner_b"].headers).json()["business_name"] == "Aurora Gems"
     )
 
-    for bad in ({"accent_color": "blue"}, {"business_name": None}, {"tenant_id": TENANT_B}, {}):
+    for bad in (
+        {"accent_color": "blue"},
+        {"business_name": None},
+        {"tenant_id": TENANT_B},
+        {},
+        {"logo_url": "https://evil.example/logo.png"},
+        {"logo_path": f"{TENANT_A}/logo-00000000-0000-4000-8000-000000000000.webp"},
+    ):
         assert client.patch(BRAND, json=bad, headers=owner.headers).status_code == 422, bad
 
 
@@ -200,9 +212,7 @@ def test_currency_role_matrix(client: TestClient, users: dict[str, TestUser]) ->
 
 
 def test_currency_is_per_tenant(client: TestClient, users: dict[str, TestUser], db) -> None:
-    db.execute(
-        "update public.company_settings set currency = 'CAD' where tenant_id = %s", (TENANT_B,)
-    )
+    force_currency(db, TENANT_B, "CAD")
     try:
         got = {
             name: client.get(CURRENCY, headers=users[name].headers).json()
@@ -218,7 +228,84 @@ def test_currency_is_per_tenant(client: TestClient, users: dict[str, TestUser], 
         assert refused.status_code == 403
         assert refused.json() == {"detail": "No tenant membership"}
     finally:
+        force_currency(db, TENANT_B, "USD")
+
+
+# ---------------------------------------------------------------------------
+# A new default tax rate applies to new quotes only (the fixture restores it)
+# ---------------------------------------------------------------------------
+def test_a_tax_rate_change_never_rewrites_existing_invoices(client, users, db) -> None:
+    owner = users["owner_a"]
+    tag = uuid.uuid4().hex[:6].upper()
+    product = str(
         db.execute(
-            "update public.company_settings set currency = 'USD' where tenant_id = %s",
-            (TENANT_B,),
+            "insert into public.products (tenant_id, sku, name, metal, price_cents, stock_qty) "
+            "values (%s, %s, 'IT rate ring', 'other', 10000, 50) returning id",
+            (TENANT_A, f"IT-{tag}"),
+        ).fetchone()[0]
+    )
+    customer = str(
+        db.execute(
+            "insert into public.customers (tenant_id, first_name, last_name) "
+            "values (%s, %s, 'Rate') returning id",
+            (TENANT_A, f"IT-{tag}"),
+        ).fetchone()[0]
+    )
+    line = [{"product_id": product, "qty": 1}]
+
+    def create(**extra) -> dict:
+        r = client.post(
+            INVOICES, json={"customer_id": customer, "items": line, **extra}, headers=owner.headers
         )
+        assert r.status_code == 201, r.text
+        return r.json()
+
+    quote = create()
+    paid = create(pay_now=True, payment_method="card")
+    assert (quote["tax_rate_bps"], quote["tax_cents"], quote["total_cents"]) == (800, 800, 10800)
+    snapshot = {
+        i["id"]: client.get(f"{INVOICES}/{i['id']}", headers=owner.headers).json()
+        for i in (quote, paid)
+    }
+
+    changed = client.patch(COMPANY, json={"default_tax_rate_bps": 500}, headers=owner.headers)
+    assert changed.status_code == 200 and changed.json()["default_tax_rate_bps"] == 500
+
+    # Existing invoices are unchanged, field for field.
+    for invoice_id, before in snapshot.items():
+        after = client.get(f"{INVOICES}/{invoice_id}", headers=owner.headers).json()
+        assert after == before
+    # Editing the old quote's lines keeps its own rate (preview and save).
+    two = [{"product_id": product, "qty": 2}]
+    preview = client.post(
+        f"{INVOICES}/{quote['id']}/items/preview", json={"items": two}, headers=owner.headers
+    ).json()
+    assert (preview["tax_rate_bps"], preview["tax_cents"]) == (800, 1600)
+    replaced = client.put(
+        f"{INVOICES}/{quote['id']}/items", json={"items": two}, headers=owner.headers
+    ).json()
+    assert (replaced["tax_rate_bps"], replaced["tax_cents"], replaced["total_cents"]) == (
+        800,
+        1600,
+        21600,
+    )
+    # A new quote, and its preview, use the new rate.
+    new_preview = client.post(
+        f"{INVOICES}/preview", json={"customer_id": customer, "items": line}, headers=owner.headers
+    ).json()
+    assert (new_preview["tax_rate_bps"], new_preview["tax_cents"]) == (500, 500)
+    new = create()
+    assert (new["tax_rate_bps"], new["tax_cents"], new["total_cents"]) == (500, 500, 10500)
+    # The CPA's export shows each invoice's own rate.
+    rows = list(
+        csv.DictReader(
+            io.StringIO(
+                client.get(
+                    f"{INVOICES}/export.csv",
+                    params={"customer_id": customer},
+                    headers=users["cpa_a"].headers,
+                ).text
+            )
+        )
+    )
+    assert sorted(r["tax_rate_bps"] for r in rows) == ["500", "800", "800"]

@@ -332,8 +332,9 @@ Every authenticated request runs in **one transaction** as `authenticated`, with
 | `customers` (list/get · create/update · delete) | ✓ · ✓ · ✓ | ✓ · ✓ · — | — |
 | `expenses` (list and `summary` with date range / category / deductible / `q`; get; `export.csv` · writes) | ✓ · ✓ | — | read |
 | `expenses/{id}/receipt` (view: a 60-second signed link · `uploads`, register, remove) | ✓ · ✓ | — | view |
-| `settings/company` (get · patch) | ✓ · ✓ | — | — |
+| `settings/company` (get · patch; the currency is never writable) | ✓ · ✓ | — | — |
 | `settings/brand` (get · patch) | ✓ · ✓ | read | — |
+| `settings/brand/logo` (`uploads`, register, remove) | ✓ | — | — |
 | `settings/currency` (get; via `current_tenant_currency()`) | ✓ | read | read |
 | `invoices` (list/get/`export.csv`) | ✓ | ✓ | read (`items` null) |
 | `invoices` create (`pay_now`), `POST /preview`, `PUT /{id}/items`, `POST /{id}/items/preview`, `POST /{id}/status`, `PATCH /{id}` (notes, due date) | ✓ | ✓ | — |
@@ -398,7 +399,8 @@ All amounts are integer cents. v1 supports two-decimal currencies only: every am
 - **Orphaned Storage objects.** **Milestone B (not implemented yet):** one scheduled orphan sweep that deletes:
   - abandoned raw uploads in `product-uploads` older than 24 hours (uploaded through a signed URL but never registered; registration always deletes them);
   - abandoned receipt uploads (`{tenant}/{expense}/pending-*` in `expense-receipts`) older than 24 hours, same cause;
-  - receipt files no expense points to: a failed cleanup after an expense is deleted, or after its receipt is replaced or removed (these deletes run after the commit and are only logged when they fail).
+  - receipt files no expense points to: a failed cleanup after an expense is deleted, or after its receipt is replaced or removed (these deletes run after the commit and are only logged when they fail);
+  - abandoned logo uploads (`{tenant}/brand/*` in `product-uploads`, covered by the first item) and logo files in `brand-assets` that no `brand_config.logo_path` points to (a failed cleanup after a logo is replaced or removed).
 - **Error responses have no machine-readable code:** an error body is only `{"detail": "<message>"}`, so the admin app tells a duplicate value apart from other 409s by matching the message text ("A record with these values already exists"). **Milestone B (not implemented yet):** add a stable `code` field to every error response (for example `duplicate_value`, `in_use`), and have the frontend switch on `code` instead of message text.
 - **Multi-tenant users:** a user in several tenants gets their oldest membership.
 - **Direct database API: closed.** `public` isn't exposed over REST or GraphQL (Schema §9 "No direct data API"), so the API-only rules can't be bypassed with a user's JWT. Hosted projects need the same Data API settings; see the provisioning runbook.
@@ -417,3 +419,10 @@ All amounts are integer cents. v1 supports two-decimal currencies only: every am
 - **Filters:** the list, `GET /expenses/summary` (count, total, deductible total over every page) and the CSV share one parser: date range (inclusive), category, deductible, and `q` on the description.
 - **Receipts:** one per expense, in the private `expense-receipts` bucket (10 MB; JPEG, PNG, WebP, PDF). No client can read or write the bucket (RESTRICTIVE policies); uploads go through a signed upload URL the API issues, to `{tenant}/{expense}/pending-{upload}.{ext}`. Registration rebuilds that path from the token, checks the real content, re-encodes images in their own format (JPEG quality 90, PNG, WebP quality 90) after applying the EXIF orientation, with all metadata dropped (25 MP guard), keeps PDFs unchanged (they must start with `%PDF-`), and stores `{tenant}/{expense}/{receipt}.{ext}`; the pending upload is always deleted. The path never leaves the server: owner and CPA view a receipt through a signed link valid for 60 seconds (`Cache-Control: no-store`). The CSV has `has_receipt`, never a link. Expense bodies never accept receipt fields. Replacing or removing a receipt, or deleting the expense, deletes the file after the commit.
 - **Roles:** owner reads and writes everything, CPA reads (list, summary, CSV, view receipts), staff have no access.
+
+### 6.9 Settings
+- **Company settings** (`GET/PATCH /settings/company`, owner only in the API and RLS): legal name, tax ID (`ein`, free text for any country: EIN, RUC, VAT…), address (one text field), default tax rate, storefront languages. Read-only: currency, Stripe account, document counters.
+- **Currency:** chosen at provisioning (`TenantSpec.currency`, one of the two-decimal currencies). The API never accepts it, and a trigger (`company_settings_10_currency_guard`, migration `20261023000200`) refuses a change for every caller once the tenant has products, materials, invoices or expenses.
+- **Tax rate:** a new default applies to new quotes only. Every invoice stores the rate it was created with (`invoices.tax_rate_bps`); replacing a quote's lines, and its preview, reuse that rate. Nothing rewrites existing invoices.
+- **Brand** (`GET/PATCH /settings/brand`, owner writes, staff read for admin theming): store name, tagline, colours, hero title and subtitle. The logo is uploaded (owner only) through the product-image pipeline: a signed upload to `product-uploads` at `{tenant}/brand/{upload}.{ext}`, then registration rebuilds that path from the token, checks the real content (JPEG, PNG or WebP, 2 MB, 25 MP; no SVG), strips metadata, keeps transparency and writes one WebP of at most 512 px to the public `brand-assets` bucket at `{tenant}/logo-{uuid}.webp` (1 MiB, WebP only, no client access; a check keeps `brand_config.logo_path` under its tenant). The URL is `BRAND_ASSETS_BASE_URL` (or the local stack's public URL) plus the path. A replaced or removed logo is deleted after the commit.
+- **Out of scope here:** domains (useful once the storefront serves real domains), team management (slice 9, with the membership re-check), automation rules, Stripe and storefront editing.

@@ -11,28 +11,20 @@ from app.models.settings import (
 )
 
 
-def test_valid_company_update_normalizes_currency() -> None:
-    u = CompanySettingsUpdate(
-        currency="eur", default_tax_rate_bps=0, enabled_languages=["en", "fr"]
-    )
-    assert u.currency == "EUR"
-
-
 def test_supported_currencies_are_the_two_decimal_list() -> None:
     assert SUPPORTED_CURRENCIES == ("USD", "CAD", "EUR", "GBP", "MXN", "AUD", "NZD", "CHF")
 
 
-@pytest.mark.parametrize("code", [*SUPPORTED_CURRENCIES, "usd", "chf", "Mxn"])
-def test_two_decimal_currencies_accepted(code: str) -> None:
-    assert CompanySettingsUpdate(currency=code).currency == code.upper()
-
-
-# Valid ISO 4217 codes that v1 does not support: zero- and three-decimal currencies, and
-# two-decimal ones outside the list.
-@pytest.mark.parametrize("code", ["JPY", "KRW", "CLP", "KWD", "BHD", "TND", "BRL", "SEK"])
-def test_other_currencies_rejected(code: str) -> None:
-    with pytest.raises(ValidationError, match="must be one of USD, CAD, EUR"):
+@pytest.mark.parametrize("code", [*SUPPORTED_CURRENCIES, "usd", "EUR"])
+def test_the_currency_is_never_accepted_in_an_update(code: str) -> None:
+    # Set at provisioning; the database refuses a change once the tenant has data.
+    with pytest.raises(ValidationError):
         CompanySettingsUpdate(currency=code)
+
+
+def test_any_country_tax_id_is_free_text() -> None:
+    for tax_id in ("12-3456789", "20100070970", "GB123456789", "123456789RT0001"):
+        assert CompanySettingsUpdate(ein=tax_id).ein == tax_id
 
 
 @pytest.mark.parametrize(
@@ -41,8 +33,7 @@ def test_other_currencies_rejected(code: str) -> None:
         {"default_tax_rate_bps": -1},
         {"default_tax_rate_bps": 10001},
         {"default_tax_rate_bps": 8.5},
-        {"currency": "US"},
-        {"currency": "US$"},
+        {"currency": "USD"},
         {"default_language": "de"},
         {"enabled_languages": []},
         {"enabled_languages": ["en", "en"]},
@@ -78,3 +69,16 @@ def test_brand_colors_validated_and_uppercased() -> None:
 def test_brand_identity_not_writable() -> None:
     with pytest.raises(ValidationError):
         BrandConfigUpdate(tenant_id="11111111-1111-1111-1111-111111111111")
+
+
+@pytest.mark.parametrize(
+    "forged",
+    [
+        {"logo_url": "https://evil.example/logo.png"},
+        {"logo_path": "11111111-1111-1111-1111-111111111111/logo-x.webp"},
+    ],
+)
+def test_the_logo_is_never_set_through_a_brand_update(forged: dict) -> None:
+    # Only the logo upload endpoints set it.
+    with pytest.raises(ValidationError):
+        BrandConfigUpdate(**forged)

@@ -1,0 +1,64 @@
+/* Settings: cards, colour fields and the logo. */
+
+.settings-card {
+  margin: 0 0 1.5rem;
+  padding: 1rem 1.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.settings-card h2 {
+  font-size: 1.1rem;
+  margin: 0 0 0.75rem;
+}
+.settings-card fieldset {
+  background: transparent;
+}
+.settings-label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.settings-readonly {
+  margin: 0.35rem 0;
+  font-weight: 600;
+}
+.settings-note {
+  padding-bottom: 1rem;
+}
+.color-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.color-swatch {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: repeating-linear-gradient(45deg, var(--surface-2) 0 4px, var(--surface) 4px 8px);
+}
+.logo-section {
+  margin-top: 1rem;
+}
+.logo-preview {
+  display: block;
+  max-width: 220px;
+  max-height: 110px;
+  margin: 0 0 0.75rem;
+  object-fit: contain;
+  background: repeating-linear-gradient(45deg, var(--surface-2) 0 6px, var(--surface) 6px 12px);
+  border-radius: var(--radius);
+}
+.logo-section input[type="file"] {
+  max-width: 100%;
+}
+.upload-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}

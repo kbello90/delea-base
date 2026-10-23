@@ -12,12 +12,26 @@ export const NEUTRAL_BRAND: Brand = { ...DEFAULT_BRAND, colors: null };
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
 
-function isHttpsUrl(value: string): boolean {
+/**
+ * Where uploaded logos are served from (the brand-assets bucket): VITE_BRAND_ASSETS_BASE_URL,
+ * else the local stack's public URL for the bucket. Plain http is accepted only under it.
+ */
+export function brandAssetsBase(): string {
+  const env = import.meta.env;
+  const base = env.VITE_BRAND_ASSETS_BASE_URL || (env.VITE_SUPABASE_URL ? `${env.VITE_SUPABASE_URL}/storage/v1/object/public/brand-assets` : "");
+  return base.replace(/\/+$/, "");
+}
+
+/** An https URL, or a URL directly under the configured logo storage base. */
+export function isAllowedLogoUrl(value: string, storageBase: string = brandAssetsBase()): boolean {
+  let url: URL;
   try {
-    return new URL(value).protocol === "https:";
+    url = new URL(value);
   } catch {
     return false;
   }
+  if (url.protocol === "https:") return true;
+  return Boolean(storageBase) && (url.protocol === "http:" || url.protocol === "https:") && value.startsWith(`${storageBase}/`);
 }
 
 interface BrandConfigLike {
@@ -29,13 +43,14 @@ interface BrandConfigLike {
 
 /**
  * Validates brand config before it touches the page. Colors are used only if both are
- * #RRGGBB; the logo only if it is an https URL. Anything else falls back to the DELEA defaults.
+ * #RRGGBB; the logo only if it is https or served from the logo storage base. Anything else
+ * falls back to the DELEA defaults.
  */
-export function toBrand(config: BrandConfigLike): Brand {
+export function toBrand(config: BrandConfigLike, storageBase: string = brandAssetsBase()): Brand {
   const { primary_color: primary, accent_color: accent, logo_url: logo, business_name: name } = config;
   return {
     businessName: name?.trim() || DEFAULT_BRAND.businessName,
-    logoUrl: logo && isHttpsUrl(logo) ? logo : null,
+    logoUrl: logo && isAllowedLogoUrl(logo, storageBase) ? logo : null,
     colors: primary && accent && HEX.test(primary) && HEX.test(accent) ? { primary, accent } : null,
   };
 }

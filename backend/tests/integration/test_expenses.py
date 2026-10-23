@@ -7,7 +7,7 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
-from .support import TENANT_A, TENANT_B, TestUser, assert_access
+from .support import TENANT_A, TENANT_B, TestUser, assert_access, force_currency
 
 pytestmark = pytest.mark.integration
 
@@ -177,17 +177,12 @@ def test_csv_export_currency_is_the_tenants(
 ) -> None:
     a = parse_csv(client.get(EXPORT, headers=users["cpa_a"].headers).text)
     assert a and {r["currency"] for r in a} == {"USD"}
-    db.execute(
-        "update public.company_settings set currency = 'CAD' where tenant_id = %s", (TENANT_B,)
-    )
+    force_currency(db, TENANT_B, "CAD")
     try:
         b = parse_csv(client.get(EXPORT, headers=users["owner_b"].headers).text)
         assert b and {r["currency"] for r in b} == {"CAD"}
     finally:
-        db.execute(
-            "update public.company_settings set currency = 'USD' where tenant_id = %s",
-            (TENANT_B,),
-        )
+        force_currency(db, TENANT_B, "USD")
 
 
 def test_csv_export_escapes_formula_cells(

@@ -151,7 +151,8 @@ textarea {
 .brand-mark img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  padding: 5px;
+  object-fit: contain; /* a wide logo shows whole, not cropped to the circle */
 }
 
 /* ---------- loading / error / empty states ---------- */

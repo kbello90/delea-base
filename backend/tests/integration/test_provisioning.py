@@ -253,3 +253,52 @@ def test_deleting_a_demo_tenant_removes_all_its_rows(settings, db) -> None:
             assert count.fetchone()[0] == 0, table
     finally:
         run_async(admin.delete_user(user_id))
+
+
+def test_the_currency_is_fixed_once_the_tenant_has_data(client: TestClient, tenant, db) -> None:
+    """Provisioning sets the currency; the API never changes it; the database allows a change
+    only while the tenant has no products, materials, invoices or expenses."""
+    owner = _headers(tenant, "owner")
+    assert client.get("/api/v1/settings/currency", headers=owner).json() == {"currency": "USD"}
+    refused = client.patch("/api/v1/settings/company", json={"currency": "CAD"}, headers=owner)
+    assert refused.status_code == 422
+
+    # Still empty: an administrative fix is possible, and every role reads the new currency.
+    db.execute(
+        "update public.company_settings set currency = 'CAD' where tenant_id = %s", (tenant["id"],)
+    )
+    for role in ("owner", "staff", "cpa"):
+        got = client.get("/api/v1/settings/currency", headers=_headers(tenant, role)).json()
+        assert got == {"currency": "CAD"}, role
+
+    # Once there is data, nobody can change it.
+    product = client.post(
+        "/api/v1/products",
+        json={"sku": "IT-CUR-1", "name": "IT currency ring", "metal": "other", "price_cents": 100},
+        headers=owner,
+    )
+    assert product.status_code == 201, product.text
+    try:
+        with pytest.raises(psycopg.errors.CheckViolation, match="can't change once you have"):
+            db.execute(
+                "update public.company_settings set currency = 'EUR' where tenant_id = %s",
+                (tenant["id"],),
+            )
+        assert client.get("/api/v1/settings/currency", headers=owner).json() == {"currency": "CAD"}
+    finally:
+        db.execute("delete from public.products where id = %s", (product.json()["id"],))
+        db.execute(
+            "update public.company_settings set currency = 'USD' where tenant_id = %s",
+            (tenant["id"],),
+        )
+
+
+def test_an_unsupported_currency_is_refused_at_provisioning(settings, db) -> None:
+    spec = TenantSpec(
+        name="IT bad currency",
+        business_name="IT",
+        members=(Member(str(uuid.uuid4()), "owner"),),
+        currency="JPY",
+    )
+    with pytest.raises(ProvisioningError, match="currency must be one of"):
+        run_async(_provision(settings, spec))

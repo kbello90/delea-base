@@ -10,6 +10,28 @@ function brandApi(overrides: Partial<Schemas["BrandConfigOut"]>) {
   return fakeApi({ "/api/v1/settings/brand": () => jsonResponse(200, { ...DEFAULT_BRAND_RESPONSE, ...overrides }) });
 }
 
+describe("logo URLs from the configured storage base", () => {
+  const base = "http://127.0.0.1:55321/storage/v1/object/public/brand-assets";
+  const logo = `${base}/11111111-1111-1111-1111-111111111111/logo-x.webp`;
+
+  it("accepts an http logo only directly under the storage base", () => {
+    expect(toBrand({ business_name: "A", logo_url: logo }, base).logoUrl).toBe(logo);
+    expect(toBrand({ business_name: "A", logo_url: logo }, "").logoUrl).toBeNull();
+    for (const other of [
+      "http://127.0.0.1:55321/storage/v1/object/public/brand-assets-evil/x.webp",
+      "http://127.0.0.1:55321/storage/v1/object/public/product-images/x.webp",
+      "http://evil.example/storage/v1/object/public/brand-assets/x.webp",
+      base,
+    ]) {
+      expect(toBrand({ business_name: "A", logo_url: other }, base).logoUrl).toBeNull();
+    }
+  });
+
+  it("still accepts any https logo", () => {
+    expect(toBrand({ business_name: "A", logo_url: "https://cdn.example.com/l.webp" }, base).logoUrl).toBe("https://cdn.example.com/l.webp");
+  });
+});
+
 describe("toBrand validation", () => {
   it("accepts #RRGGBB colors and an https logo", () => {
     expect(

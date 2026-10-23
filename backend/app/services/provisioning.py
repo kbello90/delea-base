@@ -20,10 +20,16 @@ from uuid import UUID
 from psycopg import AsyncConnection, sql
 
 from app.core import storage
+from app.models.settings import SUPPORTED_CURRENCIES
 
 APP_ROLES = ("owner", "staff", "cpa")
 DOMAIN_KINDS = ("storefront", "admin")
-TENANT_BUCKETS = (storage.IMAGES_BUCKET, storage.UPLOADS_BUCKET, storage.RECEIPTS_BUCKET)
+TENANT_BUCKETS = (
+    storage.IMAGES_BUCKET,
+    storage.UPLOADS_BUCKET,
+    storage.RECEIPTS_BUCKET,
+    storage.BRAND_BUCKET,
+)
 
 
 class ProvisioningError(ValueError):
@@ -67,6 +73,9 @@ def validate_spec(spec: TenantSpec) -> None:
         raise ProvisioningError("a user can hold only one role in a tenant")
     if not 0 <= spec.default_tax_rate_bps <= 10_000:
         raise ProvisioningError("the tax rate must be between 0 and 10000 basis points")
+    # The currency is chosen here, once: the database refuses a change after data exists.
+    if spec.currency not in SUPPORTED_CURRENCIES:
+        raise ProvisioningError(f"the currency must be one of {', '.join(SUPPORTED_CURRENCIES)}")
     if any(kind not in DOMAIN_KINDS for _, kind in spec.domains):
         raise ProvisioningError(f"domain kinds must be one of {', '.join(DOMAIN_KINDS)}")
 

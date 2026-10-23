@@ -14,7 +14,7 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
-from .support import TENANT_A, TENANT_B, TestUser, assert_access
+from .support import TENANT_A, TENANT_B, TestUser, assert_access, force_currency
 
 pytestmark = pytest.mark.integration
 
@@ -567,9 +567,7 @@ def test_csv_export(client, users, db) -> None:
 
 
 def test_csv_export_currency_is_the_tenants(client, users, db) -> None:
-    db.execute(
-        "update public.company_settings set currency = 'CAD' where tenant_id = %s", (TENANT_B,)
-    )
+    force_currency(db, TENANT_B, "CAD")
     try:
         b = list(
             csv.DictReader(
@@ -588,10 +586,7 @@ def test_csv_export_currency_is_the_tenants(client, users, db) -> None:
         )
         assert a and {r["currency"] for r in a} == {"USD"}
     finally:
-        db.execute(
-            "update public.company_settings set currency = 'USD' where tenant_id = %s",
-            (TENANT_B,),
-        )
+        force_currency(db, TENANT_B, "USD")
 
 
 # ---------------------------------------------------------------------------

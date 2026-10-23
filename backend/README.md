@@ -185,8 +185,10 @@ stay generic.
   abandoned receipt uploads (`pending-*` in `expense-receipts`), both older than 24 hours
   (registration always removes them, but a file uploaded and never registered stays), and (3)
   receipt files no expense points to, left by a failed cleanup after an expense was deleted
-  or its receipt replaced or removed (those deletes run after the commit and are only
-  logged when they fail).
+  or its receipt replaced or removed, and (4) logo files in `brand-assets` that no
+  `brand_config.logo_path` points to, left by a failed cleanup after a logo was replaced or
+  removed (those deletes run after the commit and are only logged when they fail). Abandoned
+  logo uploads (`{tenant}/brand/*` in `product-uploads`) are covered by (1).
 - **Error responses have no machine-readable code.** An error body is only
   `{"detail": "<message>"}`, so the admin app tells a duplicate value apart from other 409s
   by matching the message text. **Milestone B** (not implemented yet): a stable `code` field

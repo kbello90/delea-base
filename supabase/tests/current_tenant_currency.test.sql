@@ -49,9 +49,13 @@ insert into public.tenant_members (user_id, tenant_id, app_role) values
   ('dddddddd-0000-0000-0000-00000000000c', '11111111-1111-1111-1111-111111111111', 'cpa'),
   ('dddddddd-0000-0000-0000-00000000000d', '22222222-2222-2222-2222-222222222222', 'owner');
 
--- Tenant B gets a different currency so a leak between tenants would show.
+-- Tenant B gets a different currency so a leak between tenants would show. B has data, so
+-- the currency guard (migration 20261023000200, tested in settings_currency_logo.test.sql)
+-- would refuse; triggers are switched off for this one setup statement only.
+set local session_replication_role = replica;
 update public.company_settings set currency = 'EUR'
  where tenant_id = '22222222-2222-2222-2222-222222222222';
+set local session_replication_role = origin;
 
 -- ===========================================================================
 -- Readers get their own tenant's currency

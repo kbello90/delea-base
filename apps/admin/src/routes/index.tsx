@@ -13,6 +13,7 @@ import { SellPage } from "../invoices/SellPage";
 import { MaterialsPage } from "../materials/MaterialsPage";
 import { NewProductPage, ProductPage } from "../products/ProductFormPage";
 import { ProductsPage } from "../products/ProductsPage";
+import { SettingsPage } from "../settings/SettingsPage";
 import { AppShell } from "../shell/AppShell";
 import { DefaultLanding, NotFoundPage, PlaceholderPage } from "./pages";
 import { RequireRole } from "./RequireRole";
@@ -26,6 +27,7 @@ const PAGES: Record<string, JSX.Element> = {
   "/customers": <CustomersPage />,
   "/invoices": <InvoicesPage />,
   "/expenses": <ExpensesPage />,
+  "/settings": <SettingsPage />,
 };
 
 export const appRoutes: RouteObject[] = [
