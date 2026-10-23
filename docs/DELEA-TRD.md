@@ -394,7 +394,7 @@ All amounts are integer cents. v1 supports two-decimal currencies only: every am
 
 ### 6.6 Known limitations
 - **Token expiry:** a removed member, or a tenant that is no longer active, keeps API access until their access token expires (about an hour; `jwt_expiry`, 3600 s locally), because RLS and the backend trust the token's `tenant_id` and `app_role` claims. Deleting the `tenant_members` row, changing the role or setting `tenants.is_active = false` doesn't affect tokens already issued. Only `current_tenant_currency()` re-checks the membership today.
-  - **Milestone B, required before the first paying customer (not implemented yet):** in the `user_session` setup, one primary-key lookup per request that checks the `tenant_members` row exists for (user, tenant, role) and `tenants.is_active` is true, refusing with 403 otherwise. In the same change, add the same membership check to `current_tax_rate_bps()`.
+  - **Required before the public demo is deployed (not implemented yet):** in the `user_session` setup, one primary-key lookup per request that checks the `tenant_members` row exists for (user, tenant, role) and `tenants.is_active` is true, refusing with 403 otherwise. In the same change, add the same membership check to `current_tax_rate_bps()`.
 - **Orphaned Storage objects.** **Milestone B (not implemented yet):** one scheduled orphan sweep that deletes:
   - abandoned raw uploads in `product-uploads` older than 24 hours (uploaded through a signed URL but never registered; registration always deletes them);
   - abandoned receipt uploads (`{tenant}/{expense}/pending-*` in `expense-receipts`) older than 24 hours, same cause;

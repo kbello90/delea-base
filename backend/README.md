@@ -175,7 +175,7 @@ stay generic.
   which are fixed when the token is issued (`jwt_expiry`, 3600 s locally). Deleting the
   `tenant_members` row, changing the role, or setting `tenants.is_active = false` changes
   nothing for tokens already issued. Only `current_tenant_currency()` re-checks the membership
-  today. **Milestone B, required before the first paying customer** (not implemented yet):
+  today. **Required before the public demo is deployed** (not implemented yet):
   in the `user_session` setup, one primary-key lookup per request that checks the
   `tenant_members` row exists for (user, tenant, role) and `tenants.is_active` is true,
   refusing with 403 otherwise; and the same membership check in `current_tax_rate_bps()`,
