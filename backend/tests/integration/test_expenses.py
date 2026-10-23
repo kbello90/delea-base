@@ -26,7 +26,7 @@ def payload(**overrides: object) -> dict:
     body: dict[str, object] = {
         "expense_date": "2026-10-15",
         "description": it_description(),
-        "category": "it-test",
+        "category": "other",
         "amount_cents": 1234,
         "is_tax_deductible": True,
     }
@@ -64,15 +64,18 @@ def test_role_matrix(client: TestClient, users: dict[str, TestUser]) -> None:
 
 def test_owner_crud(client: TestClient, users: dict[str, TestUser]) -> None:
     owner = users["owner_a"]
-    created = create(client, owner, amount_cents=5000, receipt_url="https://example.com/r.pdf")
+    created = create(client, owner, amount_cents=5000)
     assert created["tenant_id"] == TENANT_A and created["amount_cents"] == 5000
+    assert (created["has_receipt"], created["receipt_content_type"]) == (False, None)
+    assert "receipt_path" not in created and "receipt_url" not in created
     url = f"{EXPENSES}/{created['id']}"
     updated = client.patch(
-        url, json={"is_tax_deductible": False, "category": None}, headers=owner.headers
+        url, json={"is_tax_deductible": False, "category": "packaging"}, headers=owner.headers
     )
     assert updated.status_code == 200, updated.text
-    assert (updated.json()["is_tax_deductible"], updated.json()["category"]) == (False, None)
+    assert (updated.json()["is_tax_deductible"], updated.json()["category"]) == (False, "packaging")
     assert client.patch(url, json={"expense_date": None}, headers=owner.headers).status_code == 422
+    assert client.patch(url, json={"category": None}, headers=owner.headers).status_code == 422
     assert client.delete(url, headers=owner.headers).status_code == 204
     assert client.get(url, headers=owner.headers).status_code == 404
 
@@ -105,7 +108,12 @@ def test_filters(client: TestClient, users: dict[str, TestUser]) -> None:
     assert amounts() == [6800, 14500, 25000, 45000]
     assert amounts(date_from="2026-10-05", date_to="2026-10-10") == [14500, 25000]  # inclusive
     assert amounts(category="materials") == [14500, 45000]
-    assert amounts(category="Materials") == []  # exact match
+    assert amounts(q="SILVER") == [45000]  # description, any case
+    assert amounts(q="box") == [14500]
+    assert amounts(q="100%") == []  # % is literal
+    for bad_category in ("Materials", "services", "it-test"):
+        response = client.get(EXPENSES, params={"category": bad_category}, headers=owner.headers)
+        assert response.status_code == 422, bad_category  # only the fixed list
     assert amounts(tax_deductible="false") == [6800]
     assert amounts(tax_deductible="true", date_to="2026-10-04") == [45000]
     assert amounts(limit=2, offset=1) == [14500, 25000]  # newest first: 10-12, 10-10, 10-05
@@ -159,8 +167,9 @@ def test_csv_export_matches_filters_and_formats_money(
         "currency",
         "amount",
         "is_tax_deductible",
-        "receipt_url",
+        "has_receipt",
     ]
+    assert {r["has_receipt"] for r in rows} == {"false"}
 
 
 def test_csv_export_currency_is_the_tenants(
@@ -181,7 +190,9 @@ def test_csv_export_currency_is_the_tenants(
         )
 
 
-def test_csv_export_escapes_formula_cells(client: TestClient, users: dict[str, TestUser]) -> None:
+def test_csv_export_escapes_formula_cells(
+    client: TestClient, users: dict[str, TestUser], db
+) -> None:
     owner = users["owner_a"]
     tag = uuid.uuid4().hex[:6]
     dangerous = {
@@ -192,12 +203,122 @@ def test_csv_export_escapes_formula_cells(client: TestClient, users: dict[str, T
         f"IT-{tag}-tab": ("\tcmd", "'\tcmd"),
         f"IT-{tag}-cr": ("\rcmd", "'\rcmd"),
     }
-    for description, (category, _) in dangerous.items():
-        create(client, owner, description=description, category=category, expense_date="2026-09-01")
+    # The category is a fixed list now, so the free text that reaches the CSV is the
+    # description.
+    # The descriptions can't start with IT- here, so the rows are removed explicitly.
+    try:
+        for key, (text, _) in dangerous.items():
+            create(client, owner, description=f"{text} {key}", expense_date="2026-09-01")
+        rows = parse_csv(
+            client.get(EXPORT, params={"date_to": "2026-09-01"}, headers=owner.headers).text
+        )
+        by_key = {r["description"].rsplit(" ", 1)[-1]: r["description"] for r in rows}
+        for key, (_, expected) in dangerous.items():
+            assert by_key[key] == f"{expected} {key}", key
+    finally:
+        db.execute("delete from public.expenses where description like %s", (f"% IT-{tag}-%",))
 
-    rows = parse_csv(
-        client.get(EXPORT, params={"date_to": "2026-09-01"}, headers=owner.headers).text
+
+# ---------------------------------------------------------------------------
+# Summary: the same filters as the list, over every page
+# ---------------------------------------------------------------------------
+def test_summary_totals_equal_the_sum_over_all_pages(client: TestClient, users) -> None:
+    owner = users["owner_a"]
+    tag = uuid.uuid4().hex[:6]
+    rows = [
+        ("2026-08-01", "materials", 1001, True),
+        ("2026-08-02", "materials", 2002, False),
+        ("2026-08-03", "shipping", 3003, True),
+        ("2026-08-04", "meals", 4004, False),
+        ("2026-08-05", "materials", 5005, True),
+        ("2026-08-06", "software", 6006, True),
+        ("2026-08-07", "materials", 7007, True),
+    ]
+    for day, category, cents, deductible in rows:
+        create(
+            client,
+            owner,
+            description=f"IT-{tag} {category}",
+            expense_date=day,
+            category=category,
+            amount_cents=cents,
+            is_tax_deductible=deductible,
+        )
+
+    for filters in (
+        {"q": tag},
+        {"q": tag, "category": "materials"},
+        {"q": tag, "tax_deductible": "true"},
+        {"q": tag, "date_from": "2026-08-03", "date_to": "2026-08-06"},
+        {"q": f"{tag} materials", "tax_deductible": "false"},
+    ):
+        listed, offset = [], 0
+        while True:  # page through 3 at a time, like the admin's pages
+            page = client.get(
+                EXPENSES, params={**filters, "limit": 3, "offset": offset}, headers=owner.headers
+            ).json()
+            listed += page
+            if len(page) < 3:
+                break
+            offset += 3
+        summary = client.get(f"{EXPENSES}/summary", params=filters, headers=owner.headers)
+        assert summary.status_code == 200, summary.text
+        assert summary.json() == {
+            "count": len(listed),
+            "total_cents": sum(e["amount_cents"] for e in listed),
+            "deductible_cents": sum(e["amount_cents"] for e in listed if e["is_tax_deductible"]),
+        }, filters
+    everything = client.get(f"{EXPENSES}/summary", params={"q": tag}, headers=owner.headers)
+    assert everything.json() == {"count": 7, "total_cents": 28028, "deductible_cents": 22022}
+    bad = client.get(
+        f"{EXPENSES}/summary",
+        params={"date_from": "2026-08-10", "date_to": "2026-08-01"},
+        headers=owner.headers,
     )
-    by_description = {r["description"]: r["category"] for r in rows}
-    for description, (_, expected) in dangerous.items():
-        assert by_description[description] == expected, description
+    assert bad.status_code == 422  # the same parser as the list
+
+
+# ---------------------------------------------------------------------------
+# Regression: the category enum changed nothing in the dashboard or the AI summary
+# ---------------------------------------------------------------------------
+def test_dashboard_and_ai_summary_agree_with_the_raw_expenses(client, users, db) -> None:
+    owner = users["owner_a"]
+    dash = client.get("/api/v1/dashboard/summary", headers=owner.headers).json()
+    year_start, today = db.execute(
+        "select date_trunc('year', now() at time zone 'UTC')::date, "
+        "(now() at time zone 'UTC')::date"
+    ).fetchone()
+    expected = db.execute(
+        "select coalesce(sum(amount_cents), 0), "
+        "coalesce(sum(amount_cents) filter (where is_tax_deductible), 0) "
+        "from public.expenses where tenant_id = %s and expense_date between %s and %s",
+        (TENANT_A, year_start, today),
+    ).fetchone()
+    assert (dash["ytd"]["expenses_cents"], dash["ytd"]["deductible_expenses_cents"]) == expected
+
+    monthly = client.get("/api/v1/dashboard/monthly", headers=owner.headers).json()
+    for month in monthly["months"]:
+        raw = db.execute(
+            "select coalesce(sum(amount_cents), 0) from public.expenses where tenant_id = %s "
+            "and date_trunc('month', expense_date)::date = %s and expense_date <= %s",
+            (TENANT_A, month["month_start"], today),
+        ).fetchone()[0]
+        assert month["expenses_cents"] == raw, month["month_start"]
+
+    with db.transaction(force_rollback=True):
+        db.execute("select set_config('app.tenant_id', %s, true)", (TENANT_A,))
+        ai = db.execute(
+            "select month, category::text, expense_count, total_cents, deductible_cents "
+            "from ai.expense_summary order by 1, 2"
+        ).fetchall()
+    raw = db.execute(
+        "select date_trunc('month', expense_date)::date, category::text, count(*)::int, "
+        "sum(amount_cents)::bigint, "
+        "coalesce(sum(amount_cents) filter (where is_tax_deductible), 0)::bigint "
+        "from public.expenses where tenant_id = %s group by 1, 2 order by 1, 2",
+        (TENANT_A,),
+    ).fetchall()
+    assert ai == raw
+    # The seed's three categories this October, as before the enum.
+    october = {row[1]: row[3] for row in ai if str(row[0]) == "2026-10-01"}
+    assert october == {"marketing": 25000, "materials": 59500, "meals": 6800}

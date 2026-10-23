@@ -139,6 +139,10 @@
   .row-actions {
     white-space: normal;
   }
+  /* Right-aligned amount cells read like the other labelled cells on a card. */
+  .data-grid td[data-label].num {
+    text-align: left;
+  }
 }
 
 /* ---------- forms ---------- */

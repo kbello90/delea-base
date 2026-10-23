@@ -44,9 +44,11 @@ class ProcessedImage:
     height: int
 
 
-def _open_checked(data: bytes) -> Image.Image:
-    if len(data) > MAX_BYTES:
-        raise ImageRejected(f"The file is larger than {MAX_BYTES // (1024 * 1024)} MB.")
+def open_image_checked(data: bytes, max_bytes: int = MAX_BYTES) -> Image.Image:
+    """A fully decoded JPEG, PNG or WebP image (its `format` set), or ImageRejected: too many
+    bytes or pixels, another format, or corrupt data. Shared with expense receipts."""
+    if len(data) > max_bytes:
+        raise ImageRejected(f"The file is larger than {max_bytes // (1024 * 1024)} MB.")
     try:
         with warnings.catch_warnings():
             # Pillow warns past MAX_IMAGE_PIXELS and errors past twice that; both are refusals.
@@ -78,7 +80,7 @@ def _has_alpha(image: Image.Image) -> bool:
     )
 
 
-def _to_srgb(image: Image.Image, source_format: str) -> Image.Image:
+def to_srgb(image: Image.Image, source_format: str) -> Image.Image:
     """Pixels as RGB or RGBA in sRGB. A non-sRGB embedded ICC profile is converted, not dropped."""
     keep_alpha = source_format in ("PNG", "WEBP") and _has_alpha(image)
     target_mode = "RGBA" if keep_alpha else "RGB"
@@ -115,10 +117,10 @@ def _variant(image: Image.Image, side: int, quality: int) -> tuple[bytes, int, i
 
 
 def process_product_image(data: bytes) -> ProcessedImage:
-    image = _open_checked(data)
+    image = open_image_checked(data)
     source_format = image.format or ""  # transposed copies don't keep .format
     image = ImageOps.exif_transpose(image)  # bake in the orientation before EXIF is dropped
-    pixels = _to_srgb(image, source_format)
+    pixels = to_srgb(image, source_format)
     # Copy the pixels into a new image so no metadata (info dict) can follow.
     clean = Image.new(pixels.mode, pixels.size)
     clean.paste(pixels)

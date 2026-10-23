@@ -1,0 +1,67 @@
+/* Expenses: list totals, record page facts and the receipt section. */
+
+.num {
+  text-align: right;
+  white-space: nowrap;
+}
+.back-link {
+  display: inline-block;
+  margin-bottom: 1rem;
+}
+.expense-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 2rem;
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.expense-totals dt,
+.facts dt {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.expense-totals dd {
+  margin: 0.15rem 0 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem 1.5rem;
+  margin: 0 0 1.5rem;
+}
+.facts dd {
+  margin: 0.15rem 0 0;
+}
+.receipt-section {
+  margin: 0 0 2rem;
+  padding: 0.75rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.receipt-section h2 {
+  font-size: 1.05rem;
+  margin: 0 0 0.5rem;
+}
+.receipt-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+}
+.receipt-section input[type="file"] {
+  max-width: 100%;
+}
+.receipt-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}

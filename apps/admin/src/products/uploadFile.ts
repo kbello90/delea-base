@@ -8,6 +8,7 @@ export function uploadFile(
   file: Blob,
   contentType: string,
   onProgress: (fraction: number) => void,
+  maxMegabytes = 5,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -21,7 +22,7 @@ export function uploadFile(
         onProgress(1);
         resolve();
       } else if (xhr.status === 413) {
-        reject(new Error("The file is larger than 5 MB."));
+        reject(new Error(`The file is larger than ${maxMegabytes} MB.`));
       } else {
         reject(new Error(`The upload failed (${xhr.status}). Try again.`));
       }

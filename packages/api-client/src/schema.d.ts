@@ -452,6 +452,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/expenses/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Expense Summary */
+        get: operations["expense_summary_api_v1_expenses_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/expenses/export.csv": {
         parameters: {
             query?: never;
@@ -461,7 +478,8 @@ export interface paths {
         };
         /**
          * Export Expenses Csv
-         * @description Stream the filtered expenses as CSV (no paging). Amounts are decimal strings.
+         * @description Stream the filtered expenses as CSV (no paging). Amounts are decimal strings. Receipts
+         *     appear only as has_receipt: a link would expire before the file is opened.
          *
          *     The rows are read in their own user session that stays open while the response streams.
          *     An error after streaming has started can't change the status code: the stream is cut
@@ -493,6 +511,45 @@ export interface paths {
         head?: never;
         /** Update Expense */
         patch: operations["update_expense_api_v1_expenses__expense_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/expenses/{expense_id}/receipt/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Receipt Upload */
+        post: operations["create_receipt_upload_api_v1_expenses__expense_id__receipt_uploads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/expenses/{expense_id}/receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * View Receipt
+         * @description A link to the receipt that works for LINK_SECONDS. Ask again for each view.
+         */
+        get: operations["view_receipt_api_v1_expenses__expense_id__receipt_get"];
+        put?: never;
+        /** Register Receipt */
+        post: operations["register_receipt_api_v1_expenses__expense_id__receipt_post"];
+        /** Remove Receipt */
+        delete: operations["remove_receipt_api_v1_expenses__expense_id__receipt_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/settings/company": {
@@ -871,6 +928,12 @@ export interface components {
             low_stock_materials: number;
             invoice_counts: components["schemas"]["InvoiceCounts"];
         };
+        /**
+         * ExpenseCategory
+         * @description Matches the `expense_category` enum (migration 20261023000100).
+         * @enum {string}
+         */
+        ExpenseCategory: "materials" | "packaging" | "shipping" | "marketing" | "platform_fees" | "software" | "equipment" | "rent" | "utilities" | "phone" | "insurance" | "professional_services" | "taxes_licenses" | "travel" | "meals" | "other";
         /** ExpenseCreate */
         ExpenseCreate: {
             /**
@@ -880,8 +943,8 @@ export interface components {
             expense_date: string;
             /** Description */
             description: string;
-            /** Category */
-            category?: string | null;
+            /** @default other */
+            category: components["schemas"]["ExpenseCategory"];
             /** Amount Cents */
             amount_cents: number;
             /**
@@ -889,8 +952,6 @@ export interface components {
              * @default true
              */
             is_tax_deductible: boolean;
-            /** Receipt Url */
-            receipt_url?: string | null;
         };
         /** ExpenseOut */
         ExpenseOut: {
@@ -911,14 +972,18 @@ export interface components {
             expense_date: string;
             /** Description */
             description: string;
-            /** Category */
-            category: string | null;
+            category: components["schemas"]["ExpenseCategory"];
             /** Amount Cents */
             amount_cents: number;
             /** Is Tax Deductible */
             is_tax_deductible: boolean;
-            /** Receipt Url */
-            receipt_url: string | null;
+            /** Has Receipt */
+            has_receipt: boolean;
+            receipt_content_type: components["schemas"]["ReceiptType"] | null;
+            /** Receipt Size Bytes */
+            receipt_size_bytes: number | null;
+            /** Receipt Uploaded At */
+            receipt_uploaded_at: string | null;
             /**
              * Created At
              * Format: date-time
@@ -930,20 +995,29 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * ExpenseSummary
+         * @description Totals over every expense matching the filters (all pages).
+         */
+        ExpenseSummary: {
+            /** Count */
+            count: number;
+            /** Total Cents */
+            total_cents: number;
+            /** Deductible Cents */
+            deductible_cents: number;
+        };
         /** ExpenseUpdate */
         ExpenseUpdate: {
             /** Expense Date */
             expense_date?: string | null;
             /** Description */
             description?: string | null;
-            /** Category */
-            category?: string | null;
+            category?: components["schemas"]["ExpenseCategory"] | null;
             /** Amount Cents */
             amount_cents?: number | null;
             /** Is Tax Deductible */
             is_tax_deductible?: boolean | null;
-            /** Receipt Url */
-            receipt_url?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1417,6 +1491,44 @@ export interface components {
             is_published?: boolean | null;
             /** Sort Order */
             sort_order?: number | null;
+        };
+        /** ReceiptLink */
+        ReceiptLink: {
+            /** Url */
+            url: string;
+            /** Expires In */
+            expires_in: number;
+            content_type: components["schemas"]["ReceiptType"];
+        };
+        /** ReceiptRegister */
+        ReceiptRegister: {
+            /**
+             * Upload Id
+             * Format: uuid
+             */
+            upload_id: string;
+            content_type: components["schemas"]["ReceiptType"];
+        };
+        /**
+         * ReceiptType
+         * @enum {string}
+         */
+        ReceiptType: "image/jpeg" | "image/png" | "image/webp" | "application/pdf";
+        /** ReceiptUploadRequest */
+        ReceiptUploadRequest: {
+            content_type: components["schemas"]["ReceiptType"];
+        };
+        /** ReceiptUploadTicket */
+        ReceiptUploadTicket: {
+            /**
+             * Upload Id
+             * Format: uuid
+             */
+            upload_id: string;
+            /** Upload Url */
+            upload_url: string;
+            /** Max Bytes */
+            max_bytes: number;
         };
         /** RegisterRequest */
         RegisterRequest: {
@@ -2589,8 +2701,9 @@ export interface operations {
                 offset?: number;
                 date_from?: string | null;
                 date_to?: string | null;
-                category?: string | null;
+                category?: components["schemas"]["ExpenseCategory"] | null;
                 tax_deductible?: boolean | null;
+                q?: string | null;
             };
             header?: never;
             path?: never;
@@ -2651,13 +2764,49 @@ export interface operations {
             };
         };
     };
+    expense_summary_api_v1_expenses_summary_get: {
+        parameters: {
+            query?: {
+                date_from?: string | null;
+                date_to?: string | null;
+                category?: components["schemas"]["ExpenseCategory"] | null;
+                tax_deductible?: boolean | null;
+                q?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpenseSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     export_expenses_csv_api_v1_expenses_export_csv_get: {
         parameters: {
             query?: {
                 date_from?: string | null;
                 date_to?: string | null;
-                category?: string | null;
+                category?: components["schemas"]["ExpenseCategory"] | null;
                 tax_deductible?: boolean | null;
+                q?: string | null;
             };
             header?: never;
             path?: never;
@@ -2759,6 +2908,138 @@ export interface operations {
                 "application/json": components["schemas"]["ExpenseUpdate"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpenseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_receipt_upload_api_v1_expenses__expense_id__receipt_uploads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                expense_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReceiptUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReceiptUploadTicket"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    view_receipt_api_v1_expenses__expense_id__receipt_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                expense_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReceiptLink"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_receipt_api_v1_expenses__expense_id__receipt_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                expense_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReceiptRegister"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpenseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_receipt_api_v1_expenses__expense_id__receipt_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                expense_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

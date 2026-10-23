@@ -180,10 +180,13 @@ stay generic.
   `tenant_members` row exists for (user, tenant, role) and `tenants.is_active` is true,
   refusing with 403 otherwise; and the same membership check in `current_tax_rate_bps()`,
   in the same change.
-- **Abandoned raw uploads stay in `product-uploads`.** A file uploaded through a signed URL
-  but never registered is not removed (registration always removes it). **Milestone B**
-  (not implemented yet): a scheduled sweep that deletes objects in `product-uploads` older
-  than 24 hours.
+- **Orphaned Storage objects are not swept.** **Milestone B** (not implemented yet): one
+  scheduled orphan sweep that deletes (1) abandoned raw uploads in `product-uploads` and (2)
+  abandoned receipt uploads (`pending-*` in `expense-receipts`), both older than 24 hours
+  (registration always removes them, but a file uploaded and never registered stays), and (3)
+  receipt files no expense points to, left by a failed cleanup after an expense was deleted
+  or its receipt replaced or removed (those deletes run after the commit and are only
+  logged when they fail).
 - **Error responses have no machine-readable code.** An error body is only
   `{"detail": "<message>"}`, so the admin app tells a duplicate value apart from other 409s
   by matching the message text. **Milestone B** (not implemented yet): a stable `code` field

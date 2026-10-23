@@ -4,6 +4,8 @@ import { SignInPage } from "../auth/SignInPage";
 import { CustomerPage, NewCustomerPage } from "../customers/CustomerFormPage";
 import { CustomersPage } from "../customers/CustomersPage";
 import { DashboardPage } from "../dashboard/DashboardPage";
+import { ExpensePage, NewExpensePage } from "../expenses/ExpenseFormPage";
+import { ExpensesPage } from "../expenses/ExpensesPage";
 import { InvoicePage } from "../invoices/InvoicePage";
 import { InvoicesPage } from "../invoices/InvoicesPage";
 import { EditQuoteLinesPage, NewQuotePage } from "../invoices/QuoteFormPage";
@@ -23,6 +25,7 @@ const PAGES: Record<string, JSX.Element> = {
   "/materials": <MaterialsPage />,
   "/customers": <CustomersPage />,
   "/invoices": <InvoicesPage />,
+  "/expenses": <ExpensesPage />,
 };
 
 export const appRoutes: RouteObject[] = [
@@ -107,6 +110,24 @@ export const appRoutes: RouteObject[] = [
             element: (
               <RequireRole roles={["owner", "staff"]}>
                 <EditQuoteLinesPage />
+              </RequireRole>
+            ),
+          },
+          // Expense sub-pages: only the owner creates; an expense page is the owner's editor or
+          // the cpa's read-only view with its receipt.
+          {
+            path: "/expenses/new",
+            element: (
+              <RequireRole roles={["owner"]}>
+                <NewExpensePage />
+              </RequireRole>
+            ),
+          },
+          {
+            path: "/expenses/:expenseId",
+            element: (
+              <RequireRole roles={["owner", "cpa"]}>
+                <ExpensePage />
               </RequireRole>
             ),
           },

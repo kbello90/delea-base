@@ -144,6 +144,8 @@ const DEFAULT_RESPONSES: Record<string, unknown> = {
   "/api/v1/dashboard/summary": SUMMARY_RESPONSE,
   "/api/v1/dashboard/monthly": MONTHLY_RESPONSE,
   "/api/v1/invoices": [],
+  "/api/v1/expenses": [],
+  "/api/v1/expenses/summary": { count: 0, total_cents: 0, deductible_cents: 0 },
 };
 
 /** Fake backend API: realistic responses for the built pages by default; override per path with `routes`. */

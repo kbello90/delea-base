@@ -2092,9 +2092,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 100
+                  "$ref": "#/components/schemas/ExpenseCategory"
                 },
                 {
                   "type": "null"
@@ -2117,6 +2115,24 @@
                 }
               ],
               "title": "Tax Deductible"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
             }
           }
         ],
@@ -2192,13 +2208,135 @@
         }
       }
     },
+    "/api/v1/expenses/summary": {
+      "get": {
+        "tags": [
+          "expenses"
+        ],
+        "summary": "Expense Summary",
+        "operationId": "expense_summary_api_v1_expenses_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ExpenseCategory"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "tax_deductible",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tax Deductible"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/expenses/export.csv": {
       "get": {
         "tags": [
           "expenses"
         ],
         "summary": "Export Expenses Csv",
-        "description": "Stream the filtered expenses as CSV (no paging). Amounts are decimal strings.\n\nThe rows are read in their own user session that stays open while the response streams.\nAn error after streaming has started can't change the status code: the stream is cut\nshort and the error is logged.",
+        "description": "Stream the filtered expenses as CSV (no paging). Amounts are decimal strings. Receipts\nappear only as has_receipt: a link would expire before the file is opened.\n\nThe rows are read in their own user session that stays open while the response streams.\nAn error after streaming has started can't change the status code: the stream is cut\nshort and the error is logged.",
         "operationId": "export_expenses_csv_api_v1_expenses_export_csv_get",
         "security": [
           {
@@ -2247,9 +2385,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 100
+                  "$ref": "#/components/schemas/ExpenseCategory"
                 },
                 {
                   "type": "null"
@@ -2272,6 +2408,24 @@
                 }
               ],
               "title": "Tax Deductible"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
             }
           }
         ],
@@ -2426,6 +2580,215 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/expenses/{expense_id}/receipt/uploads": {
+      "post": {
+        "tags": [
+          "expense receipts"
+        ],
+        "summary": "Create Receipt Upload",
+        "operationId": "create_receipt_upload_api_v1_expenses__expense_id__receipt_uploads_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "expense_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Expense Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiptUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptUploadTicket"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/expenses/{expense_id}/receipt": {
+      "post": {
+        "tags": [
+          "expense receipts"
+        ],
+        "summary": "Register Receipt",
+        "operationId": "register_receipt_api_v1_expenses__expense_id__receipt_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "expense_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Expense Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiptRegister"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "expense receipts"
+        ],
+        "summary": "Remove Receipt",
+        "operationId": "remove_receipt_api_v1_expenses__expense_id__receipt_delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "expense_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Expense Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "expense receipts"
+        ],
+        "summary": "View Receipt",
+        "description": "A link to the receipt that works for LINK_SECONDS. Ask again for each view.",
+        "operationId": "view_receipt_api_v1_expenses__expense_id__receipt_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "expense_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Expense Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptLink"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -3720,6 +4083,29 @@
         ],
         "title": "DashboardSummary"
       },
+      "ExpenseCategory": {
+        "type": "string",
+        "enum": [
+          "materials",
+          "packaging",
+          "shipping",
+          "marketing",
+          "platform_fees",
+          "software",
+          "equipment",
+          "rent",
+          "utilities",
+          "phone",
+          "insurance",
+          "professional_services",
+          "taxes_licenses",
+          "travel",
+          "meals",
+          "other"
+        ],
+        "title": "ExpenseCategory",
+        "description": "Matches the `expense_category` enum (migration 20261023000100)."
+      },
       "ExpenseCreate": {
         "properties": {
           "expense_date": {
@@ -3734,17 +4120,8 @@
             "title": "Description"
           },
           "category": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 100,
-                "minLength": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Category"
+            "$ref": "#/components/schemas/ExpenseCategory",
+            "default": "other"
           },
           "amount_cents": {
             "type": "integer",
@@ -3756,19 +4133,6 @@
             "type": "boolean",
             "title": "Is Tax Deductible",
             "default": true
-          },
-          "receipt_url": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 2000,
-                "minLength": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Receipt Url"
           }
         },
         "additionalProperties": false,
@@ -3802,15 +4166,7 @@
             "title": "Description"
           },
           "category": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Category"
+            "$ref": "#/components/schemas/ExpenseCategory"
           },
           "amount_cents": {
             "type": "integer",
@@ -3820,16 +4176,42 @@
             "type": "boolean",
             "title": "Is Tax Deductible"
           },
-          "receipt_url": {
+          "has_receipt": {
+            "type": "boolean",
+            "title": "Has Receipt"
+          },
+          "receipt_content_type": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/ReceiptType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "receipt_size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Receipt Url"
+            "title": "Receipt Size Bytes"
+          },
+          "receipt_uploaded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Uploaded At"
           },
           "created_at": {
             "type": "string",
@@ -3851,11 +4233,38 @@
           "category",
           "amount_cents",
           "is_tax_deductible",
-          "receipt_url",
+          "has_receipt",
+          "receipt_content_type",
+          "receipt_size_bytes",
+          "receipt_uploaded_at",
           "created_at",
           "updated_at"
         ],
         "title": "ExpenseOut"
+      },
+      "ExpenseSummary": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "total_cents": {
+            "type": "integer",
+            "title": "Total Cents"
+          },
+          "deductible_cents": {
+            "type": "integer",
+            "title": "Deductible Cents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "total_cents",
+          "deductible_cents"
+        ],
+        "title": "ExpenseSummary",
+        "description": "Totals over every expense matching the filters (all pages)."
       },
       "ExpenseUpdate": {
         "properties": {
@@ -3887,15 +4296,12 @@
           "category": {
             "anyOf": [
               {
-                "type": "string",
-                "maxLength": 100,
-                "minLength": 1
+                "$ref": "#/components/schemas/ExpenseCategory"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Category"
+            ]
           },
           "amount_cents": {
             "anyOf": [
@@ -3920,19 +4326,6 @@
               }
             ],
             "title": "Is Tax Deductible"
-          },
-          "receipt_url": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 2000,
-                "minLength": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Receipt Url"
           }
         },
         "additionalProperties": false,
@@ -5344,6 +5737,94 @@
         "type": "object",
         "title": "ProductUpdate",
         "description": "PATCH body: only the fields sent are changed."
+      },
+      "ReceiptLink": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In"
+          },
+          "content_type": {
+            "$ref": "#/components/schemas/ReceiptType"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "expires_in",
+          "content_type"
+        ],
+        "title": "ReceiptLink"
+      },
+      "ReceiptRegister": {
+        "properties": {
+          "upload_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Upload Id"
+          },
+          "content_type": {
+            "$ref": "#/components/schemas/ReceiptType"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "upload_id",
+          "content_type"
+        ],
+        "title": "ReceiptRegister"
+      },
+      "ReceiptType": {
+        "type": "string",
+        "enum": [
+          "image/jpeg",
+          "image/png",
+          "image/webp",
+          "application/pdf"
+        ],
+        "title": "ReceiptType"
+      },
+      "ReceiptUploadRequest": {
+        "properties": {
+          "content_type": {
+            "$ref": "#/components/schemas/ReceiptType"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "content_type"
+        ],
+        "title": "ReceiptUploadRequest"
+      },
+      "ReceiptUploadTicket": {
+        "properties": {
+          "upload_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Upload Id"
+          },
+          "upload_url": {
+            "type": "string",
+            "title": "Upload Url"
+          },
+          "max_bytes": {
+            "type": "integer",
+            "title": "Max Bytes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "upload_id",
+          "upload_url",
+          "max_bytes"
+        ],
+        "title": "ReceiptUploadTicket"
       },
       "RegisterRequest": {
         "properties": {

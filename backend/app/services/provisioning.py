@@ -23,7 +23,7 @@ from app.core import storage
 
 APP_ROLES = ("owner", "staff", "cpa")
 DOMAIN_KINDS = ("storefront", "admin")
-TENANT_BUCKETS = (storage.IMAGES_BUCKET, storage.UPLOADS_BUCKET)
+TENANT_BUCKETS = (storage.IMAGES_BUCKET, storage.UPLOADS_BUCKET, storage.RECEIPTS_BUCKET)
 
 
 class ProvisioningError(ValueError):

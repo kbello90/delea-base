@@ -1,4 +1,4 @@
-"""Supabase Storage over HTTP with the service-role key (product images only).
+"""Supabase Storage over HTTP with the service-role key (product images, expense receipts).
 
 The key comes from Settings (backend/.env locally; an App Service setting from a @secure()
 Bicep parameter when hosted). It is used only for Storage HTTP calls from the backend: no SQL
@@ -15,6 +15,7 @@ from app.core.config import get_settings
 
 UPLOADS_BUCKET = "product-uploads"
 IMAGES_BUCKET = "product-images"
+RECEIPTS_BUCKET = "expense-receipts"  # private: read only through short-lived signed URLs
 
 
 class StorageError(Exception):
@@ -52,6 +53,20 @@ async def create_signed_upload(bucket: str, path: str) -> SignedUpload:
     if r.status_code != 200:
         raise StorageError(f"sign upload failed: {r.status_code}")
     return SignedUpload(url=f"{_base()}{r.json()['url']}", path=path)
+
+
+async def create_signed_url(bucket: str, path: str, expires_in: int) -> str:
+    """An absolute URL that reads the object for `expires_in` seconds, with no other
+    credentials. The object must exist (404 from Storage raises StorageError)."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.post(
+            f"{_base()}/object/sign/{_object(bucket, path)}",
+            headers=_headers(),
+            json={"expiresIn": expires_in},
+        )
+    if r.status_code != 200:
+        raise StorageError(f"sign url failed: {r.status_code}")
+    return f"{_base()}{r.json()['signedURL']}"
 
 
 async def download(bucket: str, path: str, max_bytes: int) -> bytes | None:

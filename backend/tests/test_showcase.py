@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from app.core.config import Settings
+from app.models.expense import ExpenseCategory
 from app.services.pricing import CustomerPricing, LineRequest, ProductPrice, price_quote
 from showcase.catalog import CatalogError, load_catalog, money_to_cents
 from showcase.config import (
@@ -242,6 +243,8 @@ def test_the_history_looks_like_a_working_shop(now: datetime) -> None:
         stamps = [inv.created_at, *(t for _, t in inv.steps), inv.refunded_at, inv.cancelled_at]
         assert all(h.window_start <= t <= limit for t in stamps if t), inv.id
     assert all(e.expense_date <= now.date() for e in h.expenses)
+    # Every expense uses the fixed category list (migration 20261023000100).
+    assert {e.category for e in h.expenses} <= {c.value for c in ExpenseCategory}
 
 
 def test_customers_are_fictional_and_never_emailed() -> None:

@@ -162,7 +162,7 @@ values
   ('11111111-1111-1111-1111-111111111111', '2026-10-10', 'Booth fee, holiday market',
    'marketing', 25000, true),
   ('11111111-1111-1111-1111-111111111111', '2026-10-12', 'Team lunch', 'meals', 6800, false),
-  ('22222222-2222-2222-2222-222222222222', '2026-10-08', 'Gem certification', 'services', 18000, true);
+  ('22222222-2222-2222-2222-222222222222', '2026-10-08', 'Gem certification', 'professional_services', 18000, true);
 
 -- ---------------------------------------------------------------------------
 -- Automation (the demo's two rules) and reorder list

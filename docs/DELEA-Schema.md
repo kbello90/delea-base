@@ -216,10 +216,14 @@ create table expenses (
   tenant_id uuid not null references tenants(id) on delete cascade,
   expense_date date not null,
   description text not null,
-  category text,
+  category expense_category not null default 'other',      -- fixed list (migration 20261023000100); see TRD §6.8
   amount_cents bigint not null check (amount_cents >= 0),
   is_tax_deductible boolean not null default true,
-  receipt_url text,
+  -- receipt: one private file in the expense-receipts bucket (migration 20261023000100); the path never leaves the API
+  receipt_path text,                                         -- {tenant_id}/{expense_id}/{uuid}.{jpg|png|webp|pdf} (check)
+  receipt_content_type text,                                 -- image/jpeg, image/png, image/webp or application/pdf
+  receipt_size_bytes integer,                                -- 1..10 MiB; all four receipt columns set or null together
+  receipt_uploaded_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

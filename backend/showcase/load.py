@@ -304,7 +304,7 @@ async def _insert_sales(conn: AsyncConnection, tid: uuid.UUID, history: History)
         await conn.execute(
             "insert into public.expenses (id, tenant_id, expense_date, description, category, "
             "amount_cents, is_tax_deductible, created_at, updated_at) "
-            "values (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "values (%s, %s, %s, %s, %s::public.expense_category, %s, %s, %s, %s)",
             (
                 e.id,
                 tid,
