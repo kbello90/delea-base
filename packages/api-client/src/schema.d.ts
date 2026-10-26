@@ -304,6 +304,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Invoice Counts
+         * @description What the Invoices nav badge shows: storefront orders waiting for payment.
+         */
+        get: operations["invoice_counts_api_v1_invoices_counts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/{invoice_id}": {
         parameters: {
             query?: never;
@@ -951,6 +971,16 @@ export interface components {
             value: string;
         };
         /**
+         * AnswerOut
+         * @description A shopper's personalization answer, copied onto the line when the order was placed.
+         */
+        AnswerOut: {
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+        };
+        /**
          * Availability
          * @enum {string}
          */
@@ -1429,6 +1459,11 @@ export interface components {
             /** Cancelled */
             cancelled: number;
         };
+        /** InvoiceCountsOut */
+        InvoiceCountsOut: {
+            /** Awaiting Payment Web */
+            awaiting_payment_web: number;
+        };
         /** InvoiceCreate */
         InvoiceCreate: {
             /** Customer Id */
@@ -1470,6 +1505,8 @@ export interface components {
             unit_price_cents: number;
             /** Line Total Cents */
             line_total_cents: number;
+            /** Personalization */
+            personalization?: components["schemas"]["AnswerOut"][] | null;
         };
         /** InvoiceOut */
         InvoiceOut: {
@@ -1507,6 +1544,14 @@ export interface components {
             /** Notes */
             notes: string | null;
             payment_method: components["schemas"]["PaymentMethod"] | null;
+            /** Shipping Cents */
+            shipping_cents: number;
+            /** Fulfillment */
+            fulfillment: ("ship" | "pickup") | null;
+            /** Payment Choice */
+            payment_choice: ("bank_transfer" | "pay_on_pickup") | null;
+            /** Order Ref */
+            order_ref: string | null;
             /** Paid At */
             paid_at: string | null;
             /** Refunded At */
@@ -1525,6 +1570,7 @@ export interface components {
             updated_at: string;
             /** Items */
             items?: components["schemas"]["InvoiceLineOut"][] | null;
+            contact?: components["schemas"]["OrderContactOut"] | null;
         };
         /**
          * InvoicePreview
@@ -1768,6 +1814,34 @@ export interface components {
             period_basis: "UTC";
             /** Months */
             months: components["schemas"]["MonthTotals"][];
+        };
+        /**
+         * OrderContactOut
+         * @description The shopper of a storefront order. Owner and staff only (RLS); never the CPA.
+         */
+        OrderContactOut: {
+            /** First Name */
+            first_name: string;
+            /** Last Name */
+            last_name: string;
+            /** Email */
+            email: string;
+            /** Phone */
+            phone: string | null;
+            /** Ship Line1 */
+            ship_line1: string | null;
+            /** Ship Line2 */
+            ship_line2: string | null;
+            /** Ship City */
+            ship_city: string | null;
+            /** Ship State */
+            ship_state: string | null;
+            /** Ship Postal Code */
+            ship_postal_code: string | null;
+            /** Ship Country */
+            ship_country: string | null;
+            /** Note */
+            note: string | null;
         };
         /**
          * OrderOut
@@ -3256,6 +3330,9 @@ export interface operations {
                 date_from?: string | null;
                 date_to?: string | null;
                 q?: string | null;
+                source?: ("admin" | "storefront") | null;
+                /** @description true: storefront orders still waiting for payment (not cancelled) */
+                awaiting_payment?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -3324,6 +3401,9 @@ export interface operations {
                 date_from?: string | null;
                 date_to?: string | null;
                 q?: string | null;
+                source?: ("admin" | "storefront") | null;
+                /** @description true: storefront orders still waiting for payment (not cancelled) */
+                awaiting_payment?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -3347,6 +3427,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_counts_api_v1_invoices_counts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceCountsOut"];
                 };
             };
         };

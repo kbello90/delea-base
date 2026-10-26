@@ -7,7 +7,7 @@ numbers or tenant_id: any of them is a 422.
 
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -92,6 +92,13 @@ class InvoiceUpdate(BaseModel):
 INVOICE_NULLABLE_FIELDS = frozenset({"notes", "due_date"})
 
 
+class AnswerOut(BaseModel):
+    """A shopper's personalization answer, copied onto the line when the order was placed."""
+
+    label: str
+    value: str
+
+
 class InvoiceLineOut(BaseModel):
     id: UUID
     product_id: UUID | None
@@ -99,6 +106,27 @@ class InvoiceLineOut(BaseModel):
     qty: int
     unit_price_cents: int
     line_total_cents: int
+    personalization: list[AnswerOut] | None = None  # storefront orders only
+
+
+class OrderContactOut(BaseModel):
+    """The shopper of a storefront order. Owner and staff only (RLS); never the CPA."""
+
+    first_name: str
+    last_name: str
+    email: str
+    phone: str | None
+    ship_line1: str | None
+    ship_line2: str | None
+    ship_city: str | None
+    ship_state: str | None
+    ship_postal_code: str | None
+    ship_country: str | None
+    note: str | None
+
+
+class InvoiceCountsOut(BaseModel):
+    awaiting_payment_web: int  # storefront orders still waiting for payment (not cancelled)
 
 
 class PreviewLineOut(BaseModel):
@@ -143,6 +171,10 @@ class InvoiceOut(BaseModel):
     due_date: date | None
     notes: str | None
     payment_method: PaymentMethod | None
+    shipping_cents: int
+    fulfillment: Literal["ship", "pickup"] | None  # storefront orders
+    payment_choice: Literal["bank_transfer", "pay_on_pickup"] | None  # what the shopper chose
+    order_ref: str | None  # the shopper's reference (W-…), storefront orders
     paid_at: datetime | None
     refunded_at: datetime | None
     cancelled_at: datetime | None
@@ -150,3 +182,4 @@ class InvoiceOut(BaseModel):
     updated_at: datetime
     # None when the caller can't read line items (cpa) or on list endpoints; never [] for that.
     items: list[InvoiceLineOut] | None = None
+    contact: OrderContactOut | None = None  # storefront orders, owner and staff

@@ -64,6 +64,10 @@ export function makeInvoice(overrides: Partial<Invoice> = {}): Invoice {
     cancelled_at: null,
     created_at: "2026-10-20T15:00:00Z",
     updated_at: "2026-10-20T15:00:00Z",
+    shipping_cents: 0,
+    fulfillment: null,
+    payment_choice: null,
+    order_ref: null,
     items: [],
     ...overrides,
   };

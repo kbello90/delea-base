@@ -20,7 +20,7 @@ import logging
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from datetime import date
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -37,6 +37,7 @@ from app.db.session import user_session
 from app.db.sql_helpers import like_pattern, patch_changes, update_statement
 from app.models.invoice import (
     INVOICE_NULLABLE_FIELDS,
+    InvoiceCountsOut,
     InvoiceCreate,
     InvoiceItemsReplace,
     InvoiceLineOut,
@@ -46,6 +47,7 @@ from app.models.invoice import (
     InvoiceStatusChange,
     InvoiceUpdate,
     LineItemIn,
+    OrderContactOut,
     OrderStatus,
     PaymentMethod,
     PreviewLineOut,
@@ -74,9 +76,15 @@ _COLUMNS = (
     "id, tenant_id, quote_number, invoice_number, order_status::text as order_status, "
     "customer_id, customer_name, source, subtotal_cents, tax_rate_bps, tax_cents, total_cents, "
     "due_date, notes, payment_method::text as payment_method, paid_at, refunded_at, "
-    "cancelled_at, created_at, updated_at"
+    "cancelled_at, created_at, updated_at, shipping_cents, fulfillment, payment_choice, order_ref"
 )
-_LINE_COLUMNS = "id, product_id, description, qty, unit_price_cents, line_total_cents"
+_LINE_COLUMNS = (
+    "id, product_id, description, qty, unit_price_cents, line_total_cents, personalization"
+)
+_CONTACT_COLUMNS = (
+    "first_name, last_name, email, phone, ship_line1, ship_line2, ship_city, ship_state, "
+    "ship_postal_code, ship_country::text as ship_country, note"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -99,6 +107,14 @@ async def _load(conn: AsyncConnection, claims: TokenClaims, invoice_id: UUID) ->
                 (invoice_id, claims.tenant_id),
             )
             invoice.items = [InvoiceLineOut.model_validate(r) for r in await cur.fetchall()]
+            if invoice.source == "storefront":
+                await cur.execute(
+                    f"select {_CONTACT_COLUMNS} from public.order_contacts "
+                    "where invoice_id = %s and tenant_id = %s",
+                    (invoice_id, claims.tenant_id),
+                )
+                contact = await cur.fetchone()
+                invoice.contact = OrderContactOut.model_validate(contact) if contact else None
     return invoice
 
 
@@ -299,6 +315,8 @@ class InvoiceFilters:
     date_from: date | None
     date_to: date | None
     q: str | None
+    source: Literal["admin", "storefront"] | None
+    awaiting_payment: bool | None
 
 
 def invoice_filters(
@@ -307,15 +325,21 @@ def invoice_filters(
     date_from: date | None = None,
     date_to: date | None = None,
     q: Annotated[str | None, Query(min_length=1, max_length=50)] = None,
+    source: Literal["admin", "storefront"] | None = None,
+    awaiting_payment: Annotated[
+        bool | None,
+        Query(description="true: storefront orders still waiting for payment (not cancelled)"),
+    ] = None,
 ) -> InvoiceFilters:
     if date_from and date_to and date_from > date_to:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "date_from is after date_to")
-    return InvoiceFilters(status_, customer_id, date_from, date_to, q)
+    return InvoiceFilters(status_, customer_id, date_from, date_to, q, source, awaiting_payment)
 
 
 Filters = Annotated[InvoiceFilters, Depends(invoice_filters)]
 
-# Dates are UTC calendar dates of created_at, inclusive. q matches either document number.
+# Dates are UTC calendar dates of created_at, inclusive. q matches either document number or
+# a storefront order's reference.
 _WHERE = """
      where tenant_id = %(tenant_id)s
        and (%(status)s::text is null or order_status::text = %(status)s)
@@ -323,7 +347,11 @@ _WHERE = """
        and (%(date_from)s::date is null or (created_at at time zone 'UTC')::date >= %(date_from)s)
        and (%(date_to)s::date is null or (created_at at time zone 'UTC')::date <= %(date_to)s)
        and (%(pattern)s::text is null
-            or quote_number ilike %(pattern)s or invoice_number ilike %(pattern)s)
+            or quote_number ilike %(pattern)s or invoice_number ilike %(pattern)s
+            or order_ref ilike %(pattern)s)
+       and (%(source)s::text is null or source = %(source)s)
+       and (%(awaiting)s::boolean is not true
+            or (source = 'storefront' and order_status = 'quote' and cancelled_at is null))
 """
 
 
@@ -335,6 +363,8 @@ def _params(claims: TokenClaims, f: InvoiceFilters) -> dict[str, Any]:
         "date_from": f.date_from,
         "date_to": f.date_to,
         "pattern": like_pattern(f.q) if f.q else None,
+        "source": f.source,
+        "awaiting": f.awaiting_payment,
     }
 
 
@@ -371,6 +401,7 @@ CSV_HEADER = (
     "subtotal",
     "tax_rate_bps",
     "tax",
+    "shipping",
     "total",
     "refunded_at",
     "cancelled_at",
@@ -401,8 +432,8 @@ async def export_invoices_csv(
                 async for r in cur.stream(
                     "select quote_number, invoice_number, order_status::text, customer_name, "
                     "created_at, paid_at, payment_method::text, due_date, subtotal_cents, "
-                    "tax_rate_bps, tax_cents, total_cents, refunded_at, cancelled_at, source "
-                    f"from public.invoices {_WHERE} order by created_at, id",
+                    "tax_rate_bps, tax_cents, shipping_cents, total_cents, refunded_at, "
+                    f"cancelled_at, source from public.invoices {_WHERE} order by created_at, id",
                     _params(claims, filters),
                 ):
                     yield (
@@ -412,7 +443,8 @@ async def export_invoices_csv(
                         r[9],
                         cents_to_decimal(r[10]),
                         cents_to_decimal(r[11]),
-                        *r[12:],
+                        cents_to_decimal(r[12]),
+                        *r[13:],
                     )
         except Exception:
             logger.exception("Invoice CSV export failed mid-stream")
@@ -423,6 +455,19 @@ async def export_invoices_csv(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="invoices.csv"'},
     )
+
+
+# Declared before /{invoice_id}. Owner and staff: they confirm payments; the CPA doesn't.
+@router.get("/counts", response_model=InvoiceCountsOut, dependencies=[Writers])
+async def invoice_counts(claims: CurrentClaims, conn: DbConn) -> InvoiceCountsOut:
+    """What the Invoices nav badge shows: storefront orders waiting for payment."""
+    cur = await conn.execute(
+        "select count(*) from public.invoices where tenant_id = %s and source = 'storefront' "
+        "and order_status = 'quote' and cancelled_at is null",
+        (claims.tenant_id,),
+    )
+    (awaiting,) = await cur.fetchone()
+    return InvoiceCountsOut(awaiting_payment_web=awaiting)
 
 
 @router.get("/{invoice_id}", response_model=InvoiceOut, dependencies=[ReadRoles])
@@ -499,7 +544,7 @@ async def replace_items(
     rate snapshot is kept (an owner override stays in force)."""
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
-            "select order_status::text as order_status, customer_id, tax_rate_bps "
+            "select order_status::text as order_status, customer_id, tax_rate_bps, source "
             "from public.invoices where id = %s and tenant_id = %s for update",
             (invoice_id, claims.tenant_id),
         )
@@ -508,6 +553,7 @@ async def replace_items(
         raise NotFoundError("Invoice not found")
     if invoice["order_status"] != OrderStatus.quote:
         raise ConflictError("only quotes can be edited")
+    _refuse_website_order(invoice)
 
     customer = None
     if invoice["customer_id"] is not None:
@@ -544,7 +590,7 @@ async def preview_items(
     rate). Writes nothing."""
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
-            "select order_status::text as order_status, customer_id, tax_rate_bps "
+            "select order_status::text as order_status, customer_id, tax_rate_bps, source "
             "from public.invoices where id = %s and tenant_id = %s",
             (invoice_id, claims.tenant_id),
         )
@@ -553,8 +599,22 @@ async def preview_items(
         raise NotFoundError("Invoice not found")
     if invoice["order_status"] != OrderStatus.quote:
         raise ConflictError("only quotes can be edited")
+    _refuse_website_order(invoice)
     customer = await _customer(conn, claims, invoice["customer_id"])
     return await _preview(conn, claims, customer, body.items, invoice["tax_rate_bps"], None)
+
+
+WEBSITE_ORDER_LOCKED = (
+    "Website orders can't be edited: the shopper agreed to these lines and this total. "
+    "Cancel it and ask the shopper to order again."
+)
+
+
+def _refuse_website_order(row: dict[str, Any]) -> None:
+    """A storefront order's lines (and personalization answers) stay as the shopper placed
+    them. Revisited in Slice C for the answers only."""
+    if row["source"] == "storefront":
+        raise ConflictError(WEBSITE_ORDER_LOCKED)
 
 
 def _refuse_if_closed(row: dict[str, Any]) -> None:

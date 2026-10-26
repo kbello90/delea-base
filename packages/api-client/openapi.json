@@ -1410,6 +1410,44 @@
               ],
               "title": "Q"
             }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "admin",
+                    "storefront"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "awaiting_payment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "true: storefront orders still waiting for payment (not cancelled)",
+              "title": "Awaiting Payment"
+            },
+            "description": "true: storefront orders still waiting for payment (not cancelled)"
           }
         ],
         "responses": {
@@ -1583,6 +1621,44 @@
               ],
               "title": "Q"
             }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "admin",
+                    "storefront"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "awaiting_payment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "true: storefront orders still waiting for payment (not cancelled)",
+              "title": "Awaiting Payment"
+            },
+            "description": "true: storefront orders still waiting for payment (not cancelled)"
           }
         ],
         "responses": {
@@ -1605,6 +1681,33 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/invoices/counts": {
+      "get": {
+        "tags": [
+          "invoices"
+        ],
+        "summary": "Invoice Counts",
+        "description": "What the Invoices nav badge shows: storefront orders waiting for payment.",
+        "operationId": "invoice_counts_api_v1_invoices_counts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceCountsOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/invoices/{invoice_id}": {
@@ -3820,6 +3923,25 @@
         ],
         "title": "Answer"
       },
+      "AnswerOut": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "value"
+        ],
+        "title": "AnswerOut",
+        "description": "A shopper's personalization answer, copied onto the line when the order was placed."
+      },
       "Availability": {
         "type": "string",
         "enum": [
@@ -5450,6 +5572,19 @@
         ],
         "title": "InvoiceCounts"
       },
+      "InvoiceCountsOut": {
+        "properties": {
+          "awaiting_payment_web": {
+            "type": "integer",
+            "title": "Awaiting Payment Web"
+          }
+        },
+        "type": "object",
+        "required": [
+          "awaiting_payment_web"
+        ],
+        "title": "InvoiceCountsOut"
+      },
       "InvoiceCreate": {
         "properties": {
           "customer_id": {
@@ -5586,6 +5721,20 @@
           "line_total_cents": {
             "type": "integer",
             "title": "Line Total Cents"
+          },
+          "personalization": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AnswerOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Personalization"
           }
         },
         "type": "object",
@@ -5705,6 +5854,51 @@
               }
             ]
           },
+          "shipping_cents": {
+            "type": "integer",
+            "title": "Shipping Cents"
+          },
+          "fulfillment": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "ship",
+                  "pickup"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fulfillment"
+          },
+          "payment_choice": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "bank_transfer",
+                  "pay_on_pickup"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Choice"
+          },
+          "order_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Ref"
+          },
           "paid_at": {
             "anyOf": [
               {
@@ -5764,6 +5958,16 @@
               }
             ],
             "title": "Items"
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderContactOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -5783,6 +5987,10 @@
           "due_date",
           "notes",
           "payment_method",
+          "shipping_cents",
+          "fulfillment",
+          "payment_choice",
+          "order_ref",
           "paid_at",
           "refunded_at",
           "cancelled_at",
@@ -6426,6 +6634,126 @@
           "months"
         ],
         "title": "MonthlyTrend"
+      },
+      "OrderContactOut": {
+        "properties": {
+          "first_name": {
+            "type": "string",
+            "title": "First Name"
+          },
+          "last_name": {
+            "type": "string",
+            "title": "Last Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "ship_line1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Line1"
+          },
+          "ship_line2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Line2"
+          },
+          "ship_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship City"
+          },
+          "ship_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship State"
+          },
+          "ship_postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Postal Code"
+          },
+          "ship_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Country"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "first_name",
+          "last_name",
+          "email",
+          "phone",
+          "ship_line1",
+          "ship_line2",
+          "ship_city",
+          "ship_state",
+          "ship_postal_code",
+          "ship_country",
+          "note"
+        ],
+        "title": "OrderContactOut",
+        "description": "The shopper of a storefront order. Owner and staff only (RLS); never the CPA."
       },
       "OrderOut": {
         "properties": {
