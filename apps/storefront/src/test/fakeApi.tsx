@@ -32,7 +32,13 @@ export const STORE: Store = {
     { slug: "returns", title: "Returns" },
   ],
   has_made_to_order: true,
+  // Checkout options arrive with Slice A2's API; the A1 screens don't use them yet.
   checkout_enabled: false,
+  shipping: null,
+  pickup: null,
+  payment_choices: [],
+  tax_rate_bps: 800,
+  tax_shipping: false,
 };
 
 export function makeProduct(overrides: Partial<Product> = {}): Product {
@@ -48,6 +54,7 @@ export function makeProduct(overrides: Partial<Product> = {}): Product {
     availability: "in_stock",
     lead_time_note: null,
     images: [],
+    personalization: [],
     ...overrides,
   };
 }

@@ -6,31 +6,50 @@ limit. A request without a known Origin gets 404 "Store not found", as does an u
 inactive or switched-off store.
 
 Reads run in storefront_session: a read-only transaction as `storefront_reader`, which can
-select only from the storefront views. Those list public columns only and filter on the
-resolved tenant, so these handlers can't reach anything else even by mistake.
+select only from the storefront views (and run the cart pricing function). Those list public
+columns only and filter on the resolved tenant, so these handlers can't reach anything else
+even by mistake.
+
+The checkout (POST /public/orders) runs as `storefront_writer`, which can only execute the
+storefront checkout functions; the database prices the cart, checks the shop, stock,
+personalization and limits, and writes the order (supabase/migrations/20261027000400).
 """
 
+import hashlib
+import json
+import math
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from psycopg import AsyncConnection
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 
 from app.api.deps import get_pool
+from app.core import rate_limit, turnstile
 from app.core.config import get_settings
 from app.core.cors import TENANT_STATE_KEY
 from app.core.errors import NotFoundError
-from app.db.session import storefront_session
+from app.core.storefront_hosts import origin_host
+from app.db.session import checkout_session, storefront_session
 from app.models.public import (
+    MIN_FILL_MILLISECONDS,
     HeroButton,
+    OrderOut,
+    OrderRequest,
     PageLink,
     PageSlug,
+    PickupOption,
     PublicImageOut,
     PublicPageOut,
     PublicProductOut,
     PublicStoreOut,
+    QuoteOut,
+    QuoteRequest,
+    ShippingOption,
 )
 
 router = APIRouter(prefix="/public", tags=["public"])
@@ -46,11 +65,16 @@ PAGES: dict[PageSlug, tuple[str, str]] = {
     PageSlug.terms: ("terms", "Terms"),
 }
 
+STORE_NOT_FOUND = "Store not found"
+ORDERING_UNAVAILABLE = "Online ordering is unavailable right now. Please try again later."
+TOO_MANY = "Too many requests. Please wait a few minutes and try again."
+TRY_AGAIN = "Please try again."
+
 
 def storefront_tenant(request: Request) -> str:
     tenant_id = getattr(request.state, TENANT_STATE_KEY, None)
     if tenant_id is None:
-        raise NotFoundError("Store not found")
+        raise NotFoundError(STORE_NOT_FOUND)
     return tenant_id
 
 
@@ -58,6 +82,27 @@ Tenant = Annotated[str, Depends(storefront_tenant)]
 Pool = Annotated[AsyncConnectionPool, Depends(get_pool)]
 
 
+def _hash(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+def _client(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+def _limit(limiter: rate_limit.SlidingWindowLimiter, request: Request) -> None:
+    retry_after = limiter.hit(_client(request))
+    if retry_after is not None:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            TOO_MANY,
+            headers={"Retry-After": str(max(1, math.ceil(retry_after)))},
+        )
+
+
+# ---------------------------------------------------------------------------
+# Store, pages, products
+# ---------------------------------------------------------------------------
 def _store_out(row: dict[str, Any]) -> PublicStoreOut:
     settings = get_settings()
     logo = row.pop("logo_path")
@@ -67,13 +112,32 @@ def _store_out(row: dict[str, Any]) -> PublicStoreOut:
         for slug, (column, title) in PAGES.items()
         if (row.pop(column) or "").strip()
     ]
+    ships, picks = row["ship_enabled"], row["pickup_enabled"]
+    payment_choices = []
+    if row["bank_transfer_enabled"]:
+        payment_choices.append("bank_transfer")
+    if row["pay_on_pickup_enabled"] and picks:
+        payment_choices.append("pay_on_pickup")
+    can_receive = ships or picks
+    # Paying on pickup needs pickup; bank transfer works with either.
+    can_pay = "bank_transfer" in payment_choices or "pay_on_pickup" in payment_choices
     return PublicStoreOut.model_validate(
         {
             **row,
             "logo_url": f"{settings.brand_assets_public_base}/{logo}" if logo else None,
             "hero_button": HeroButton(label=label, url=url) if label and url else None,
             "pages": pages,
-            "checkout_enabled": False,
+            "checkout_enabled": bool(
+                can_receive and can_pay and turnstile.checkout_protected(settings)
+            ),
+            "shipping": ShippingOption(
+                flat_cents=row["ship_flat_cents"], free_over_cents=row["free_ship_over_cents"]
+            )
+            if ships
+            else None,
+            "pickup": PickupOption(note=row["pickup_note"]) if picks else None,
+            "payment_choices": payment_choices,
+            "tax_rate_bps": row["default_tax_rate_bps"],
         }
     )
 
@@ -87,7 +151,7 @@ async def get_store(tenant_id: Tenant, pool: Pool, response: Response) -> Public
         await cur.execute("select * from storefront.store")
         row = await cur.fetchone()
     if row is None:
-        raise NotFoundError("Store not found")
+        raise NotFoundError(STORE_NOT_FOUND)
     response.headers["Cache-Control"] = CACHE_CONTROL
     return _store_out(row)
 
@@ -118,7 +182,15 @@ _PRODUCT_SELECT = """
                     order by i.position)
                from storefront.product_images i
               where i.product_id = p.id
-           ), '[]'::json) as images
+           ), '[]'::json) as images,
+           coalesce((
+             select json_agg(json_build_object(
+                      'id', f.id, 'label', f.label, 'kind', f.kind, 'required', f.required,
+                      'max_length', f.max_length, 'choices', f.choices)
+                    order by f.position)
+               from storefront.product_personalization f
+              where f.product_id = p.id
+           ), '[]'::json) as personalization
       from storefront.products p
 """
 
@@ -172,3 +244,213 @@ async def get_product(
         raise NotFoundError("Product not found")
     response.headers["Cache-Control"] = CACHE_CONTROL
     return _product_out(rows[0])
+
+
+# ---------------------------------------------------------------------------
+# Checkout
+# ---------------------------------------------------------------------------
+def _priced_error(error: str) -> Exception:
+    if error == "closed":
+        return NotFoundError(STORE_NOT_FOUND)
+    if error == "fulfillment":
+        return HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "This shop doesn't offer that delivery option."
+        )
+    return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "The cart couldn't be read.")
+
+
+@router.post("/checkout/quote", response_model=QuoteOut)
+async def quote(body: QuoteRequest, request: Request, tenant_id: Tenant, pool: Pool) -> QuoteOut:
+    """Price a cart exactly as an order would be priced, without writing anything. Lines
+    that can't be ordered (unavailable, or personalization to fix) say so."""
+    _limit(rate_limit.public_quotes, request)
+    cart = body.model_dump(mode="json")["items"]
+    async with storefront_session(pool, tenant_id) as conn:
+        cur = await conn.execute(
+            "select public.storefront_price_cart(%s, %s, %s)",
+            (tenant_id, Jsonb(cart), body.fulfillment),
+        )
+        (priced,) = await cur.fetchone()
+    if not priced["ok"]:
+        raise _priced_error(priced["error"])
+    return QuoteOut.model_validate(priced)
+
+
+_STATUS = {
+    "quote": "awaiting_payment",
+    "paid": "paid",
+    "in_production": "in_production",
+    "shipped": "shipped",
+    "delivered": "delivered",
+}
+
+
+async def _tracked_order(pool: AsyncConnectionPool, tenant_id: str, token: UUID) -> OrderOut | None:
+    async with (
+        storefront_session(pool, tenant_id) as conn,
+        conn.cursor(row_factory=dict_row) as cur,
+    ):
+        await cur.execute("select set_config('app.order_token', %s, true)", (str(token),))
+        await cur.execute("select * from storefront.orders")
+        order = await cur.fetchone()
+        if order is None:
+            return None
+        await cur.execute(
+            "select description, qty, unit_price_cents, line_total_cents, personalization, "
+            "lead_time_note from storefront.order_lines order by position"
+        )
+        lines = await cur.fetchall()
+    if order["cancelled"]:
+        shopper_status = "cancelled"
+    elif order["refunded"]:
+        shopper_status = "refunded"
+    else:
+        shopper_status = _STATUS[order["order_status"]]
+    return OrderOut.model_validate(
+        {
+            **order,
+            "public_token": token,
+            "placed_at": order["created_at"],
+            "status": shopper_status,
+            "lines": lines,
+        }
+    )
+
+
+_INVALID = {
+    "fulfillment": "This shop doesn't offer that delivery option.",
+    "payment_choice": "This shop doesn't take that way to pay for this order.",
+    "address": "Check the delivery address.",
+    "invalid": "The order couldn't be read.",
+}
+
+
+@router.post(
+    "/orders",
+    response_model=OrderOut,
+    status_code=status.HTTP_201_CREATED,
+    responses={200: {"model": OrderOut, "description": "The same request again: the same order"}},
+)
+async def place_order(
+    body: OrderRequest, request: Request, response: Response, tenant_id: Tenant, pool: Pool
+) -> OrderOut | JSONResponse:
+    """Place an order (unpaid: the owner confirms the payment in the admin).
+
+    Order of checks: the bot traps; a repeat of an earlier checkout returns that order (before
+    Turnstile, so a double click never needs a second token); the per-address attempt limit;
+    Turnstile; then the database prices, checks and writes the order in one transaction.
+    """
+    settings = get_settings()
+    response.headers["Cache-Control"] = "no-store"
+    if body.website or body.elapsed_ms < MIN_FILL_MILLISECONDS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, TRY_AGAIN)
+    if not turnstile.checkout_protected(settings):
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, ORDERING_UNAVAILABLE)
+
+    document = body.order_document()
+    fingerprint = _hash(json.dumps(document, sort_keys=True, separators=(",", ":")))
+    ip = _client(request)
+    allowed = True
+
+    async with checkout_session(pool) as conn:
+        cur = await conn.execute(
+            "select public.storefront_find_order(%s, %s, %s)",
+            (tenant_id, body.checkout_key, fingerprint),
+        )
+        (previous,) = await cur.fetchone()
+        if previous["status"] == "none":
+            cur = await conn.execute("select public.storefront_count_attempt(%s)", (_hash(ip),))
+            (allowed,) = await cur.fetchone()
+    if previous["status"] == "conflict":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "This checkout was already used for a different order."
+        )
+    if previous["status"] == "replayed":
+        return await _order_response(pool, tenant_id, previous["public_token"], response, 200)
+    if not allowed:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, TOO_MANY)
+
+    host = origin_host(request.headers.get("origin"), dev=settings.is_dev_environment) or ""
+    try:
+        passed = await turnstile.verify(
+            body.turnstile_token,
+            remote_ip=ip,
+            hostname=host.split(":", 1)[0],
+            settings=settings,
+        )
+    except turnstile.TurnstileUnavailable:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, ORDERING_UNAVAILABLE) from None
+    if not passed:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "The security check didn't pass. Please try again.",
+        )
+
+    async with checkout_session(pool) as conn:
+        cur = await conn.execute(
+            "select public.storefront_place_order(%s, %s, %s, %s, %s, %s)",
+            (
+                tenant_id,
+                body.checkout_key,
+                fingerprint,
+                Jsonb(document),
+                _hash(ip),
+                _hash(body.contact.email.lower()),
+            ),
+        )
+        (result,) = await cur.fetchone()
+
+    outcome = result["status"]
+    if outcome in ("created", "replayed"):
+        code = 201 if outcome == "created" else 200
+        return await _order_response(pool, tenant_id, result["public_token"], response, code)
+    if outcome == "conflict":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "This checkout was already used for a different order."
+        )
+    if outcome == "closed":
+        raise NotFoundError(STORE_NOT_FOUND)
+    if outcome == "rate_limited":
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, TOO_MANY)
+    if outcome in ("unavailable", "price_changed"):
+        detail = (
+            "Some items are no longer available or need your choices."
+            if outcome == "unavailable"
+            else "Prices changed since you opened checkout. Please review your order."
+        )
+        quote_out = QuoteOut.model_validate(result["quote"]).model_dump(mode="json")
+        return JSONResponse(
+            {"detail": detail, "reason": outcome, "quote": quote_out},
+            status_code=status.HTTP_409_CONFLICT,
+            headers={"Cache-Control": "no-store"},
+        )
+    raise HTTPException(
+        status.HTTP_422_UNPROCESSABLE_CONTENT,
+        _INVALID.get(result.get("reason"), _INVALID["invalid"]),
+    )
+
+
+async def _order_response(
+    pool: AsyncConnectionPool, tenant_id: str, token: str, response: Response, code: int
+) -> OrderOut:
+    order = await _tracked_order(pool, tenant_id, UUID(str(token)))
+    if order is None:  # the order was just written in this shop; anything else is a bug
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Internal server error")
+    response.status_code = code
+    return order
+
+
+@router.get("/orders/{public_token}", response_model=OrderOut)
+async def track_order(
+    public_token: UUID, request: Request, response: Response, tenant_id: Tenant, pool: Pool
+) -> OrderOut:
+    """An order by its tracking link, in its own shop only. An unknown token, or a token of
+    another shop, is the same 404."""
+    _limit(rate_limit.public_tracking, request)
+    order = await _tracked_order(pool, tenant_id, public_token)
+    if order is None:
+        raise NotFoundError("Order not found")
+    response.headers["Cache-Control"] = "no-store"
+    # The token is in the URL: never send it on as a referrer.
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return order

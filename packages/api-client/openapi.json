@@ -3601,10 +3601,166 @@
           }
         }
       }
+    },
+    "/api/v1/public/checkout/quote": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Quote",
+        "description": "Price a cart exactly as an order would be priced, without writing anything. Lines\nthat can't be ordered (unavailable, or personalization to fix) say so.",
+        "operationId": "quote_api_v1_public_checkout_quote_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuoteOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/orders": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Place Order",
+        "description": "Place an order (unpaid: the owner confirms the payment in the admin).\n\nOrder of checks: the bot traps; a repeat of an earlier checkout returns that order (before\nTurnstile, so a double click never needs a second token); the per-address attempt limit;\nTurnstile; then the database prices, checks and writes the order in one transaction.",
+        "operationId": "place_order_api_v1_public_orders_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderOut"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "The same request again: the same order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/orders/{public_token}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Track Order",
+        "description": "An order by its tracking link, in its own shop only. An unknown token, or a token of\nanother shop, is the same 404.",
+        "operationId": "track_order_api_v1_public_orders__public_token__get",
+        "parameters": [
+          {
+            "name": "public_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Public Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "Answer": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "value"
+        ],
+        "title": "Answer"
+      },
       "Availability": {
         "type": "string",
         "enum": [
@@ -3919,6 +4075,41 @@
         "type": "object",
         "title": "BrandConfigUpdate"
       },
+      "CartItemIn": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "qty": {
+            "type": "integer",
+            "maximum": 99.0,
+            "minimum": 1.0,
+            "title": "Qty"
+          },
+          "personalization": {
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "propertyNames": {
+              "format": "uuid"
+            },
+            "type": "object",
+            "maxProperties": 5,
+            "title": "Personalization",
+            "default": {}
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "product_id",
+          "qty"
+        ],
+        "title": "CartItemIn"
+      },
       "CompanySettingsOut": {
         "properties": {
           "tenant_id": {
@@ -4102,6 +4293,47 @@
         "additionalProperties": false,
         "type": "object",
         "title": "CompanySettingsUpdate"
+      },
+      "ContactIn": {
+        "properties": {
+          "first_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "First Name"
+          },
+          "last_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Last Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "first_name",
+          "last_name",
+          "email"
+        ],
+        "title": "ContactIn"
       },
       "CornerStyle": {
         "type": "string",
@@ -6136,6 +6368,255 @@
         ],
         "title": "MonthlyTrend"
       },
+      "OrderOut": {
+        "properties": {
+          "order_ref": {
+            "type": "string",
+            "title": "Order Ref"
+          },
+          "public_token": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Public Token"
+          },
+          "placed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Placed At"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "awaiting_payment",
+              "paid",
+              "in_production",
+              "shipped",
+              "delivered",
+              "cancelled",
+              "refunded"
+            ],
+            "title": "Status"
+          },
+          "fulfillment": {
+            "type": "string",
+            "enum": [
+              "ship",
+              "pickup"
+            ],
+            "title": "Fulfillment"
+          },
+          "payment_choice": {
+            "type": "string",
+            "enum": [
+              "bank_transfer",
+              "pay_on_pickup"
+            ],
+            "title": "Payment Choice"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/TrackedLineOut"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "subtotal_cents": {
+            "type": "integer",
+            "title": "Subtotal Cents"
+          },
+          "shipping_cents": {
+            "type": "integer",
+            "title": "Shipping Cents"
+          },
+          "tax_rate_bps": {
+            "type": "integer",
+            "title": "Tax Rate Bps"
+          },
+          "tax_cents": {
+            "type": "integer",
+            "title": "Tax Cents"
+          },
+          "total_cents": {
+            "type": "integer",
+            "title": "Total Cents"
+          },
+          "first_name": {
+            "type": "string",
+            "title": "First Name"
+          },
+          "ship_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship City"
+          },
+          "ship_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship State"
+          },
+          "payment_instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Instructions"
+          },
+          "pickup_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickup Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order_ref",
+          "public_token",
+          "placed_at",
+          "status",
+          "fulfillment",
+          "payment_choice",
+          "lines",
+          "subtotal_cents",
+          "shipping_cents",
+          "tax_rate_bps",
+          "tax_cents",
+          "total_cents",
+          "first_name",
+          "ship_city",
+          "ship_state",
+          "payment_instructions",
+          "pickup_note"
+        ],
+        "title": "OrderOut",
+        "description": "The order as the shopper sees it: right after placing it, and on the tracking page."
+      },
+      "OrderRequest": {
+        "properties": {
+          "checkout_key": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Checkout Key"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CartItemIn"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Items"
+          },
+          "fulfillment": {
+            "type": "string",
+            "enum": [
+              "ship",
+              "pickup"
+            ],
+            "title": "Fulfillment"
+          },
+          "payment_choice": {
+            "type": "string",
+            "enum": [
+              "bank_transfer",
+              "pay_on_pickup"
+            ],
+            "title": "Payment Choice"
+          },
+          "expected_total_cents": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Total Cents"
+          },
+          "contact": {
+            "$ref": "#/components/schemas/ContactIn"
+          },
+          "ship_to": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShipToIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "turnstile_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2048
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turnstile Token"
+          },
+          "website": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website"
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Elapsed Ms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "checkout_key",
+          "items",
+          "fulfillment",
+          "payment_choice",
+          "expected_total_cents",
+          "contact",
+          "elapsed_ms"
+        ],
+        "title": "OrderRequest"
+      },
       "OrderStatus": {
         "type": "string",
         "enum": [
@@ -6256,6 +6737,86 @@
           "net_profit_cents"
         ],
         "title": "PeriodSummary"
+      },
+      "PersonalizationFieldOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "text",
+              "choice"
+            ],
+            "title": "Kind"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required"
+          },
+          "max_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Length"
+          },
+          "choices": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choices"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "kind",
+          "required",
+          "max_length",
+          "choices"
+        ],
+        "title": "PersonalizationFieldOut"
+      },
+      "PickupOption": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "note"
+        ],
+        "title": "PickupOption"
       },
       "PreviewLineOut": {
         "properties": {
@@ -6915,6 +7476,13 @@
             },
             "type": "array",
             "title": "Images"
+          },
+          "personalization": {
+            "items": {
+              "$ref": "#/components/schemas/PersonalizationFieldOut"
+            },
+            "type": "array",
+            "title": "Personalization"
           }
         },
         "type": "object",
@@ -6929,7 +7497,8 @@
           "unit_price_cents",
           "availability",
           "lead_time_note",
-          "images"
+          "images",
+          "personalization"
         ],
         "title": "PublicProductOut"
       },
@@ -7061,6 +7630,45 @@
           "checkout_enabled": {
             "type": "boolean",
             "title": "Checkout Enabled"
+          },
+          "shipping": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShippingOption"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pickup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PickupOption"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "payment_choices": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "bank_transfer",
+                "pay_on_pickup"
+              ]
+            },
+            "type": "array",
+            "title": "Payment Choices"
+          },
+          "tax_rate_bps": {
+            "type": "integer",
+            "title": "Tax Rate Bps"
+          },
+          "tax_shipping": {
+            "type": "boolean",
+            "title": "Tax Shipping"
           }
         },
         "type": "object",
@@ -7082,9 +7690,204 @@
           "contact_email",
           "pages",
           "has_made_to_order",
-          "checkout_enabled"
+          "checkout_enabled",
+          "shipping",
+          "pickup",
+          "payment_choices",
+          "tax_rate_bps",
+          "tax_shipping"
         ],
         "title": "PublicStoreOut"
+      },
+      "QuoteLineOut": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "qty": {
+            "type": "integer",
+            "title": "Qty"
+          },
+          "unit_price_cents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Price Cents"
+          },
+          "line_total_cents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Total Cents"
+          },
+          "personalization": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Answer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Personalization"
+          },
+          "made_to_order": {
+            "type": "boolean",
+            "title": "Made To Order"
+          },
+          "lead_time_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead Time Note"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "unavailable",
+                  "options"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "name",
+          "qty",
+          "unit_price_cents",
+          "line_total_cents",
+          "personalization",
+          "made_to_order",
+          "lead_time_note",
+          "problem"
+        ],
+        "title": "QuoteLineOut"
+      },
+      "QuoteOut": {
+        "properties": {
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/QuoteLineOut"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "subtotal_cents": {
+            "type": "integer",
+            "title": "Subtotal Cents"
+          },
+          "shipping_cents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shipping Cents"
+          },
+          "tax_rate_bps": {
+            "type": "integer",
+            "title": "Tax Rate Bps"
+          },
+          "tax_cents": {
+            "type": "integer",
+            "title": "Tax Cents"
+          },
+          "total_cents": {
+            "type": "integer",
+            "title": "Total Cents"
+          },
+          "has_problems": {
+            "type": "boolean",
+            "title": "Has Problems"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lines",
+          "subtotal_cents",
+          "shipping_cents",
+          "tax_rate_bps",
+          "tax_cents",
+          "total_cents",
+          "has_problems"
+        ],
+        "title": "QuoteOut"
+      },
+      "QuoteRequest": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CartItemIn"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Items"
+          },
+          "fulfillment": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "ship",
+                  "pickup"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fulfillment"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "QuoteRequest"
       },
       "ReceiptLink": {
         "properties": {
@@ -7192,6 +7995,79 @@
           "content_type"
         ],
         "title": "RegisterRequest"
+      },
+      "ShipToIn": {
+        "properties": {
+          "line1": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Line1"
+          },
+          "line2": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line2"
+          },
+          "city": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "City"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "postal_code": {
+            "type": "string",
+            "pattern": "^[0-9]{5}(-[0-9]{4})?$",
+            "title": "Postal Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "line1",
+          "city",
+          "state",
+          "postal_code"
+        ],
+        "title": "ShipToIn",
+        "description": "A US address (v1 ships within the US only)."
+      },
+      "ShippingOption": {
+        "properties": {
+          "flat_cents": {
+            "type": "integer",
+            "title": "Flat Cents"
+          },
+          "free_over_cents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Over Cents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "flat_cents",
+          "free_over_cents"
+        ],
+        "title": "ShippingOption"
       },
       "StockShortage": {
         "properties": {
@@ -7383,6 +8259,61 @@
         "type": "object",
         "title": "StorefrontSettingsUpdate",
         "description": "PATCH /settings/storefront. Everything here is shown on the public storefront."
+      },
+      "TrackedLineOut": {
+        "properties": {
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "qty": {
+            "type": "integer",
+            "title": "Qty"
+          },
+          "unit_price_cents": {
+            "type": "integer",
+            "title": "Unit Price Cents"
+          },
+          "line_total_cents": {
+            "type": "integer",
+            "title": "Line Total Cents"
+          },
+          "personalization": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Answer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Personalization"
+          },
+          "lead_time_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead Time Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "description",
+          "qty",
+          "unit_price_cents",
+          "line_total_cents",
+          "personalization",
+          "lead_time_note"
+        ],
+        "title": "TrackedLineOut"
       },
       "UploadRequest": {
         "properties": {

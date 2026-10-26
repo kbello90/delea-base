@@ -1,6 +1,6 @@
 """DB session/connection helpers (TRD locked decision 6).
 
-The backend talks to Postgres directly through a psycopg async pool. Four kinds of session,
+The backend talks to Postgres directly through a psycopg async pool. Five kinds of session,
 each one transaction:
 
 - user_session: every authenticated request. Re-checks the membership, then runs as
@@ -8,7 +8,9 @@ each one transaction:
 - storefront_session: public storefront reads. A read-only transaction as `storefront_reader`,
   which can select from the storefront views only, scoped by `app.tenant_id` (the tenant
   resolved from the request's Origin host, never from request input).
-- service_session: no role switch. Public writes, Stripe webhooks, automation worker only.
+- checkout_session: the public checkout. As `storefront_writer`, which can only execute the
+  storefront checkout functions (SECURITY DEFINER, tenant re-checked inside).
+- service_session: no role switch. Stripe webhooks, the automation worker, password reset.
 - ai_session: the AI assistant. Runs as `ai_readonly`, scoped by `app.tenant_id` (TRD §3.2).
 
 Schema is owned by supabase/migrations/, never by the backend.
@@ -134,6 +136,19 @@ async def storefront_session(
         await conn.execute("set local role storefront_reader")
         if tenant_id is not None:
             await conn.execute("select set_config('app.tenant_id', %s, true)", (tenant_id,))
+        yield conn
+
+
+@asynccontextmanager
+async def checkout_session(pool: AsyncConnectionPool) -> AsyncIterator[AsyncConnection]:
+    """One transaction as `storefront_writer` (TRD §6.11).
+
+    The role has no table grants; it may execute the storefront checkout functions only
+    (storefront_price_cart, storefront_find_order, storefront_count_attempt,
+    storefront_place_order). The connection role must be granted `storefront_writer`.
+    """
+    async with pool.connection() as conn, conn.transaction():
+        await conn.execute("set local role storefront_writer")
         yield conn
 
 

@@ -31,6 +31,10 @@ class Settings(BaseSettings):
 
     llm_api_key: str = ""
 
+    # Cloudflare Turnstile for the storefront checkout (app/core/turnstile.py). Empty outside
+    # local/test means no checkout (fails closed). Never commit a real key.
+    turnstile_secret_key: str = ""
+
     jwt_audience: str = "authenticated"
 
     # Public base URL of the product-images bucket; image URLs are this plus the stored path.

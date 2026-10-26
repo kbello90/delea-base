@@ -27,11 +27,11 @@ STORE_KEYS = {
     "business_name", "tagline", "primary_color", "accent_color", "logo_url", "hero_eyebrow",
     "hero_title", "hero_subtitle", "collection_title", "font_preset", "corner_style",
     "mark_style", "hero_button", "currency", "contact_email", "pages", "has_made_to_order",
-    "checkout_enabled",
+    "checkout_enabled", "shipping", "pickup", "payment_choices", "tax_rate_bps", "tax_shipping",
 }  # fmt: skip
 PRODUCT_KEYS = {
     "id", "name", "description", "metal", "price_cents", "sale_price_cents", "sale_ends_at",
-    "unit_price_cents", "availability", "lead_time_note", "images",
+    "unit_price_cents", "availability", "lead_time_note", "images", "personalization",
 }  # fmt: skip
 IMAGE_KEYS = {"url", "thumb_url", "width", "height", "is_primary"}
 
@@ -132,12 +132,13 @@ def test_the_store_answer_has_exactly_the_public_fields(client: TestClient) -> N
     store = get(client, "/store").json()
     assert set(store) == STORE_KEYS
     assert store["currency"] == "USD"
-    assert store["checkout_enabled"] is False
+    assert store["checkout_enabled"] is True  # A ships, has pickup and takes bank transfer
+    assert "manual_payment_instructions" not in store
     assert store["hero_eyebrow"] == "Made to order"
     assert store["hero_button"] is None  # A has no second button
     assert [p["slug"] for p in store["pages"]] == ["custom-orders", "returns"]
     text = str(store)
-    for secret in ("12-3456789", "DELEA Jewelry LLC", "next_", "stripe"):
+    for secret in ("12-3456789", "DELEA Jewelry LLC", "next_", "stripe", "000123456"):
         assert secret not in text
 
 

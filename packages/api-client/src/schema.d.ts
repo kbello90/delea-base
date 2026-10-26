@@ -849,10 +849,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/checkout/quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Quote
+         * @description Price a cart exactly as an order would be priced, without writing anything. Lines
+         *     that can't be ordered (unavailable, or personalization to fix) say so.
+         */
+        post: operations["quote_api_v1_public_checkout_quote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Place Order
+         * @description Place an order (unpaid: the owner confirms the payment in the admin).
+         *
+         *     Order of checks: the bot traps; a repeat of an earlier checkout returns that order (before
+         *     Turnstile, so a double click never needs a second token); the per-address attempt limit;
+         *     Turnstile; then the database prices, checks and writes the order in one transaction.
+         */
+        post: operations["place_order_api_v1_public_orders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/orders/{public_token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Track Order
+         * @description An order by its tracking link, in its own shop only. An unknown token, or a token of
+         *     another shop, is the same 404.
+         */
+        get: operations["track_order_api_v1_public_orders__public_token__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** Answer */
+        Answer: {
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+        };
         /**
          * Availability
          * @enum {string}
@@ -922,6 +995,23 @@ export interface components {
             /** Hero Cta Url */
             hero_cta_url?: string | null;
         };
+        /** CartItemIn */
+        CartItemIn: {
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Qty */
+            qty: number;
+            /**
+             * Personalization
+             * @default {}
+             */
+            personalization: {
+                [key: string]: string;
+            };
+        };
         /** CompanySettingsOut */
         CompanySettingsOut: {
             /**
@@ -967,6 +1057,17 @@ export interface components {
             enabled_languages?: components["schemas"]["Language"][] | null;
             /** Default Tax Rate Bps */
             default_tax_rate_bps?: number | null;
+        };
+        /** ContactIn */
+        ContactIn: {
+            /** First Name */
+            first_name: string;
+            /** Last Name */
+            last_name: string;
+            /** Email */
+            email: string;
+            /** Phone */
+            phone?: string | null;
         };
         /**
          * CornerStyle
@@ -1645,6 +1746,93 @@ export interface components {
             months: components["schemas"]["MonthTotals"][];
         };
         /**
+         * OrderOut
+         * @description The order as the shopper sees it: right after placing it, and on the tracking page.
+         */
+        OrderOut: {
+            /** Order Ref */
+            order_ref: string;
+            /**
+             * Public Token
+             * Format: uuid
+             */
+            public_token: string;
+            /**
+             * Placed At
+             * Format: date-time
+             */
+            placed_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "awaiting_payment" | "paid" | "in_production" | "shipped" | "delivered" | "cancelled" | "refunded";
+            /**
+             * Fulfillment
+             * @enum {string}
+             */
+            fulfillment: "ship" | "pickup";
+            /**
+             * Payment Choice
+             * @enum {string}
+             */
+            payment_choice: "bank_transfer" | "pay_on_pickup";
+            /** Lines */
+            lines: components["schemas"]["TrackedLineOut"][];
+            /** Subtotal Cents */
+            subtotal_cents: number;
+            /** Shipping Cents */
+            shipping_cents: number;
+            /** Tax Rate Bps */
+            tax_rate_bps: number;
+            /** Tax Cents */
+            tax_cents: number;
+            /** Total Cents */
+            total_cents: number;
+            /** First Name */
+            first_name: string;
+            /** Ship City */
+            ship_city: string | null;
+            /** Ship State */
+            ship_state: string | null;
+            /** Payment Instructions */
+            payment_instructions: string | null;
+            /** Pickup Note */
+            pickup_note: string | null;
+        };
+        /** OrderRequest */
+        OrderRequest: {
+            /**
+             * Checkout Key
+             * Format: uuid
+             */
+            checkout_key: string;
+            /** Items */
+            items: components["schemas"]["CartItemIn"][];
+            /**
+             * Fulfillment
+             * @enum {string}
+             */
+            fulfillment: "ship" | "pickup";
+            /**
+             * Payment Choice
+             * @enum {string}
+             */
+            payment_choice: "bank_transfer" | "pay_on_pickup";
+            /** Expected Total Cents */
+            expected_total_cents: number;
+            contact: components["schemas"]["ContactIn"];
+            ship_to?: components["schemas"]["ShipToIn"] | null;
+            /** Note */
+            note?: string | null;
+            /** Turnstile Token */
+            turnstile_token?: string | null;
+            /** Website */
+            website?: string | null;
+            /** Elapsed Ms */
+            elapsed_ms: number;
+        };
+        /**
          * OrderStatus
          * @description Matches the `order_status` enum; declaration order is the forward order.
          * @enum {string}
@@ -1695,6 +1883,32 @@ export interface components {
             deductible_expenses_cents: number;
             /** Net Profit Cents */
             net_profit_cents: number;
+        };
+        /** PersonalizationFieldOut */
+        PersonalizationFieldOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "text" | "choice";
+            /** Required */
+            required: boolean;
+            /** Max Length */
+            max_length: number | null;
+            /** Choices */
+            choices: string[] | null;
+        };
+        /** PickupOption */
+        PickupOption: {
+            /** Note */
+            note: string | null;
         };
         /** PreviewLineOut */
         PreviewLineOut: {
@@ -1911,6 +2125,8 @@ export interface components {
             lead_time_note: string | null;
             /** Images */
             images: components["schemas"]["PublicImageOut"][];
+            /** Personalization */
+            personalization: components["schemas"]["PersonalizationFieldOut"][];
         };
         /** PublicStoreOut */
         PublicStoreOut: {
@@ -1946,6 +2162,62 @@ export interface components {
             has_made_to_order: boolean;
             /** Checkout Enabled */
             checkout_enabled: boolean;
+            shipping: components["schemas"]["ShippingOption"] | null;
+            pickup: components["schemas"]["PickupOption"] | null;
+            /** Payment Choices */
+            payment_choices: ("bank_transfer" | "pay_on_pickup")[];
+            /** Tax Rate Bps */
+            tax_rate_bps: number;
+            /** Tax Shipping */
+            tax_shipping: boolean;
+        };
+        /** QuoteLineOut */
+        QuoteLineOut: {
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Name */
+            name: string | null;
+            /** Qty */
+            qty: number;
+            /** Unit Price Cents */
+            unit_price_cents: number | null;
+            /** Line Total Cents */
+            line_total_cents: number | null;
+            /** Personalization */
+            personalization: components["schemas"]["Answer"][] | null;
+            /** Made To Order */
+            made_to_order: boolean;
+            /** Lead Time Note */
+            lead_time_note: string | null;
+            /** Problem */
+            problem: ("unavailable" | "options") | null;
+        };
+        /** QuoteOut */
+        QuoteOut: {
+            /** Lines */
+            lines: components["schemas"]["QuoteLineOut"][];
+            /** Subtotal Cents */
+            subtotal_cents: number;
+            /** Shipping Cents */
+            shipping_cents: number | null;
+            /** Tax Rate Bps */
+            tax_rate_bps: number;
+            /** Tax Cents */
+            tax_cents: number;
+            /** Total Cents */
+            total_cents: number;
+            /** Has Problems */
+            has_problems: boolean;
+        };
+        /** QuoteRequest */
+        QuoteRequest: {
+            /** Items */
+            items: components["schemas"]["CartItemIn"][];
+            /** Fulfillment */
+            fulfillment?: ("ship" | "pickup") | null;
         };
         /** ReceiptLink */
         ReceiptLink: {
@@ -1993,6 +2265,29 @@ export interface components {
              */
             upload_id: string;
             content_type: components["schemas"]["ImageType"];
+        };
+        /**
+         * ShipToIn
+         * @description A US address (v1 ships within the US only).
+         */
+        ShipToIn: {
+            /** Line1 */
+            line1: string;
+            /** Line2 */
+            line2?: string | null;
+            /** City */
+            city: string;
+            /** State */
+            state: string;
+            /** Postal Code */
+            postal_code: string;
+        };
+        /** ShippingOption */
+        ShippingOption: {
+            /** Flat Cents */
+            flat_cents: number;
+            /** Free Over Cents */
+            free_over_cents: number | null;
         };
         /**
          * StockShortage
@@ -2048,6 +2343,21 @@ export interface components {
             terms?: string | null;
             /** Custom Orders Info */
             custom_orders_info?: string | null;
+        };
+        /** TrackedLineOut */
+        TrackedLineOut: {
+            /** Description */
+            description: string;
+            /** Qty */
+            qty: number;
+            /** Unit Price Cents */
+            unit_price_cents: number;
+            /** Line Total Cents */
+            line_total_cents: number;
+            /** Personalization */
+            personalization: components["schemas"]["Answer"][] | null;
+            /** Lead Time Note */
+            lead_time_note: string | null;
         };
         /** UploadRequest */
         UploadRequest: {
@@ -4129,6 +4439,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PublicProductOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quote_api_v1_public_checkout_quote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    place_order_api_v1_public_orders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrderRequest"];
+            };
+        };
+        responses: {
+            /** @description The same request again: the same order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderOut"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    track_order_api_v1_public_orders__public_token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                public_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderOut"];
                 };
             };
             /** @description Validation Error */
