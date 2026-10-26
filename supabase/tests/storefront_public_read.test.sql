@@ -111,16 +111,16 @@ select is(
      from pg_proc p
     where p.pronamespace = 'public'::regnamespace
       and has_function_privilege('storefront_reader', p.oid, 'execute')),
-  null::text[],
-  'storefront_reader cannot execute any public function'
+  array['storefront_price_cart(uuid,jsonb,text)'],
+  'storefront_reader can execute the cart pricing function and no other public function'
 );
 
 select is(
   (select array_agg(c.relname::text order by c.relname)
      from pg_class c
     where c.relnamespace = 'storefront'::regnamespace),
-  array['hosts', 'product_images', 'products', 'store'],
-  'the storefront schema holds exactly the four views'
+  array['hosts', 'order_lines', 'orders', 'product_images', 'product_personalization', 'products', 'store'],
+  'the storefront schema holds exactly the seven views'
 );
 
 select is(
@@ -130,7 +130,7 @@ select is(
       and has_table_privilege('storefront_reader', c.oid, 'select')
       and not has_table_privilege('storefront_reader', c.oid,
                 'insert, update, delete, truncate, references, trigger')),
-  array['hosts', 'product_images', 'products', 'store'],
+  array['hosts', 'order_lines', 'orders', 'product_images', 'product_personalization', 'products', 'store'],
   'storefront_reader may select from each view and do nothing else'
 );
 
@@ -173,8 +173,10 @@ select is(
   array['business_name', 'tagline', 'primary_color', 'accent_color', 'logo_path', 'hero_eyebrow',
         'hero_title', 'hero_subtitle', 'collection_title', 'font_preset', 'corner_style',
         'mark_style', 'hero_cta_label', 'hero_cta_url', 'currency', 'contact_email',
-        'return_policy', 'privacy_policy', 'terms', 'custom_orders_info', 'has_made_to_order'],
-  'storefront.store exposes the brand, the currency and the public pages only (no tax ID, Stripe or counters)'
+        'return_policy', 'privacy_policy', 'terms', 'custom_orders_info', 'has_made_to_order',
+        'ship_enabled', 'ship_flat_cents', 'free_ship_over_cents', 'tax_shipping', 'pickup_enabled',
+        'pickup_note', 'bank_transfer_enabled', 'pay_on_pickup_enabled', 'default_tax_rate_bps'],
+  'storefront.store exposes the brand, the currency, the pages and the checkout options only (no tax ID, Stripe, counters or payment instructions)'
 );
 
 select is(

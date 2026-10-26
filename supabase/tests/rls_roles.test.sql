@@ -323,8 +323,8 @@ select throws_ok(format('select pg_temp.write_as(%L, %L)', 'authenticated',
 -- its line items: the quote-only rule covers every app_role (20261020001200).
 select pg_temp.set_claims('11111111-1111-1111-1111-111111111111', 'owner');
 select is(pg_temp.write_as('authenticated',
-  $$update public.invoices set total_cents = 10000 where id = 'a7000000-0000-0000-0000-000000000001'$$),
-  1, 'owner can change amounts on a paid invoice');
+  $$update public.invoices set subtotal_cents = subtotal_cents + 100, total_cents = total_cents + 100 where id = 'a7000000-0000-0000-0000-000000000001'$$),
+  1, 'owner can change amounts on a paid invoice (consistently: total = subtotal + tax + shipping)');
 select throws_ok(format('select pg_temp.write_as(%L, %L)', 'authenticated',
   $q$insert into public.invoice_line_items (invoice_id, tenant_id, description, qty, unit_price_cents, line_total_cents) values ('a7000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'Extra', 1, 100, 100)$q$),
   '42501', 'line items can only change while the invoice is a quote',
@@ -344,8 +344,8 @@ select throws_ok(format('select pg_temp.write_as(%L, %L)', 'authenticated',
 -- The service role (no app_role claim) is not restricted either.
 select set_config('request.jwt.claims', '{"role": "service_role"}', true);
 select is(pg_temp.write_as('service_role',
-  $$update public.invoices set total_cents = 10000 where id = 'a7000000-0000-0000-0000-000000000001'$$),
-  1, 'service role can change amounts on a paid invoice');
+  $$update public.invoices set subtotal_cents = subtotal_cents + 100, total_cents = total_cents + 100 where id = 'a7000000-0000-0000-0000-000000000001'$$),
+  1, 'service role can change amounts on a paid invoice (consistently)');
 select is(pg_temp.write_as('service_role',
   $$insert into public.invoice_line_items (invoice_id, tenant_id, description, qty, unit_price_cents, line_total_cents) values ('a7000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'Adjustment', 1, 100, 100)$$),
   1, 'service role can still add a line item to a paid invoice');

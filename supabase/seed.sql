@@ -59,6 +59,15 @@ values
    'Choose a piece, tell us your initial, birth flower or size, and we start making it after you order. Most pieces ship in 2 to 3 weeks.'),
   ('22222222-2222-2222-2222-222222222222', true, 'hola@example.com', null, null);
 
+-- Checkout (migration 20261027000200): A ships ($6, free over $150) and has pickup, and takes
+-- bank transfer or payment on pickup. B takes no orders yet (nothing enabled).
+update public.storefront_settings
+   set ship_enabled = true, ship_flat_cents = 600, free_ship_over_cents = 15000,
+       pickup_enabled = true, pickup_note = 'Pick up at our studio, Tuesday to Saturday, 11am to 6pm.',
+       bank_transfer_enabled = true, pay_on_pickup_enabled = true,
+       manual_payment_instructions = 'Transfer the total to DELEA Jewelry LLC, account 000123456 (example). Put your order number in the reference. We start your order once it arrives.'
+ where tenant_id = '11111111-1111-1111-1111-111111111111';
+
 -- ---------------------------------------------------------------------------
 -- Catalog
 -- ---------------------------------------------------------------------------

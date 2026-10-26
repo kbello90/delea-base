@@ -158,9 +158,11 @@ select ok((select paid_at > '2001-01-01' from public.invoices where id = 'c00000
 -- ---------------------------------------------------------------------------
 -- Insert directly as paid, and quote -> shipped skip, both get an invoice number
 -- ---------------------------------------------------------------------------
-insert into public.invoices (id, tenant_id, customer_name, order_status, source)
+-- (Service role only. A storefront order also needs its checkout fields since migration
+-- 20261027000200, so this one is an admin invoice.)
+insert into public.invoices (id, tenant_id, customer_name, order_status)
 values ('c0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111',
-        'Storefront Shopper', 'paid', 'storefront');
+        'Storefront Shopper', 'paid');
 
 select is((select quote_number || ' ' || invoice_number from public.invoices
             where id = 'c0000000-0000-0000-0000-000000000002'),

@@ -260,8 +260,8 @@ select * from pg_temp.check_insert_guard('staff');
 
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 select is(pg_temp.write_as('service_role',
-  $q$insert into public.invoices (tenant_id, customer_name, order_status, source) values ('11111111-1111-1111-1111-111111111111', 'Checkout', 'paid', 'storefront')$q$),
-  1, 'service role can still create an invoice as paid (checkout path)');
+  $q$insert into public.invoices (tenant_id, customer_name, order_status) values ('11111111-1111-1111-1111-111111111111', 'Checkout', 'paid')$q$),
+  1, 'service role can still create an invoice as paid');
 select pg_temp.no_claims();
 insert into public.invoices (id, tenant_id, customer_name, order_status)
 values ('d0000000-0000-0000-0000-0000000000aa', '11111111-1111-1111-1111-111111111111', 'Direct', 'paid');
