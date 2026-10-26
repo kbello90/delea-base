@@ -110,6 +110,15 @@ export const STOREFRONT_RESPONSE: Schemas["StorefrontSettingsOut"] = {
   privacy_policy: null,
   terms: null,
   custom_orders_info: null,
+  ship_enabled: false,
+  ship_flat_cents: 0,
+  free_ship_over_cents: null,
+  tax_shipping: false,
+  pickup_enabled: false,
+  pickup_note: null,
+  bank_transfer_enabled: false,
+  pay_on_pickup_enabled: false,
+  manual_payment_instructions: null,
   updated_at: "2026-10-20T00:00:00Z",
 };
 

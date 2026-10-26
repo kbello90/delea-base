@@ -9,10 +9,10 @@ can never reach the database. The tenant always comes from the verified token.
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 BIGINT_MAX = 2**63 - 1
 INT_MAX = 2**31 - 1
@@ -114,3 +114,67 @@ class ProductOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     images: list[ProductImageOut]
+    personalization: list["PersonalizationFieldOut"]
+
+
+# ---------------------------------------------------------------------------
+# Personalization fields (Slice A2): up to five per product, answered by shoppers.
+# ---------------------------------------------------------------------------
+MAX_PERSONALIZATION_FIELDS = 5
+FieldLabel = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]
+
+
+class PersonalizationFieldIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Keep an existing field's id when editing it: shoppers' carts refer to fields by id.
+    id: UUID | None = None
+    label: FieldLabel
+    kind: Literal["text", "choice"]
+    required: bool = False
+    max_length: Annotated[int, Field(ge=1, le=200)] | None = None  # text: default 40
+    choices: Annotated[list[FieldLabel], Field(min_length=1, max_length=30)] | None = None
+
+    @model_validator(mode="after")
+    def _kind_rules(self) -> "PersonalizationFieldIn":
+        if self.kind == "text":
+            if self.choices is not None:
+                raise ValueError("a text field has no choices")
+            if self.max_length is None:
+                self.max_length = 40
+        else:
+            if not self.choices:
+                raise ValueError("a choice field needs at least one choice")
+            if self.max_length is not None:
+                raise ValueError("a choice field has no maximum length")
+            if len({c.lower() for c in self.choices}) != len(self.choices):
+                raise ValueError("choices must not repeat")
+        return self
+
+
+class PersonalizationReplace(BaseModel):
+    """PUT body: the whole list, in display order. An empty list removes every field."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    fields: Annotated[list[PersonalizationFieldIn], Field(max_length=MAX_PERSONALIZATION_FIELDS)]
+
+    @model_validator(mode="after")
+    def _unique(self) -> "PersonalizationReplace":
+        labels = [f.label.lower() for f in self.fields]
+        if len(set(labels)) != len(labels):
+            raise ValueError("labels must not repeat")
+        ids = [f.id for f in self.fields if f.id is not None]
+        if len(set(ids)) != len(ids):
+            raise ValueError("a field id can appear once")
+        return self
+
+
+class PersonalizationFieldOut(BaseModel):
+    id: UUID
+    position: int
+    label: str
+    kind: Literal["text", "choice"]
+    required: bool
+    max_length: int | None
+    choices: list[str] | None

@@ -55,6 +55,7 @@ from app.models.settings import (
     StorefrontSettingsOut,
     StorefrontSettingsUpdate,
     language_rule_errors,
+    storefront_rule_errors,
 )
 from app.services.brand_logo import MAX_BYTES, ImageRejected, process_logo_async
 from app.services.currency import fetch_currency
@@ -79,7 +80,9 @@ _BRAND_COLUMNS = (
 )
 _STOREFRONT_COLUMNS = (
     "storefront_enabled, contact_email, return_policy, privacy_policy, terms, "
-    "custom_orders_info, updated_at"
+    "custom_orders_info, ship_enabled, ship_flat_cents, free_ship_over_cents, tax_shipping, "
+    "pickup_enabled, pickup_note, bank_transfer_enabled, pay_on_pickup_enabled, "
+    "manual_payment_instructions, updated_at"
 )
 
 
@@ -194,6 +197,18 @@ async def update_storefront_settings(
     tenant's storefront domains answer "Store not found" (within a minute: lookups are
     cached)."""
     changes = patch_changes(body, STOREFRONT_NULLABLE)
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            "select pickup_enabled, pay_on_pickup_enabled from public.storefront_settings "
+            "where tenant_id = %s for update",
+            (claims.tenant_id,),
+        )
+        current = await cur.fetchone()
+    if current is None:
+        raise NotFoundError("Storefront settings not found")
+    errors = storefront_rule_errors({**current, **changes})
+    if errors:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "; ".join(errors))
     query = update_statement(
         "storefront_settings",
         changes,

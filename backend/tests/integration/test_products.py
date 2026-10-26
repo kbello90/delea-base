@@ -267,3 +267,88 @@ def test_made_to_order_and_lead_time_note(client: TestClient, users: dict[str, T
         assert client.patch(url, json=bad, headers=owner).status_code == 422, bad
     staff = client.patch(url, json={"made_to_order": True}, headers=users["staff_a"].headers)
     assert staff.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Personalization fields (Slice A2)
+# ---------------------------------------------------------------------------
+RING_FIELDS = [
+    {"label": " Ring size ", "kind": "choice", "required": True, "choices": ["5", "6", "7"]},
+    {"label": "Engraving", "kind": "text"},
+]
+
+
+def test_the_owner_sets_personalization_fields(
+    client: TestClient, users: dict[str, TestUser]
+) -> None:
+    owner = users["owner_a"].headers
+    product = client.post(PRODUCTS, json=product_payload(), headers=owner).json()
+    assert product["personalization"] == []
+    url = f"{PRODUCTS}/{product['id']}/personalization"
+
+    saved = client.put(url, json={"fields": RING_FIELDS}, headers=owner)
+    assert saved.status_code == 200, saved.text
+    fields = saved.json()["personalization"]
+    assert [
+        (f["position"], f["label"], f["kind"], f["required"], f["max_length"], f["choices"])
+        for f in fields
+    ] == [
+        (1, "Ring size", "choice", True, None, ["5", "6", "7"]),
+        (2, "Engraving", "text", False, 40, None),  # text defaults to 40 characters
+    ]
+
+    # Reorder and edit while keeping ids; leave one out to remove it.
+    size_id = fields[0]["id"]
+    edited = client.put(
+        url,
+        json={
+            "fields": [{"id": size_id, "label": "Size", "kind": "choice", "choices": ["6", "7"]}]
+        },
+        headers=owner,
+    ).json()["personalization"]
+    assert [(f["id"], f["label"], f["choices"]) for f in edited] == [(size_id, "Size", ["6", "7"])]
+    assert (
+        client.get(f"{PRODUCTS}/{product['id']}", headers=owner).json()["personalization"] == edited
+    )
+    assert client.put(url, json={"fields": []}, headers=owner).json()["personalization"] == []
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        [{"label": f"F{i}", "kind": "text"} for i in range(6)],  # six
+        [{"label": "Size", "kind": "text"}, {"label": "size", "kind": "text"}],  # repeated label
+        [{"label": "Size", "kind": "choice"}],  # no choices
+        [{"label": "Size", "kind": "choice", "choices": []}],
+        [{"label": "Size", "kind": "choice", "choices": ["A", "a"]}],
+        [{"label": "Size", "kind": "choice", "choices": ["A"], "max_length": 5}],
+        [{"label": "Note", "kind": "text", "choices": ["A"]}],
+        [{"label": "Note", "kind": "text", "max_length": 201}],
+        [{"label": "", "kind": "text"}],
+        [{"label": "x" * 41, "kind": "text"}],
+        [{"label": "Note", "kind": "number"}],
+        [
+            {"label": "Note", "kind": "text", "id": "00000000-0000-4000-8000-000000000000"}
+        ],  # not ours
+        [{"label": "Note", "kind": "text", "tenant_id": TENANT_B}],
+    ],
+)
+def test_bad_personalization_fields_are_refused(client: TestClient, users, fields: list) -> None:
+    owner = users["owner_a"].headers
+    product = client.post(PRODUCTS, json=product_payload(), headers=owner).json()
+    url = f"{PRODUCTS}/{product['id']}/personalization"
+    assert client.put(url, json={"fields": fields}, headers=owner).status_code == 422
+    assert client.get(f"{PRODUCTS}/{product['id']}", headers=owner).json()["personalization"] == []
+
+
+def test_only_the_owner_of_this_tenant_sets_fields(client: TestClient, users) -> None:
+    owner = users["owner_a"].headers
+    product = client.post(PRODUCTS, json=product_payload(), headers=owner).json()
+    url = f"{PRODUCTS}/{product['id']}/personalization"
+    body = {"fields": RING_FIELDS}
+    for name in ("staff_a", "cpa_a"):
+        assert client.put(url, json=body, headers=users[name].headers).status_code == 403
+    assert client.put(url, json=body, headers=users["owner_b"].headers).status_code == 404
+    client.put(url, json=body, headers=owner)
+    staff_view = client.get(f"{PRODUCTS}/{product['id']}", headers=users["staff_a"].headers).json()
+    assert len(staff_view["personalization"]) == 2  # staff read them

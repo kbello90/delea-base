@@ -75,6 +75,30 @@ export interface paths {
         patch: operations["update_product_api_v1_products__product_id__patch"];
         trace?: never;
     };
+    "/api/v1/products/{product_id}/personalization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace Personalization
+         * @description Replace the product's personalization fields (at most five, in display order).
+         *
+         *     Fields sent with their id keep it, so shoppers' carts still match them; a field left out
+         *     is removed. Orders are never affected: each order line keeps a copy of the label and the
+         *     answer it was placed with.
+         */
+        put: operations["replace_personalization_api_v1_products__product_id__personalization_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/products/{product_id}/images/uploads": {
         parameters: {
             query?: never;
@@ -1884,13 +1908,10 @@ export interface components {
             /** Net Profit Cents */
             net_profit_cents: number;
         };
-        /** PersonalizationFieldOut */
-        PersonalizationFieldOut: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
+        /** PersonalizationFieldIn */
+        PersonalizationFieldIn: {
+            /** Id */
+            id?: string | null;
             /** Label */
             label: string;
             /**
@@ -1898,12 +1919,23 @@ export interface components {
              * @enum {string}
              */
             kind: "text" | "choice";
-            /** Required */
+            /**
+             * Required
+             * @default false
+             */
             required: boolean;
             /** Max Length */
-            max_length: number | null;
+            max_length?: number | null;
             /** Choices */
-            choices: string[] | null;
+            choices?: string[] | null;
+        };
+        /**
+         * PersonalizationReplace
+         * @description PUT body: the whole list, in display order. An empty list removes every field.
+         */
+        PersonalizationReplace: {
+            /** Fields */
+            fields: components["schemas"]["PersonalizationFieldIn"][];
         };
         /** PickupOption */
         PickupOption: {
@@ -2045,6 +2077,8 @@ export interface components {
             updated_at: string;
             /** Images */
             images: components["schemas"]["ProductImageOut"][];
+            /** Personalization */
+            personalization: components["schemas"]["app__models__product__PersonalizationFieldOut"][];
         };
         /**
          * ProductUpdate
@@ -2126,7 +2160,7 @@ export interface components {
             /** Images */
             images: components["schemas"]["PublicImageOut"][];
             /** Personalization */
-            personalization: components["schemas"]["PersonalizationFieldOut"][];
+            personalization: components["schemas"]["app__models__public__PersonalizationFieldOut"][];
         };
         /** PublicStoreOut */
         PublicStoreOut: {
@@ -2320,6 +2354,24 @@ export interface components {
             terms: string | null;
             /** Custom Orders Info */
             custom_orders_info: string | null;
+            /** Ship Enabled */
+            ship_enabled: boolean;
+            /** Ship Flat Cents */
+            ship_flat_cents: number;
+            /** Free Ship Over Cents */
+            free_ship_over_cents: number | null;
+            /** Tax Shipping */
+            tax_shipping: boolean;
+            /** Pickup Enabled */
+            pickup_enabled: boolean;
+            /** Pickup Note */
+            pickup_note: string | null;
+            /** Bank Transfer Enabled */
+            bank_transfer_enabled: boolean;
+            /** Pay On Pickup Enabled */
+            pay_on_pickup_enabled: boolean;
+            /** Manual Payment Instructions */
+            manual_payment_instructions: string | null;
             /**
              * Updated At
              * Format: date-time
@@ -2343,6 +2395,24 @@ export interface components {
             terms?: string | null;
             /** Custom Orders Info */
             custom_orders_info?: string | null;
+            /** Ship Enabled */
+            ship_enabled?: boolean | null;
+            /** Ship Flat Cents */
+            ship_flat_cents?: number | null;
+            /** Free Ship Over Cents */
+            free_ship_over_cents?: number | null;
+            /** Tax Shipping */
+            tax_shipping?: boolean | null;
+            /** Pickup Enabled */
+            pickup_enabled?: boolean | null;
+            /** Pickup Note */
+            pickup_note?: string | null;
+            /** Bank Transfer Enabled */
+            bank_transfer_enabled?: boolean | null;
+            /** Pay On Pickup Enabled */
+            pay_on_pickup_enabled?: boolean | null;
+            /** Manual Payment Instructions */
+            manual_payment_instructions?: string | null;
         };
         /** TrackedLineOut */
         TrackedLineOut: {
@@ -2387,6 +2457,50 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** PersonalizationFieldOut */
+        app__models__product__PersonalizationFieldOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Position */
+            position: number;
+            /** Label */
+            label: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "text" | "choice";
+            /** Required */
+            required: boolean;
+            /** Max Length */
+            max_length: number | null;
+            /** Choices */
+            choices: string[] | null;
+        };
+        /** PersonalizationFieldOut */
+        app__models__public__PersonalizationFieldOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "text" | "choice";
+            /** Required */
+            required: boolean;
+            /** Max Length */
+            max_length: number | null;
+            /** Choices */
+            choices: string[] | null;
         };
     };
     responses: never;
@@ -2581,6 +2695,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ProductUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_personalization_api_v1_products__product_id__personalization_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonalizationReplace"];
             };
         };
         responses: {

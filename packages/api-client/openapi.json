@@ -369,6 +369,65 @@
         }
       }
     },
+    "/api/v1/products/{product_id}/personalization": {
+      "put": {
+        "tags": [
+          "products"
+        ],
+        "summary": "Replace Personalization",
+        "description": "Replace the product's personalization fields (at most five, in display order).\n\nFields sent with their id keep it, so shoppers' carts still match them; a field left out\nis removed. Orders are never affected: each order line keeps a copy of the label and the\nanswer it was placed with.",
+        "operationId": "replace_personalization_api_v1_products__product_id__personalization_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Product Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonalizationReplace"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/products/{product_id}/images/uploads": {
       "post": {
         "tags": [
@@ -6738,15 +6797,24 @@
         ],
         "title": "PeriodSummary"
       },
-      "PersonalizationFieldOut": {
+      "PersonalizationFieldIn": {
         "properties": {
           "id": {
-            "type": "string",
-            "format": "uuid",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Id"
           },
           "label": {
             "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
             "title": "Label"
           },
           "kind": {
@@ -6759,12 +6827,15 @@
           },
           "required": {
             "type": "boolean",
-            "title": "Required"
+            "title": "Required",
+            "default": false
           },
           "max_length": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "maximum": 200.0,
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -6776,9 +6847,13 @@
             "anyOf": [
               {
                 "items": {
-                  "type": "string"
+                  "type": "string",
+                  "maxLength": 40,
+                  "minLength": 1
                 },
-                "type": "array"
+                "type": "array",
+                "maxItems": 30,
+                "minItems": 1
               },
               {
                 "type": "null"
@@ -6787,16 +6862,32 @@
             "title": "Choices"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
-          "id",
           "label",
-          "kind",
-          "required",
-          "max_length",
-          "choices"
+          "kind"
         ],
-        "title": "PersonalizationFieldOut"
+        "title": "PersonalizationFieldIn"
+      },
+      "PersonalizationReplace": {
+        "properties": {
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/PersonalizationFieldIn"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "title": "Fields"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "fields"
+        ],
+        "title": "PersonalizationReplace",
+        "description": "PUT body: the whole list, in display order. An empty list removes every field."
       },
       "PickupOption": {
         "properties": {
@@ -7141,6 +7232,13 @@
             },
             "type": "array",
             "title": "Images"
+          },
+          "personalization": {
+            "items": {
+              "$ref": "#/components/schemas/app__models__product__PersonalizationFieldOut"
+            },
+            "type": "array",
+            "title": "Personalization"
           }
         },
         "type": "object",
@@ -7163,7 +7261,8 @@
           "lead_time_note",
           "created_at",
           "updated_at",
-          "images"
+          "images",
+          "personalization"
         ],
         "title": "ProductOut"
       },
@@ -7479,7 +7578,7 @@
           },
           "personalization": {
             "items": {
-              "$ref": "#/components/schemas/PersonalizationFieldOut"
+              "$ref": "#/components/schemas/app__models__public__PersonalizationFieldOut"
             },
             "type": "array",
             "title": "Personalization"
@@ -8160,6 +8259,63 @@
             ],
             "title": "Custom Orders Info"
           },
+          "ship_enabled": {
+            "type": "boolean",
+            "title": "Ship Enabled"
+          },
+          "ship_flat_cents": {
+            "type": "integer",
+            "title": "Ship Flat Cents"
+          },
+          "free_ship_over_cents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Ship Over Cents"
+          },
+          "tax_shipping": {
+            "type": "boolean",
+            "title": "Tax Shipping"
+          },
+          "pickup_enabled": {
+            "type": "boolean",
+            "title": "Pickup Enabled"
+          },
+          "pickup_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickup Note"
+          },
+          "bank_transfer_enabled": {
+            "type": "boolean",
+            "title": "Bank Transfer Enabled"
+          },
+          "pay_on_pickup_enabled": {
+            "type": "boolean",
+            "title": "Pay On Pickup Enabled"
+          },
+          "manual_payment_instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Payment Instructions"
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time",
@@ -8174,6 +8330,15 @@
           "privacy_policy",
           "terms",
           "custom_orders_info",
+          "ship_enabled",
+          "ship_flat_cents",
+          "free_ship_over_cents",
+          "tax_shipping",
+          "pickup_enabled",
+          "pickup_note",
+          "bank_transfer_enabled",
+          "pay_on_pickup_enabled",
+          "manual_payment_instructions",
           "updated_at"
         ],
         "title": "StorefrontSettingsOut"
@@ -8253,6 +8418,113 @@
               }
             ],
             "title": "Custom Orders Info"
+          },
+          "ship_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Enabled"
+          },
+          "ship_flat_cents": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ship Flat Cents"
+          },
+          "free_ship_over_cents": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100000000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Ship Over Cents"
+          },
+          "tax_shipping": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Shipping"
+          },
+          "pickup_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickup Enabled"
+          },
+          "pickup_note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickup Note"
+          },
+          "bank_transfer_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Transfer Enabled"
+          },
+          "pay_on_pickup_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pay On Pickup Enabled"
+          },
+          "manual_payment_instructions": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Payment Instructions"
           }
         },
         "additionalProperties": false,
@@ -8391,6 +8663,131 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "app__models__product__PersonalizationFieldOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "text",
+              "choice"
+            ],
+            "title": "Kind"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required"
+          },
+          "max_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Length"
+          },
+          "choices": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choices"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "position",
+          "label",
+          "kind",
+          "required",
+          "max_length",
+          "choices"
+        ],
+        "title": "PersonalizationFieldOut"
+      },
+      "app__models__public__PersonalizationFieldOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "text",
+              "choice"
+            ],
+            "title": "Kind"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required"
+          },
+          "max_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Length"
+          },
+          "choices": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choices"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "kind",
+          "required",
+          "max_length",
+          "choices"
+        ],
+        "title": "PersonalizationFieldOut"
       }
     },
     "securitySchemes": {

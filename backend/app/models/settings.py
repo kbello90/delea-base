@@ -196,11 +196,38 @@ class StorefrontSettingsUpdate(BaseModel):
     privacy_policy: PageText | None = None
     terms: PageText | None = None
     custom_orders_info: PageText | None = None  # the "How custom orders work" page
+    # Checkout (Slice A2)
+    ship_enabled: bool | None = None
+    ship_flat_cents: Annotated[int, Field(ge=0, le=100_000_000)] | None = None
+    free_ship_over_cents: Annotated[int, Field(ge=0, le=100_000_000_000)] | None = None
+    tax_shipping: bool | None = None  # tax the shipping too (some US states do)
+    pickup_enabled: bool | None = None
+    pickup_note: Annotated[str, _trimmed(500)] | None = None
+    bank_transfer_enabled: bool | None = None
+    pay_on_pickup_enabled: bool | None = None  # needs pickup
+    # Shown to the shopper after an order, until it is paid (never on the public store).
+    manual_payment_instructions: Annotated[str, _trimmed(2000)] | None = None
 
 
 STOREFRONT_NULLABLE = frozenset(
-    {"contact_email", "return_policy", "privacy_policy", "terms", "custom_orders_info"}
+    {
+        "contact_email",
+        "return_policy",
+        "privacy_policy",
+        "terms",
+        "custom_orders_info",
+        "free_ship_over_cents",
+        "pickup_note",
+        "manual_payment_instructions",
+    }
 )
+
+
+def storefront_rule_errors(row: dict[str, Any]) -> list[str]:
+    """Checked on the merged row (the database checks the same)."""
+    if row["pay_on_pickup_enabled"] and not row["pickup_enabled"]:
+        return ["paying on pickup needs pickup: turn pickup on, or pay on pickup off"]
+    return []
 
 
 class StorefrontSettingsOut(BaseModel):
@@ -210,6 +237,15 @@ class StorefrontSettingsOut(BaseModel):
     privacy_policy: str | None
     terms: str | None
     custom_orders_info: str | None
+    ship_enabled: bool
+    ship_flat_cents: int
+    free_ship_over_cents: int | None
+    tax_shipping: bool
+    pickup_enabled: bool
+    pickup_note: str | None
+    bank_transfer_enabled: bool
+    pay_on_pickup_enabled: bool
+    manual_payment_instructions: str | None
     updated_at: datetime
 
 

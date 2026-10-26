@@ -11,7 +11,7 @@ import logging
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from psycopg.rows import dict_row
 
 from app.api.deps import CurrentClaims, DbConn, require_role
@@ -22,6 +22,7 @@ from app.db.sql_helpers import like_pattern, patch_changes, update_statement
 from app.models.product import (
     NULLABLE_FIELDS,
     MetalType,
+    PersonalizationReplace,
     ProductCreate,
     ProductImageOut,
     ProductOut,
@@ -67,12 +68,27 @@ def image_out(image: dict[str, Any]) -> ProductImageOut:
     )
 
 
+def personalization_column(products_ref: str) -> str:
+    """A json array of the product's personalization fields, in position order."""
+    return f"""coalesce((
+        select json_agg(json_build_object(
+                 'id', f.id, 'position', f.position, 'label', f.label, 'kind', f.kind,
+                 'required', f.required, 'max_length', f.max_length, 'choices', f.choices)
+               order by f.position)
+          from public.product_personalization_fields f
+         where f.product_id = {products_ref}.id and f.tenant_id = {products_ref}.tenant_id
+      ), '[]'::json) as personalization"""
+
+
 def product_out(row: dict[str, Any]) -> ProductOut:
     images = [image_out(image) for image in row.pop("images", None) or []]
-    return ProductOut.model_validate({**row, "images": images})
+    personalization = row.pop("personalization", None) or []
+    return ProductOut.model_validate({**row, "images": images, "personalization": personalization})
 
 
-_SELECT = f"select {_COLUMNS}, {images_column('p')} from public.products p"
+_SELECT = (
+    f"select {_COLUMNS}, {images_column('p')}, {personalization_column('p')} from public.products p"
+)
 
 
 @router.get("", response_model=list[ProductOut], dependencies=[ReadRoles])
@@ -165,7 +181,7 @@ async def update_product(
         "products",
         changes,
         ProductUpdate,
-        f"{_COLUMNS}, {images_column('products')}",
+        f"{_COLUMNS}, {images_column('products')}, {personalization_column('products')}",
         casts={"metal": "public.metal_type"},
     )
     async with conn.cursor(row_factory=dict_row) as cur:
@@ -174,6 +190,65 @@ async def update_product(
     if row is None:
         raise NotFoundError("Product not found")
     return product_out(row)
+
+
+@router.put("/{product_id}/personalization", response_model=ProductOut, dependencies=[OwnerOnly])
+async def replace_personalization(
+    product_id: UUID, body: PersonalizationReplace, claims: CurrentClaims, conn: DbConn
+) -> ProductOut:
+    """Replace the product's personalization fields (at most five, in display order).
+
+    Fields sent with their id keep it, so shoppers' carts still match them; a field left out
+    is removed. Orders are never affected: each order line keeps a copy of the label and the
+    answer it was placed with.
+    """
+    cur = await conn.execute(
+        "select id from public.products where id = %s and tenant_id = %s for update",
+        (product_id, claims.tenant_id),
+    )
+    if await cur.fetchone() is None:
+        raise NotFoundError("Product not found")
+    cur = await conn.execute(
+        "select id from public.product_personalization_fields "
+        "where product_id = %s and tenant_id = %s",
+        (product_id, claims.tenant_id),
+    )
+    current = {row[0] for row in await cur.fetchall()}
+    unknown = [f.id for f in body.fields if f.id is not None and f.id not in current]
+    if unknown:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "A field id doesn't belong to this product"
+        )
+    await conn.execute(
+        "delete from public.product_personalization_fields "
+        "where product_id = %s and tenant_id = %s",
+        (product_id, claims.tenant_id),
+    )
+    async with conn.cursor() as c:
+        await c.executemany(
+            "insert into public.product_personalization_fields "
+            "(id, tenant_id, product_id, position, label, kind, required, max_length, choices) "
+            "values (coalesce(%s, gen_random_uuid()), %s, %s, %s, %s, %s, %s, %s, %s)",
+            [
+                (
+                    f.id,
+                    claims.tenant_id,
+                    product_id,
+                    position,
+                    f.label,
+                    f.kind,
+                    f.required,
+                    f.max_length,
+                    f.choices,
+                )
+                for position, f in enumerate(body.fields, start=1)
+            ],
+        )
+    async with conn.cursor(row_factory=dict_row) as c:
+        await c.execute(
+            f"{_SELECT} where p.id = %s and p.tenant_id = %s", (product_id, claims.tenant_id)
+        )
+        return product_out(await c.fetchone())
 
 
 async def remove_image_files(paths: list[str]) -> None:

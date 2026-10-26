@@ -53,6 +53,15 @@ _STOREFRONT_COLS = (
     "privacy_policy",
     "terms",
     "custom_orders_info",
+    "ship_enabled",
+    "ship_flat_cents",
+    "free_ship_over_cents",
+    "tax_shipping",
+    "pickup_enabled",
+    "pickup_note",
+    "bank_transfer_enabled",
+    "pay_on_pickup_enabled",
+    "manual_payment_instructions",
 )
 
 
@@ -464,4 +473,55 @@ def test_storefront_settings_get_and_patch(client: TestClient, users, db) -> Non
     ],
 )
 def test_storefront_settings_validation(client: TestClient, users, bad: dict) -> None:
+    assert client.patch(STOREFRONT, json=bad, headers=users["owner_a"].headers).status_code == 422
+
+
+def test_storefront_checkout_options(client: TestClient, users, db) -> None:
+    owner = users["owner_a"].headers
+    current = client.get(STOREFRONT, headers=owner).json()
+    assert (current["ship_flat_cents"], current["free_ship_over_cents"]) == (600, 15000)
+    updated = client.patch(
+        STOREFRONT,
+        json={
+            "ship_flat_cents": 850,
+            "free_ship_over_cents": None,
+            "tax_shipping": True,
+            "pickup_note": "  Studio  ",
+            "manual_payment_instructions": "Zelle to shop@example.com",
+        },
+        headers=owner,
+    )
+    assert updated.status_code == 200, updated.text
+    body = updated.json()
+    assert (body["ship_flat_cents"], body["free_ship_over_cents"], body["tax_shipping"]) == (
+        850,
+        None,
+        True,
+    )
+    assert body["pickup_note"] == "Studio"
+
+
+def test_paying_on_pickup_needs_pickup(client: TestClient, users) -> None:
+    owner = users["owner_a"].headers
+    refused = client.patch(STOREFRONT, json={"pickup_enabled": False}, headers=owner)
+    assert refused.status_code == 422
+    assert "paying on pickup needs pickup" in refused.json()["detail"]
+    both = client.patch(
+        STOREFRONT, json={"pickup_enabled": False, "pay_on_pickup_enabled": False}, headers=owner
+    )
+    assert both.status_code == 200
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"ship_flat_cents": -1},
+        {"ship_flat_cents": None},
+        {"free_ship_over_cents": -5},
+        {"manual_payment_instructions": "x" * 2001},
+        {"pickup_note": "   "},
+        {"ship_enabled": None},
+    ],
+)
+def test_storefront_checkout_option_validation(client: TestClient, users, bad: dict) -> None:
     assert client.patch(STOREFRONT, json=bad, headers=users["owner_a"].headers).status_code == 422
