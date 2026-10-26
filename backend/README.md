@@ -6,7 +6,8 @@ FastAPI backend for DELEA. It talks to Postgres directly through a psycopg async
 | Session | Used for | Runs as |
 |---|---|---|
 | `user_session` | every authenticated request (via the `DbConn` dependency) | `authenticated`, with the caller's verified JWT claims, so RLS enforces access |
-| `service_session` | public storefront endpoints, Stripe webhooks, the automation worker | the connection role (no RLS); must be a dedicated non-superuser role in production |
+| `storefront_session` | public storefront reads (`/api/v1/public/...`) | `storefront_reader`, read-only, scoped by `app.tenant_id` from the request's Origin host (TRD §6.11) |
+| `service_session` | public writes (checkout, from Slice A2), Stripe webhooks, the automation worker | the connection role (no RLS); must be a dedicated non-superuser role in production |
 | `ai_session` | the AI assistant | `ai_readonly`, scoped by `app.tenant_id` from the verified token |
 
 Each session is one transaction. It commits when the endpoint returns, before the response is
@@ -204,7 +205,10 @@ stay generic.
 - **The API logs into Postgres as `postgres`.** User and AI sessions switch role, but
   `service_session` keeps that administrative login. **Required before the public demo is
   deployed** (not implemented yet): a least-privilege runtime login, separate from the one
-  migrations and the showcase loader use.
+  migrations and the showcase loader use. It needs `grant storefront_reader to <login>` for
+  the public storefront reads.
+- **Storefront host lookups are cached for 60 seconds** per API instance (unknown hosts too),
+  so a new domain, a switched-off store or an inactive tenant takes up to a minute to show.
 - **Demo deployment.** A public demo lets visitors edit and upload. **Milestone B** (not
   implemented yet): a scheduled reset that re-runs the showcase loader, and upload and rate
   limits for `is_demo` tenants. The least-privilege runtime login above is required

@@ -57,6 +57,9 @@ length 10, Site URL = the admin app's URL, the invite and recovery templates fro
 - **Service-role-only tables:** `automation_events` and `stripe_events` have no policies and no
   `authenticated` grants.
 - **AI assistant:** reads only the `ai` views, as the `ai_readonly` role.
+- **Storefront:** public reads run as `storefront_reader`, which selects only from the
+  `storefront` views (public columns, one tenant's published catalog). The migration grants it
+  to `postgres`; a dedicated production login needs the same grant.
 - **Membership re-check:** `public.is_current_member()` isn't granted to any app role. The
   backend calls it on its own login before switching role, so a dedicated production login
   needs `execute` on it, and `select, insert, delete` on `password_reset_attempts` (written by

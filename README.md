@@ -47,9 +47,17 @@ from the LOCAL stack only: `API_URL` and `ANON_KEY` from `npx supabase@2.121.0 s
 The admin app shows a "not configured" message without them.
 
 ```sh
-pnpm test         # Vitest (admin, api-client)
+pnpm test         # Vitest (admin, storefront, api-client)
 pnpm typecheck
 ```
+
+### The storefront locally
+
+The storefront finds its shop from the address it is opened on (the browser's `Origin`), so open
+it through a mapped name: `http://localhost:5174` is tenant A, `http://aurora.localhost:5174`
+tenant B, and `http://showcase.localhost:5174` the showcase (after `load_showcase.py`). Browsers
+send `*.localhost` to this machine. Any other name shows "This shop isn't available". To map
+another one, see `infra/scripts/storefront-domain.md` (local equivalent).
 
 ### Local dev users (manual testing)
 

@@ -70,6 +70,26 @@ create table brand_config (
   logo_path text,                                            -- {tenant_id}/logo-{uuid}.webp in the public brand-assets bucket (migration 20261023000200)
   hero_title text,
   hero_subtitle text,
+  -- the storefront look (migration 20261027000100)
+  hero_eyebrow text,                                         -- 1..60 characters
+  collection_title text,                                     -- 1..80
+  font_preset text not null default 'classic' check (font_preset in ('classic', 'modern')),
+  corner_style text not null default 'square' check (corner_style in ('square', 'pill')),
+  mark_style text not null default 'monogram' check (mark_style in ('monogram', 'wordmark')),
+  hero_cta_label text,                                       -- 1..40; the optional second hero button
+  hero_cta_url text,                                         -- https:// with a plain host, or tel: (check)
+  updated_at timestamptz not null default now()
+);
+
+-- Public by design: everything here is shown on the storefront (migration 20261027000100).
+create table storefront_settings (
+  tenant_id uuid primary key references tenants(id) on delete cascade,
+  storefront_enabled boolean not null default false,         -- off: every storefront domain is "Store not found"
+  contact_email text,
+  return_policy text,                                        -- each page up to 20000 characters
+  privacy_policy text,
+  terms text,
+  custom_orders_info text,                                   -- "How custom orders work"
   updated_at timestamptz not null default now()
 );
 
@@ -110,6 +130,8 @@ create table products (
   icon text,                                                 -- demo-only glyph fallback; optional
   is_published boolean not null default false,
   sort_order integer not null default 0,                     -- storefront order, set by the editor's move arrows
+  made_to_order boolean not null default false,              -- made after the sale: no stock check or decrement (migration 20261027000100)
+  lead_time_note text,                                       -- e.g. "Ships in 2-3 weeks", 1..60 characters
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (tenant_id, sku)
@@ -291,7 +313,7 @@ create policy products_select on products for select to authenticated
 |---|---|---|---|
 | `tenants`, `tenant_domains` | read | read | none |
 | `tenant_members` | full | none | none |
-| `brand_config` | full | read | none |
+| `brand_config`, `storefront_settings` | full | read | none |
 | `company_settings` | full | none | none |
 | `products`, `materials`, `product_materials` | full | read | none |
 | `customers` | full | read, insert, update | none |
@@ -354,7 +376,7 @@ All accepted as recommended on 2026-10-20.
 
 Smaller choices I made that you can veto: separate `quote_number` and `invoice_number` series (a quote gets `QTE-…` at creation and an `INV-…` number when paid, matching the demo's two number formats); `reorder_list` as a small table so the `add_to_reorder_list` automation has somewhere to write; and one SKU per metal rather than a variant model.
 
-## 9. As built (supabase/migrations; last updated with migration 20261025000100)
+## 9. As built (supabase/migrations; last updated with migration 20261027000100)
 
 The migrations in `supabase/migrations/` are now the source of truth. Where the SQL in §3–§7 differs from them, the migrations win, and the differences are:
 
@@ -403,6 +425,12 @@ The migrations in `supabase/migrations/` are now the source of truth. Where the 
   - `tenant_members.invited_by` is now `on delete set null`, so deleting an inviter's Auth user isn't blocked. No other table references `auth.users` outside the `auth` schema.
   - `tenant_member_list()` and `account_memberships(email)` (SECURITY DEFINER, owner with a current membership only): the team with email and invite status, and whether an email has an account here or elsewhere (never which tenant).
   - `password_reset_attempts` (id, `email_hash`, `ip_hash`, `created_at`; SHA-256 hashes only; RLS on, no app grants): the public password-reset endpoint's abuse limits. Rows older than a day are deleted as new ones arrive.
+- **Storefront read path (migration 20261027000100).**
+  - **`storefront_reader`** (nologin): selects from the `storefront` views only; no grant on any `public` table or function. Granted to `postgres` so the API's login can switch into it; the least-privilege runtime login gets the same grant (TRD §6.6).
+  - **Views** (owned by the migration role, not security_invoker): `storefront.hosts` (domain → tenant for storefront domains of active tenants with the store on), and, filtered on `app.tenant_id`, `storefront.store` (brand, look, currency, contact email, pages, `has_made_to_order`), `storefront.products` (published products; availability instead of the stock count; the sale price only while active) and `storefront.product_images` (images of those products).
+  - **`storefront_settings`**: one row per tenant (backfilled switched off; provisioning creates it). Owner full, staff read, cpa none.
+  - **Made to order:** `invoices_decrement_stock` skips made-to-order products (no check, no decrement).
+  - **Checks:** the second hero button's link (`https://` with a plain host, or `tel:`, at most 500 characters), the label and text lengths, the presets, the contact email shape.
 - **Local ports.** `supabase/config.toml` uses 553xx instead of the CLI defaults (543xx), because Windows reserves 54269–54368. The local API is on 55321, the database on 55322, and Studio on 55323.
 - **Seed.** Tenant A "DELEA Demo" uses 800 bps (8%) tax to match the demo; tenant B "Aurora Gems" is a small second tenant for isolation tests.
 
