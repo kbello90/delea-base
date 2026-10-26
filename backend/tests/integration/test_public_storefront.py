@@ -300,3 +300,16 @@ def test_too_many_requests_from_one_address(client: TestClient, monkeypatch) -> 
     assert int(refused.headers["retry-after"]) >= 1
     # Admin paths have their own rules and are not counted here.
     assert client.get("/health").status_code == 200
+
+
+def test_nothing_in_the_request_but_the_origin_picks_the_shop(client: TestClient) -> None:
+    """A tenant id, host or shop in the query, a Host header or a body never selects a shop."""
+    for params in (
+        {"shop": "aurora.localhost:5174"},
+        {"tenant_id": "22222222-2222-2222-2222-222222222222"},
+        {"host": "aurora.localhost:5174"},
+    ):
+        response = client.get("/api/v1/public/store", params=params, headers={"Origin": ORIGIN_A})
+        assert response.json()["business_name"] == "DELEA", params
+    hosted = client.get("/api/v1/public/store", headers={"Host": "aurora.localhost:5174"})
+    assert hosted.status_code == 404
