@@ -155,6 +155,7 @@ No trigger, no application logic deducts `materials.qty_on_hand` when a `product
 - Owner-initiated: an "Invite CPA" action in `apps/admin` Settings calls a FastAPI endpoint that uses Supabase's admin API to send an invite email, creating a `tenant_members` row with `app_role = 'cpa'` for the resulting user, which the access token hook turns into the `tenant_id` and `app_role` JWT claims.
 - RLS policies for CPA-role JWTs restrict access to read-only `SELECT` on `invoices`, `expenses`, and their CSV/PDF export endpoints only — no access to `products`, `materials`, `automation_rules`, or the AI assistant endpoint. This is a narrower grant than `staff`, not a copy of it.
 - No separate onboarding flow or setup-fee service item is implied by this — it's a self-service action any owner can take from Settings, consistent with "self-serve" in your resolution.
+- As built (§6.10): Settings → Team invites staff or a CPA; the invite email links to the admin's own accept page.
 
 ---
 
@@ -340,6 +341,8 @@ Every authenticated request runs in **one transaction** as `authenticated`, with
 | `invoices` create (`pay_now`), `POST /preview`, `PUT /{id}/items`, `POST /{id}/items/preview`, `POST /{id}/status`, `PATCH /{id}` (notes, due date) | ✓ | ✓ | — |
 | `invoices` tax-rate override, `/{id}/refund`, `/{id}/cancel`, delete (quotes only), correcting a payment method (`PATCH /{id}`) | ✓ | — | — |
 | `dashboard/summary`, `dashboard/monthly` | ✓ | — | — |
+| `members` (list · invite staff/cpa · `/{user_id}/resend-invite` · `PATCH /{user_id}` role · `DELETE /{user_id}`) | ✓ | — | — |
+| `auth/password-reset` (public, no token; always 202) | public | public | public |
 
 **Also:**
 - **Health:** `GET /health` (liveness) and `GET /health/ready` (database check) sit outside `/api/v1`.
@@ -360,8 +363,9 @@ Every error response is `{"detail": "..."}`, never with SQL text or stack traces
 
 | Cause | Status |
 |---|---|
-| missing, invalid or expired token | 401 |
-| no membership, wrong role, RLS violation, insufficient privilege | 403 |
+| missing, invalid or expired token; a valid token whose membership changed since it was issued ("Membership no longer valid", `WWW-Authenticate: Bearer error="invalid_token"`) | 401 |
+| no membership (with `X-Delea-Access: no-membership`), wrong role, RLS violation, insufficient privilege | 403 |
+| password-reset requests over the per-IP limit | 429 |
 | no row, or a row hidden by RLS | 404 |
 | unique, foreign-key or `P0001`; a delete that would damage history; editing a non-quote | 409 |
 | check, not-null, invalid value, request validation | 422 |
@@ -373,6 +377,7 @@ Messages raised by our own triggers (`RAISE`) are passed through; Postgres-gener
 Allowed origins come from `CORS_ORIGINS`: a comma-separated list of exact origins, defaulting to `http://localhost:5173,http://localhost:5174`. A wildcard is rejected at startup.
 - **Methods:** `GET, POST, PATCH, DELETE, OPTIONS`.
 - **Headers:** `Authorization, Content-Type`.
+- **Exposed response headers:** `X-Delea-Access` (the admin reads it to tell "no business membership" from other 403s).
 - **Credentials:** none.
 
 ### 6.5 Money rules
@@ -394,15 +399,20 @@ All amounts are integer cents. v1 supports two-decimal currencies only: every am
   - **Periods:** UTC calendar month and year to date.
 
 ### 6.6 Known limitations
-- **Token expiry:** a removed member, or a tenant that is no longer active, keeps API access until their access token expires (about an hour; `jwt_expiry`, 3600 s locally), because RLS and the backend trust the token's `tenant_id` and `app_role` claims. Deleting the `tenant_members` row, changing the role or setting `tenants.is_active = false` doesn't affect tokens already issued. Only `current_tenant_currency()` re-checks the membership today.
-  - **Required before the public demo is deployed (not implemented yet):** in the `user_session` setup, one primary-key lookup per request that checks the `tenant_members` row exists for (user, tenant, role) and `tenants.is_active` is true, refusing with 403 otherwise. In the same change, add the same membership check to `current_tax_rate_bps()`.
+- **Token claims are re-checked on every request (done, slice 9).** Claims are fixed when a token is issued (about an hour). `user_session` and `ai_session` run `public.is_current_member(user, tenant, role)` first (two primary-key lookups, in the statement that sets the claims, so no extra round trip) and answer 401 "Membership no longer valid" when the membership was removed, its role changed, or the tenant was deactivated. `current_tax_rate_bps()` and `current_tenant_currency()` run the same check, and the access token hook gives no claims for an inactive tenant. Code that calls `apply_user_scope` directly (tests only) has no re-check.
+- **One account holds one membership.** The access token hook reads one membership per user, so an email that already has an account in another business can't be invited (the owner sees a neutral refusal that never says where it belongs). A CPA who serves several businesses needs a separate address for each (for example `name+business@gmail.com`). The later fix is a tenant switcher (a selected tenant in `app_metadata`, read by the hook).
+- **Auth emails and demo tenants.** The API sends no invite or reset email for a demo tenant, and the database refuses team changes in one. But a browser holding a demo account's session, or just the publishable key, can still ask Auth directly for a password reset or an email change, and Auth sends those itself; Postgres can't stop it. This is only a risk on a project with a real email sender. **Rule:**
+  - The public demo runs in its **own Supabase project with no custom SMTP**. Supabase's built-in mailer delivers only to the project's team members (the members of its Supabase organization), at about 2 messages an hour, and isn't for production ("Send messages only to pre-authorized addresses", [Send emails with custom SMTP](https://supabase.com/docs/guides/auth/auth-smtp)). So invites, resets and email-change confirmations sent from the demo project can't reach third parties. Keep that organization's members to our own team.
+  - **Launch blocker:** any project that mixes demo tenants with real-customer tenants, or has a custom SMTP sender and demo tenants, needs a Send Email Hook first (Auth calls it instead of sending; it refuses demo accounts and sends everything else).
+- **A removed member's Auth account can be left behind.** Removing a member commits, then deletes their Auth user when they have no other membership. If that Auth call fails, it's logged and the account stays without a membership: it can't use the API (no claims at sign-in), but inviting that email again gets the neutral refusal until the account is deleted by hand.
+- **Password-reset limit behind a proxy.** **Required before the public demo is deployed (not done yet):** trusted proxy headers configured and checked on the deployed App Service (§6.10, "Client address behind a proxy").
 - **Orphaned Storage objects.** **Milestone B (not implemented yet):** one scheduled orphan sweep that deletes:
   - abandoned raw uploads in `product-uploads` older than 24 hours (uploaded through a signed URL but never registered; registration always deletes them);
   - abandoned receipt uploads (`{tenant}/{expense}/pending-*` in `expense-receipts`) older than 24 hours, same cause;
   - receipt files no expense points to: a failed cleanup after an expense is deleted, or after its receipt is replaced or removed (these deletes run after the commit and are only logged when they fail);
   - abandoned logo uploads (`{tenant}/brand/*` in `product-uploads`, covered by the first item) and logo files in `brand-assets` that no `brand_config.logo_path` points to (a failed cleanup after a logo is replaced or removed).
 - **Error responses have no machine-readable code:** an error body is only `{"detail": "<message>"}`, so the admin app tells a duplicate value apart from other 409s by matching the message text ("A record with these values already exists"). **Milestone B (not implemented yet):** add a stable `code` field to every error response (for example `duplicate_value`, `in_use`), and have the frontend switch on `code` instead of message text.
-- **Multi-tenant users:** a user in several tenants gets their oldest membership.
+- **Multi-tenant users:** a user in several tenants gets their oldest membership of an active tenant (see "One account holds one membership").
 - **Direct database API: closed.** `public` isn't exposed over REST or GraphQL (Schema §9 "No direct data API"), so the API-only rules can't be bypassed with a user's JWT. Hosted projects need the same Data API settings; see the provisioning runbook.
 - **No restock on refund or cancel (v1):** refund and cancel only set their timestamps.
 - **The API's database login is an administrative one:** the backend connects as `postgres` and switches to `authenticated` (or `ai_readonly`) for user and AI sessions, but `service_session` (public endpoints, Stripe webhooks, the future worker) keeps that login, which bypasses RLS and could write anything, `tenants.is_demo` included. The `is_demo` guard covers every app role (`authenticated`, `anon`, `ai_readonly`, `service_role`) but not that login. **Required before the public demo is deployed (not implemented yet):** a least-privilege runtime login for the API, separate from the administrative login used by migrations and the showcase loader.
@@ -425,4 +435,25 @@ All amounts are integer cents. v1 supports two-decimal currencies only: every am
 - **Currency:** chosen at provisioning (`TenantSpec.currency`, one of the two-decimal currencies). The API never accepts it, and a trigger (`company_settings_10_currency_guard`, migration `20261023000200`) refuses a change for every caller once the tenant has products, materials, invoices or expenses.
 - **Tax rate:** a new default applies to new quotes only. Every invoice stores the rate it was created with (`invoices.tax_rate_bps`); replacing a quote's lines, and its preview, reuse that rate. Nothing rewrites existing invoices.
 - **Brand** (`GET/PATCH /settings/brand`, owner writes, staff read for admin theming): store name, tagline, colours, hero title and subtitle. The logo is uploaded (owner only) through the product-image pipeline: a signed upload to `product-uploads` at `{tenant}/brand/{upload}.{ext}`, then registration rebuilds that path from the token, checks the real content (JPEG, PNG or WebP, 2 MB, 25 MP; no SVG), strips metadata, keeps transparency and writes one WebP of at most 512 px to the public `brand-assets` bucket at `{tenant}/logo-{uuid}.webp` (1 MiB, WebP only, no client access; a check keeps `brand_config.logo_path` under its tenant). The URL is `BRAND_ASSETS_BASE_URL` (or the local stack's public URL) plus the path. A replaced or removed logo is deleted after the commit.
-- **Out of scope here:** domains (useful once the storefront serves real domains), team management (slice 9, with the membership re-check), automation rules, Stripe and storefront editing.
+- **Team:** a link to Settings → Team (§6.10).
+- **Out of scope here:** domains (useful once the storefront serves real domains), automation rules, Stripe and storefront editing.
+
+### 6.10 Team, invites and passwords
+- **Members API** (`/members`, owner only in the API, RLS and `tenant_member_list()`): list with email, role, status (`invited` until the invite is accepted, then `active`), `invite_expired` (the 24-hour link lapsed), invited and last sign-in times; invite; resend an invite (new link, the old one stops working); change a role; remove.
+- **Rules**, enforced by the API and by the `tenant_members_guard` trigger (migration `20261025000100`, every app role; provisioning and Auth's cascades are trusted):
+  - owners invite staff or a CPA; nobody is invited as, or promoted to, owner (owners come from provisioning);
+  - a business keeps at least one owner (serialized per tenant with an advisory lock); the owner can't change or remove their own membership (API, 409);
+  - only the role can change on a membership row;
+  - no team changes in a demo tenant (API 409, database 42501).
+- **Existing accounts** (Auth's `email_exists`): already on this team → 409 "already on your team" (or "already invited, use Resend invite"); any other account → 409 "This email can't be invited. Ask them for a different address (for example name+yourbusiness@gmail.com)." It never says where the account belongs.
+- **Invite:** the API asks Auth (`/invite`, service-role key) to create the user and send the email, then inserts the membership in the owner's session; if that insert fails, the new Auth user is deleted. The email (`supabase/templates/invite.html`) links to `{SiteURL}/accept-invite?token_hash=…&type=invite`. That page verifies the token only when the form is submitted (so email link scanners can't use it up), then sets the password (at least 10 characters) and signs in. An expired or used link says so and asks for a new invite.
+- **Remove:** the membership is deleted and committed; if the account has no other membership, its Auth user is deleted too, which ends its sessions and refresh tokens. Its old access token is refused on the next request by the re-check (§6.6).
+- **Password reset:** "Forgot password?" on the sign-in page → `POST /auth/password-reset` (public). It always answers 202 with the same message and does the same work for every address (abuse checks and one insert, on SHA-256 hashes); the account lookup and Auth's `/recover` call run in a background task. Limits (`password_reset_attempts`): 5 requests per IP per 15 minutes (then 429), and one email per address per 60 seconds (later requests get the same 202 and send nothing). Nothing is sent for a demo account. The email links to `{SiteURL}/reset-password?token_hash=…&type=recovery`, which works like the accept page.
+- **Client address behind a proxy. Required before the public demo is deployed (not done yet).** The per-IP limit keys on the client address uvicorn reports (`request.client`). uvicorn reads `X-Forwarded-For` only when the TCP peer is in `FORWARDED_ALLOW_IPS` (default `127.0.0.1,::1`; proxy headers are on by default). Behind Azure App Service the API's peer is the platform's front end, so:
+  - with the defaults, every client shares the front end's address: one budget for everyone, and one abuser blocks all resets;
+  - with `FORWARDED_ALLOW_IPS="*"`, uvicorn takes the leftmost `X-Forwarded-For` entry, which the client writes itself, so the limit can be dodged with a spoofed header. Never use `*`;
+  - the deployment must set `FORWARDED_ALLOW_IPS` to the front end's addresses (or range), so uvicorn takes the rightmost untrusted entry, the one the platform appends. Which header and format the front end sends (for example a port after the address) must be confirmed on the deployed service.
+  - **Tests:** `backend/tests/integration/test_password_reset.py` runs the API behind uvicorn's `ProxyHeadersMiddleware` trusting one proxy and proves that the limit keys on the real client (not the proxy; another client behind the same proxy keeps its own budget), that a client-supplied `X-Forwarded-For` with a fresh fake address each time still hits 429, and that the header is ignored from a peer that isn't the proxy. **Also required before the public demo:** the same check against the deployed App Service (six requests from one machine, each with a different spoofed `X-Forwarded-For`, must end in 429).
+  - Locally, uvicorn trusts `127.0.0.1`, so a client on the same machine can set its own address; that's acceptable for development only.
+- **Signals the admin acts on** (status and header, never message text): a 401 makes the API client refresh the session once and retry, so a role change takes effect on the retry; a 403 with `X-Delea-Access: no-membership` shows the no-access page.
+- **Auth config** (`supabase/config.toml`, and the same on every hosted project, see `infra/scripts/provision-enterprise.md`): public sign-up off (`[auth] enable_signup = false`; accounts come only from provisioning and invites), the email provider on (`[auth.email] enable_signup`, which is that switch), passwords of at least 10 characters, one-time links valid 24 hours (`otp_expiry`, shared by invites and resets), the two templates. `backend/tests/test_auth_config.py` fails if sign-up is switched back on; `backend/scripts/check_auth_settings.py` checks a hosted project.

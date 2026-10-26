@@ -36,3 +36,39 @@ backend; only environment values differ.
 5. **Point the customer's Vercel domains at the shared frontend projects.**
    `apps/admin` and `apps/storefront` are not deployed per customer; add the customer's
    domains to the shared Vercel projects.
+
+6. **Auth settings (every hosted project: production, each Enterprise one, the public demo).**
+   `config.toml` only configures the local stack. In the dashboard, Authentication:
+   - **Sign-up off:** "Allow new users to sign up" off. Keep the **Email** provider on (it
+     carries password sign-in, invites and resets).
+   - **Password minimum 10 characters** (Providers → Email).
+   - **Site URL** = the admin app's URL for this project (invite and reset links go to
+     `{Site URL}/accept-invite` and `{Site URL}/reset-password`).
+   - **Email templates:** paste `supabase/templates/invite.html` and `recovery.html` (subjects
+     as in `config.toml`). Email OTP expiry: 86400 s (24 hours).
+   - **Custom SMTP on the production project only.** You arrange: an email provider account
+     (Postmark, Resend, SES…), a verified sending domain with SPF, DKIM and DMARC, then enter
+     the SMTP host, port, user and password yourself in Authentication → SMTP. Never put them
+     in the repo or send them to anyone. Then raise the email rate limit.
+   - **The public demo project gets no custom SMTP.** Its built-in mailer only reaches the
+     project's team members (https://supabase.com/docs/guides/auth/auth-smtp), so demo
+     visitors can't use invites, resets or email changes to mail third parties. Keep that
+     organization's members to our own team. A project that has custom SMTP and demo tenants
+     needs a Send Email Hook first (TRD §6.6).
+   - **Check it:** `python backend/scripts/check_auth_settings.py --url <project URL> --key
+     <publishable key>` must print `ok` for each project (repeat `--url`/`--key` for several).
+     It reads the public settings: sign-up off, email provider on. Check the password minimum
+     and SMTP in the dashboard.
+
+7. **Trusted proxy headers for the API. Required before the public demo is deployed.**
+   The password-reset limit counts requests per client address (TRD §6.10). Behind App Service
+   the API sees the platform's front end, not the visitor.
+   - Set `FORWARDED_ALLOW_IPS` on the App Service to the front end's addresses or range (uvicorn
+     then takes the rightmost untrusted `X-Forwarded-For` entry, the one the platform appends).
+     Never `*`: uvicorn would take the leftmost entry, which a client can forge. Left at the
+     default, every visitor shares one budget.
+   - Confirm on the deployed service which header the front end sets and its format (for
+     example an address with a port).
+   - Check it: from one machine, send six requests to `POST /api/v1/auth/password-reset`, each
+     with a different made-up `X-Forwarded-For`; the sixth must get 429. From a second machine,
+     a request must still get 202.

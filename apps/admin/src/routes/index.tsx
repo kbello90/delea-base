@@ -1,5 +1,7 @@
 import type { RouteObject } from "react-router-dom";
 import { RequireAuth } from "../auth/RequireAuth";
+import { ForgotPasswordPage } from "../auth/ForgotPasswordPage";
+import { AcceptInvitePage, ResetPasswordPage } from "../auth/SetPasswordPage";
 import { SignInPage } from "../auth/SignInPage";
 import { CustomerPage, NewCustomerPage } from "../customers/CustomerFormPage";
 import { CustomersPage } from "../customers/CustomersPage";
@@ -14,6 +16,7 @@ import { MaterialsPage } from "../materials/MaterialsPage";
 import { NewProductPage, ProductPage } from "../products/ProductFormPage";
 import { ProductsPage } from "../products/ProductsPage";
 import { SettingsPage } from "../settings/SettingsPage";
+import { TeamPage } from "../settings/TeamPage";
 import { AppShell } from "../shell/AppShell";
 import { DefaultLanding, NotFoundPage, PlaceholderPage } from "./pages";
 import { RequireRole } from "./RequireRole";
@@ -32,6 +35,10 @@ const PAGES: Record<string, JSX.Element> = {
 
 export const appRoutes: RouteObject[] = [
   { path: "/sign-in", element: <SignInPage /> },
+  // Public: where the invite and password-reset emails link to, and asking for a reset.
+  { path: "/accept-invite", element: <AcceptInvitePage /> },
+  { path: "/reset-password", element: <ResetPasswordPage /> },
+  { path: "/forgot-password", element: <ForgotPasswordPage /> },
   {
     element: <RequireAuth />,
     children: [
@@ -130,6 +137,15 @@ export const appRoutes: RouteObject[] = [
             element: (
               <RequireRole roles={["owner", "cpa"]}>
                 <ExpensePage />
+              </RequireRole>
+            ),
+          },
+          // Team (Settings): owner only.
+          {
+            path: "/settings/team",
+            element: (
+              <RequireRole roles={["owner"]}>
+                <TeamPage />
               </RequireRole>
             ),
           },

@@ -1,17 +1,24 @@
-"""Supabase Auth admin API (service-role key): find, create and delete users.
+"""Supabase Auth admin API (service-role key): find, create, invite and delete users, and send
+password-reset emails.
 
-For provisioning and local tooling only (the showcase loader, create_dev_users.py). Users are
-created already confirmed, so Supabase sends no confirmation or invite email. The key never
-reaches a browser.
+Provisioning and local tooling (the showcase loader, create_dev_users.py) create users already
+confirmed, so Supabase sends them no email. Owner invites (POST /api/v1/members) and password
+resets (POST /api/v1/auth/password-reset) are the only paths that make Auth send email; the
+links in those emails go to admin pages (supabase/templates). The key never reaches a browser.
 """
 
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
 
 class AuthAdminError(Exception):
-    """Auth answered with an unexpected status."""
+    """Auth answered with an unexpected status, or couldn't be reached."""
+
+
+class EmailExists(AuthAdminError):
+    """Auth refused an invite because the email already has a confirmed account."""
 
 
 @dataclass(frozen=True)
@@ -57,8 +64,45 @@ class AuthAdmin:
             raise AuthAdminError(f"create/update user {email} failed: {r.status_code} {r.text}")
         return r.json()["id"]
 
+    async def invite(self, email: str, data: dict[str, Any]) -> str:
+        """Send an invite email and return the user's id.
+
+        Creates the user (unconfirmed) if there is none. For an existing user who hasn't
+        accepted yet, Auth sends a fresh invite (the earlier link stops working). A confirmed
+        account raises EmailExists. `data` is the user's metadata, readable by the email
+        template as {{ .Data.<key> }}.
+        """
+        try:
+            async with self._client() as auth:
+                r = await auth.post("/invite", json={"email": email, "data": data})
+        except httpx.HTTPError as exc:
+            raise AuthAdminError(f"invite failed: {exc.__class__.__name__}") from exc
+        if r.status_code == 200:
+            return r.json()["id"]
+        if r.status_code == 422 and _error_code(r) == "email_exists":
+            raise EmailExists("the email already has an account")
+        raise AuthAdminError(f"invite failed: {r.status_code} {_error_code(r)}")
+
+    async def send_recovery(self, email: str) -> None:
+        """Ask Auth to email a password-reset link. Auth answers the same whether or not the
+        account exists."""
+        try:
+            async with self._client() as auth:
+                r = await auth.post("/recover", json={"email": email})
+        except httpx.HTTPError as exc:
+            raise AuthAdminError(f"recover failed: {exc.__class__.__name__}") from exc
+        if r.status_code != 200:
+            raise AuthAdminError(f"recover failed: {r.status_code} {_error_code(r)}")
+
     async def delete_user(self, user_id: str) -> None:
         async with self._client() as auth:
             r = await auth.delete(f"/admin/users/{user_id}")
         if r.status_code not in (200, 404):
             raise AuthAdminError(f"delete user failed: {r.status_code}")
+
+
+def _error_code(response: httpx.Response) -> str | None:
+    try:
+        return response.json().get("error_code")
+    except ValueError:
+        return None

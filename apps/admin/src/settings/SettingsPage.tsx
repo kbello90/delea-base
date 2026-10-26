@@ -1,6 +1,7 @@
 import { ApiError } from "@delea/api-client";
 import { Button } from "@delea/ui";
 import { useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ErrorState } from "../components/ErrorState";
 import { Field } from "../components/Field";
@@ -304,7 +305,10 @@ export function SettingsPage() {
       {brand.data && <BrandCard brand={brand.data} />}
       <section className="settings-card settings-note" aria-labelledby="team-heading">
         <h2 id="team-heading">Team</h2>
-        <p className="muted">Team management is coming next: inviting staff and your accountant (CPA), and changing their access.</p>
+        <p className="muted">Invite staff and your accountant (CPA), and change or remove their access.</p>
+        <Link to="/settings/team" className="dl-button">
+          Manage team
+        </Link>
       </section>
     </>
   );

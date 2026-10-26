@@ -13,12 +13,12 @@ dependencies = [
   "pyjwt[crypto]>=2.10",
   "psycopg[binary,pool]>=3.2",
   "pillow==13.0.0",  # product image validation and WebP variants
+  "httpx>=0.28",  # Supabase Storage and Auth admin calls (app/core/storage.py, auth_admin.py)
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8.3",
-  "httpx>=0.28",
   "ruff>=0.8",
   "pyyaml>=6.0",  # showcase loader (showcase/products.yaml)
 ]

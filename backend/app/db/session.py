@@ -3,8 +3,8 @@
 The backend talks to Postgres directly through a psycopg async pool. Three kinds of session,
 each one transaction:
 
-- user_session: every authenticated request. Runs as `authenticated` with the caller's
-  verified JWT claims, so RLS is the enforcement.
+- user_session: every authenticated request. Re-checks the membership, then runs as
+  `authenticated` with the caller's verified JWT claims, so RLS is the enforcement.
 - service_session: no role switch. Public endpoints, Stripe webhooks, automation worker only.
 - ai_session: the AI assistant. Runs as `ai_readonly`, scoped by `app.tenant_id` (TRD §3.2).
 
@@ -19,7 +19,7 @@ from psycopg import AsyncConnection
 from psycopg_pool import AsyncConnectionPool
 
 from app.core.config import Settings
-from app.core.security import TokenClaims
+from app.core.security import TokenClaims, membership_not_current
 
 
 def create_pool(settings: Settings) -> AsyncConnectionPool:
@@ -45,22 +45,52 @@ async def close_pool(pool: AsyncConnectionPool) -> None:
     await pool.close()
 
 
-async def apply_user_scope(conn: AsyncConnection, claims: TokenClaims) -> None:
-    """Switch the current transaction to `authenticated` with the caller's verified claims."""
-    await conn.execute("set local role authenticated")
-    await conn.execute(
-        "select set_config('request.jwt.claims', %s, true)",
-        (
-            json.dumps(
-                {
-                    "sub": claims.sub,
-                    "role": "authenticated",
-                    "tenant_id": claims.tenant_id,
-                    "app_role": claims.app_role,
-                }
-            ),
-        ),
+def _claims_json(claims: TokenClaims) -> str:
+    return json.dumps(
+        {
+            "sub": claims.sub,
+            "role": "authenticated",
+            "tenant_id": claims.tenant_id,
+            "app_role": claims.app_role,
+        }
     )
+
+
+async def apply_user_scope(conn: AsyncConnection, claims: TokenClaims) -> None:
+    """Switch the current transaction to `authenticated` with the caller's verified claims.
+
+    No membership re-check (user_session adds it); tests use this to exercise RLS directly.
+    """
+    await conn.execute("set local role authenticated")
+    await conn.execute("select set_config('request.jwt.claims', %s, true)", (_claims_json(claims),))
+
+
+async def ensure_current_member(conn: AsyncConnection, claims: TokenClaims) -> None:
+    """Refuse (401) a token whose membership changed after it was issued.
+
+    Claims are fixed when a token is issued (about an hour). This checks, on the connection's
+    own role and before any role switch, that tenant_members still has (user, tenant, role)
+    and the tenant is active: two primary-key lookups (public.is_current_member).
+    """
+    cur = await conn.execute(
+        "select public.is_current_member(%s, %s, %s)",
+        (claims.sub, claims.tenant_id, claims.app_role),
+    )
+    row = await cur.fetchone()
+    if not (row and row[0]):
+        raise membership_not_current()
+
+
+async def apply_checked_user_scope(conn: AsyncConnection, claims: TokenClaims) -> None:
+    """The membership re-check and the claims in one statement, then the role switch."""
+    cur = await conn.execute(
+        "select public.is_current_member(%s, %s, %s), set_config('request.jwt.claims', %s, true)",
+        (claims.sub, claims.tenant_id, claims.app_role, _claims_json(claims)),
+    )
+    row = await cur.fetchone()
+    if not (row and row[0]):
+        raise membership_not_current()
+    await conn.execute("set local role authenticated")
 
 
 async def apply_ai_scope(conn: AsyncConnection, claims: TokenClaims) -> None:
@@ -76,12 +106,13 @@ async def apply_ai_scope(conn: AsyncConnection, claims: TokenClaims) -> None:
 async def user_session(
     pool: AsyncConnectionPool, claims: TokenClaims
 ) -> AsyncIterator[AsyncConnection]:
-    """One transaction as `authenticated` for the verified caller.
+    """One transaction as `authenticated` for the verified caller, whose membership is
+    re-checked first (401 if it changed since the token was issued).
 
     Commits when the block exits normally and rolls back on any exception.
     """
     async with pool.connection() as conn, conn.transaction():
-        await apply_user_scope(conn, claims)
+        await apply_checked_user_scope(conn, claims)
         yield conn
 
 
@@ -103,8 +134,10 @@ async def ai_session(
 ) -> AsyncIterator[AsyncConnection]:
     """One transaction as `ai_readonly`, which can only select from the `ai` views.
 
-    The connection role must be granted `ai_readonly` (supabase/README.md).
+    The connection role must be granted `ai_readonly` (supabase/README.md). The membership is
+    re-checked first, as in user_session.
     """
     async with pool.connection() as conn, conn.transaction():
+        await ensure_current_member(conn, claims)
         await apply_ai_scope(conn, claims)
         yield conn

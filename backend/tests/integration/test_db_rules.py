@@ -20,7 +20,21 @@ pytestmark = pytest.mark.integration
 
 
 def claims(tenant: str, app_role: str) -> TokenClaims:
+    """Claims for RLS checks through apply_user_scope (no membership re-check)."""
     return TokenClaims(sub=str(uuid.uuid4()), tenant_id=tenant, app_role=app_role)
+
+
+# user_session re-checks the membership, so it needs a real member of the tenant.
+_MEMBERS = {
+    (TENANT_A, "owner"): "owner_a",
+    (TENANT_A, "staff"): "staff_a",
+    (TENANT_A, "cpa"): "cpa_a",
+    (TENANT_B, "owner"): "owner_b",
+}
+
+
+def member(users: dict, tenant: str, app_role: str) -> TokenClaims:
+    return users[_MEMBERS[(tenant, app_role)]].claims
 
 
 @pytest.mark.anyio
@@ -29,12 +43,12 @@ def claims(tenant: str, app_role: str) -> TokenClaims:
     [(TENANT_A, "owner", 800), (TENANT_A, "staff", 800), (TENANT_B, "owner", 550)],
 )
 async def test_tax_rate_for_owner_and_staff(
-    settings: Settings, tenant: str, app_role: str, rate: int
+    settings: Settings, users, tenant: str, app_role: str, rate: int
 ) -> None:
     pool = create_pool(settings)
     await open_pool(pool)
     try:
-        async with user_session(pool, claims(tenant, app_role)) as conn:
+        async with user_session(pool, member(users, tenant, app_role)) as conn:
             cur = await conn.execute("select public.current_tax_rate_bps()")
             assert (await cur.fetchone())[0] == rate
     finally:
@@ -42,12 +56,12 @@ async def test_tax_rate_for_owner_and_staff(
 
 
 @pytest.mark.anyio
-async def test_tax_rate_refused_for_cpa(settings: Settings) -> None:
+async def test_tax_rate_refused_for_cpa(settings: Settings, users) -> None:
     pool = create_pool(settings)
     await open_pool(pool)
     try:
         with pytest.raises(errors.InsufficientPrivilege) as info:
-            async with user_session(pool, claims(TENANT_A, "cpa")) as conn:
+            async with user_session(pool, member(users, TENANT_A, "cpa")) as conn:
                 await conn.execute("select public.current_tax_rate_bps()")
     finally:
         await pool.close()
@@ -214,7 +228,9 @@ SARAH_PAID_INVOICE = "a7000000-0000-0000-0000-000000000001"
 
 
 @pytest.mark.anyio
-async def test_paid_invoice_lines_are_refused_by_the_database(settings: Settings, db) -> None:
+async def test_paid_invoice_lines_are_refused_by_the_database(
+    settings: Settings, db, users
+) -> None:
     before = db.execute(
         "select count(*), sum(qty) from public.invoice_line_items where invoice_id = %s",
         (SARAH_PAID_INVOICE,),
@@ -223,7 +239,7 @@ async def test_paid_invoice_lines_are_refused_by_the_database(settings: Settings
     await open_pool(pool)
     try:
         with pytest.raises(errors.InsufficientPrivilege) as info:
-            async with user_session(pool, claims(TENANT_A, "owner")) as conn:
+            async with user_session(pool, member(users, TENANT_A, "owner")) as conn:
                 await conn.execute(
                     "insert into public.invoice_line_items (invoice_id, tenant_id, description, "
                     "qty, unit_price_cents, line_total_cents) values (%s, %s, 'Extra', 1, 1, 1)",

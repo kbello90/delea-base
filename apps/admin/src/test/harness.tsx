@@ -40,7 +40,14 @@ export function fakeBackend(token: string | null, email = "person@example.com") 
   let session: SessionInfo | null = token ? { accessToken: token, email } : null;
   const listeners = new Set<(s: SessionInfo | null) => void>();
   const emit = () => listeners.forEach((listener) => listener(session));
-  const control = { signInResult: null as string | null, signInToken: tokenFor("owner") };
+  const control = {
+    signInResult: null as string | null,
+    signInToken: tokenFor("owner"),
+    /** verifyLink: a message to fail with, else it signs in with linkToken. */
+    verifyResult: null as string | null,
+    linkToken: tokenFor("staff"),
+    setPasswordResult: null as string | null,
+  };
 
   return {
     control,
@@ -57,6 +64,13 @@ export function fakeBackend(token: string | null, email = "person@example.com") 
       emit();
       return null;
     }),
+    verifyLink: vi.fn(async (_kind: "invite" | "recovery", _tokenHash: string): Promise<string | null> => {
+      if (control.verifyResult) return control.verifyResult;
+      session = { accessToken: control.linkToken, email };
+      emit();
+      return null;
+    }),
+    setPassword: vi.fn(async (_password: string): Promise<string | null> => control.setPasswordResult),
     signOut: vi.fn(async () => {
       session = null;
       emit();

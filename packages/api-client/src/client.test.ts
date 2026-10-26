@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ApiError, createApiClient, toApiError, unwrap, type AuthHandlers, type Schemas } from "./index";
+import { ACCESS_HEADER, ApiError, createApiClient, NO_MEMBERSHIP, toApiError, unwrap, type AuthHandlers, type Schemas } from "./index";
 
 const BASE = "http://api.test";
 
@@ -180,5 +180,43 @@ describe("ApiError normalization", () => {
     });
     const api = createApiClient({ baseUrl: BASE, fetch });
     await expect(unwrap(api.GET("/api/v1/settings/brand"))).rejects.toMatchObject({ status: 0 });
+  });
+});
+
+describe("membership signals", () => {
+  const stale = () => json(401, { detail: "Membership no longer valid" });
+  const noMembership = () =>
+    new Response(JSON.stringify({ detail: "No tenant membership" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json", [ACCESS_HEADER]: NO_MEMBERSHIP },
+    });
+
+  it("a changed role: the 401 refreshes once and the retry with the new token succeeds", async () => {
+    const { fetch, sent } = fakeFetch((req) => (req.auth === "Bearer new-role" ? json(200, BRAND) : stale()));
+    const auth = fakeAuth({ current: "old-role", refreshed: "new-role" });
+    const api = createApiClient({ baseUrl: BASE, auth, fetch });
+
+    await expect(unwrap(api.GET("/api/v1/settings/brand"))).resolves.toEqual(BRAND);
+    expect(auth.refresh).toHaveBeenCalledTimes(1);
+    expect(auth.signOut).not.toHaveBeenCalled();
+    expect(sent.map((s) => s.auth)).toEqual(["Bearer old-role", "Bearer new-role"]);
+  });
+
+  it("a removed member: after the one refresh the 403 carries the no-membership code", async () => {
+    const { fetch } = fakeFetch((req) => (req.auth === "Bearer no-claims" ? noMembership() : stale()));
+    const auth = fakeAuth({ current: "removed", refreshed: "no-claims" });
+    const api = createApiClient({ baseUrl: BASE, auth, fetch });
+
+    const error = await unwrap(api.GET("/api/v1/settings/brand")).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 403, code: NO_MEMBERSHIP });
+    expect(auth.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("the code comes from the header only: the same message without it has no code", async () => {
+    const { fetch } = fakeFetch(() => json(403, { detail: "No tenant membership" }));
+    const api = createApiClient({ baseUrl: BASE, fetch });
+    const error = await unwrap(api.GET("/api/v1/settings/brand")).catch((e: unknown) => e);
+    expect(error).toMatchObject({ status: 403, code: undefined });
   });
 });

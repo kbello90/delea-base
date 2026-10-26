@@ -6,13 +6,25 @@ select * from no_plan();
 -- Session-local helpers. Statements run as the given role and the role is restored, so the
 -- pgTAP assertions themselves always run as the test owner.
 -- ---------------------------------------------------------------------------
+-- current_tax_rate_bps() re-checks the membership (20261025000100), so each (tenant, role)
+-- gets a real member: a stable user id per pair, created on first use.
 create function pg_temp.set_claims(p_tenant uuid, p_app_role text)
 returns void
 language plpgsql
 as $$
+declare
+  v_sub uuid := md5(coalesce(p_tenant::text, '') || ':' || coalesce(p_app_role, ''))::uuid;
 begin
+  if p_app_role in ('owner', 'staff', 'cpa')
+     and exists (select 1 from public.tenants where id = p_tenant) then
+    insert into auth.users (id, email) values (v_sub, v_sub || '@test.local')
+      on conflict do nothing;
+    insert into public.tenant_members (user_id, tenant_id, app_role)
+      values (v_sub, p_tenant, p_app_role::public.app_role)
+      on conflict do nothing;
+  end if;
   perform set_config('request.jwt.claims', json_build_object(
-    'sub', gen_random_uuid(), 'role', 'authenticated',
+    'sub', v_sub, 'role', 'authenticated',
     'tenant_id', p_tenant, 'app_role', p_app_role)::text, true);
 end;
 $$;

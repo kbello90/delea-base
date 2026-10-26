@@ -44,8 +44,10 @@ def sku_exists(db: psycopg.Connection, sku: str) -> bool:
 # user_session
 # ---------------------------------------------------------------------------
 @pytest.mark.anyio
-async def test_user_session_runs_as_authenticated_with_claims(settings: Settings) -> None:
-    claims = owner_claims()
+async def test_user_session_runs_as_authenticated_with_claims(
+    settings: Settings, users: dict[str, TestUser]
+) -> None:
+    claims = users["owner_a"].claims
     pool = await make_pool(settings)
     try:
         async with user_session(pool, claims) as conn:
@@ -71,12 +73,14 @@ async def test_user_session_runs_as_authenticated_with_claims(settings: Settings
 
 
 @pytest.mark.anyio
-async def test_user_session_rolls_back_on_exception(settings: Settings, db) -> None:
+async def test_user_session_rolls_back_on_exception(
+    settings: Settings, db, users: dict[str, TestUser]
+) -> None:
     sku = new_sku()
     pool = await make_pool(settings)
     try:
         with pytest.raises(RuntimeError):
-            async with user_session(pool, owner_claims()) as conn:
+            async with user_session(pool, users["owner_a"].claims) as conn:
                 await conn.execute(
                     "insert into public.products (tenant_id, sku, name, metal, price_cents) "
                     "values (%s, %s, 'Rollback', 'other', 100)",
@@ -89,9 +93,11 @@ async def test_user_session_rolls_back_on_exception(settings: Settings, db) -> N
 
 
 @pytest.mark.anyio
-async def test_rls_blocks_staff_writes_even_without_require_role(settings: Settings, db) -> None:
+async def test_rls_blocks_staff_writes_even_without_require_role(
+    settings: Settings, db, users: dict[str, TestUser]
+) -> None:
     sku = new_sku()
-    staff = TokenClaims(sub=str(uuid.uuid4()), tenant_id=TENANT_A, app_role="staff")
+    staff = users["staff_a"].claims
     pool = await make_pool(settings)
     try:
         with pytest.raises(errors.InsufficientPrivilege) as info:

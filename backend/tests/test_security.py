@@ -124,3 +124,27 @@ def test_ensure_role() -> None:
     with pytest.raises(HTTPException) as info:
         security.ensure_role(claims, {"owner", "staff"})
     assert info.value.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Signals the browser acts on (status and header, never the message text)
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("overrides", [{"tenant_id": None}, {"app_role": "admin"}])
+def test_no_membership_403_carries_the_access_header(overrides: dict) -> None:
+    error = assert_status(make_token(**overrides), 403)
+    assert error.headers == {security.ACCESS_HEADER: security.NO_MEMBERSHIP}
+
+
+def test_insufficient_role_403_has_no_access_header() -> None:
+    claims = security.TokenClaims(sub="s", tenant_id=TENANT_A, app_role="staff")
+    with pytest.raises(HTTPException) as info:
+        security.ensure_role(claims, {"owner"})
+    assert info.value.status_code == 403
+    assert not info.value.headers
+
+
+def test_a_stale_membership_is_a_401_the_client_refreshes_on() -> None:
+    error = security.membership_not_current()
+    assert error.status_code == 401
+    assert 'error="invalid_token"' in error.headers["WWW-Authenticate"]
+    assert security.ACCESS_HEADER not in error.headers

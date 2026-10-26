@@ -27,6 +27,9 @@ from .support import (
     TENANT_B,
     TEST_SKU_PREFIX,
     TestUser,
+    ThrowawayTenant,
+    run_async,
+    sign_in,
 )
 
 
@@ -219,3 +222,64 @@ def _cleanup_automation_events(db: psycopg.Connection) -> Iterator[None]:
 @pytest.fixture
 def anyio_backend() -> tuple[str, dict]:
     return ("asyncio", LOOP_OPTIONS)
+
+
+@pytest.fixture
+def make_tenant(settings: Settings, db: psycopg.Connection) -> Iterator:
+    """A factory for throwaway tenants (never the seed tenants A and B), each with one signed-in
+    member per requested role. Provisioned as a demo tenant, as provisioning requires for
+    anything deletable; `is_demo=False` then clears the flag (administrative connection).
+    Afterwards each tenant is deleted, with the Auth users of everyone who was a member of it,
+    invited users included."""
+    from app.core.auth_admin import AuthAdmin
+    from app.services.provisioning import Member, TenantSpec, provision_tenant
+
+    admin = AuthAdmin(settings.supabase_url, settings.supabase_service_role_key)
+    tenants: list[str] = []
+    users: set[str] = set()
+
+    async def provision(spec: TenantSpec) -> uuid.UUID:
+        async with await psycopg.AsyncConnection.connect(
+            settings.database_url, autocommit=True
+        ) as conn:
+            return await provision_tenant(conn, spec)
+
+    def make(*, is_demo: bool = False, roles: tuple[str, ...] = ("owner",)) -> ThrowawayTenant:
+        run = uuid.uuid4().hex[:8]
+        emails = {role: f"it-team-{role}-{run}@test.local" for role in roles}
+        ids = {}
+        for role, email in emails.items():
+            ids[role] = run_async(admin.ensure_user(email, PASSWORD))
+            users.add(ids[role])
+        tenant_id = str(uuid.uuid4())
+        run_async(
+            provision(
+                TenantSpec(
+                    tenant_id=uuid.UUID(tenant_id),
+                    name=f"IT Team {run}",
+                    business_name=f"IT Team Jewelry {run}",
+                    is_demo=True,
+                    members=tuple(Member(ids[role], role) for role in roles),
+                )
+            )
+        )
+        tenants.append(tenant_id)
+        if not is_demo:
+            db.execute("update public.tenants set is_demo = false where id = %s", (tenant_id,))
+        tokens = {
+            role: sign_in(settings.supabase_url, settings.supabase_anon_key, email, PASSWORD)
+            for role, email in emails.items()
+        }
+        return ThrowawayTenant(tenant_id, f"IT Team Jewelry {run}", emails, ids, tokens)
+
+    yield make
+
+    for tenant_id in tenants:
+        members = db.execute(
+            "select user_id::text from public.tenant_members where tenant_id = %s", (tenant_id,)
+        ).fetchall()
+        users.update(user_id for (user_id,) in members)
+        db.execute("update public.tenants set is_demo = true where id = %s", (tenant_id,))
+        db.execute("delete from public.tenants where id = %s and is_demo", (tenant_id,))
+    for user_id in users:
+        run_async(admin.delete_user(user_id))

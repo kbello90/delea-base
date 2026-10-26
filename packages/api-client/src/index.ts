@@ -1,8 +1,8 @@
 import createClient, { type Client, type Middleware } from "openapi-fetch";
-import { ApiError, toApiError } from "./errors";
+import { ACCESS_HEADER, ApiError, toApiError } from "./errors";
 import type { components, paths } from "./schema";
 
-export { ApiError, toApiError } from "./errors";
+export { ACCESS_HEADER, ApiError, NO_MEMBERSHIP, toApiError } from "./errors";
 export type { components, paths } from "./schema";
 
 /** Value of the `app_role` JWT claim (TRD §2.2). */
@@ -41,6 +41,10 @@ function withToken(request: Request, token: string): Request {
 /**
  * Attaches the bearer token, and on a 401 refreshes the session once and retries once.
  * Concurrent 401s share one in-flight refresh. A second 401, or a failed refresh, signs out.
+ *
+ * A 401 also means "this token's membership changed" (removed, role changed, business
+ * deactivated): the refreshed token carries the membership as it is now, so a role change just
+ * works on the retry, and an account with no membership left gets a 403 marked no-membership.
  */
 export function authMiddleware(auth: AuthHandlers): Middleware {
   // An untouched copy of each request, taken before it is sent: a sent body can't be reread.
@@ -115,6 +119,9 @@ export async function unwrap<T>(call: Promise<FetchResult<T>>): Promise<T> {
     if (cause instanceof ApiError) throw cause;
     throw toApiError(0, undefined);
   }
-  if (!result.response.ok) throw toApiError(result.response.status, result.error);
+  if (!result.response.ok) {
+    const code = result.response.headers.get(ACCESS_HEADER) ?? undefined;
+    throw toApiError(result.response.status, result.error, code);
+  }
   return result.data as T;
 }

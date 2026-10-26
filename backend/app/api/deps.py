@@ -8,6 +8,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from psycopg import AsyncConnection
 from psycopg_pool import AsyncConnectionPool
 
+from app.core.auth_admin import AuthAdmin
+from app.core.config import get_settings
 from app.core.security import AppRole, TokenClaims, decode_access_token, ensure_role
 from app.db.session import user_session
 
@@ -71,3 +73,16 @@ async def get_db(
 
 
 DbConn = Annotated[AsyncConnection, Depends(get_db, scope="function")]
+
+
+def get_auth_admin() -> AuthAdmin:
+    """The Supabase Auth admin client (service-role key, server side only)."""
+    settings = get_settings()
+    if not settings.supabase_url or not settings.supabase_service_role_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Auth is not configured"
+        )
+    return AuthAdmin(settings.supabase_url, settings.supabase_service_role_key)
+
+
+AuthAdminClient = Annotated[AuthAdmin, Depends(get_auth_admin)]

@@ -5,8 +5,16 @@ Supabase Auth signs access tokens with ES256. A custom access token hook adds th
 role (`authenticated` / `anon`) and is not used for app authorization.
 
 Status codes: 401 when the token itself is missing, malformed, expired, or fails
-verification; 403 when a valid token carries no usable membership (no tenant_id or no
-valid app_role); 503 when the signing keys cannot be fetched.
+verification, or when its membership claims are no longer current (user_session re-checks
+them on every request); 403 when a valid token carries no usable membership (no tenant_id or
+no valid app_role); 503 when the signing keys cannot be fetched.
+
+Browsers tell these apart by status and header, never by message text:
+- 401: refresh the session once and retry (packages/api-client). A refreshed token carries the
+  membership as it is now (the access token hook reads tenant_members), so a role change
+  takes effect on the retry.
+- 403 with `X-Delea-Access: no-membership`: the account has no business membership; the admin
+  shows its no-access page.
 """
 
 import uuid
@@ -48,6 +56,30 @@ def _forbidden(detail: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
 
 
+# Response header that marks a 403 as "no business membership" (exposed through CORS).
+ACCESS_HEADER = "X-Delea-Access"
+NO_MEMBERSHIP = "no-membership"
+
+
+def _no_membership(detail: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN, detail=detail, headers={ACCESS_HEADER: NO_MEMBERSHIP}
+    )
+
+
+def membership_not_current() -> HTTPException:
+    """The token is valid but its (user, tenant, role) no longer matches a membership of an
+    active tenant: removed, role changed, or tenant deactivated since it was issued."""
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Membership no longer valid",
+        headers={
+            "WWW-Authenticate": 'Bearer error="invalid_token", '
+            'error_description="membership changed"'
+        },
+    )
+
+
 def _is_uuid(value: object) -> bool:
     try:
         uuid.UUID(str(value))
@@ -82,9 +114,9 @@ def decode_access_token(token: str) -> TokenClaims:
         raise _unauthorized("Token is missing sub")
     # A verified token without a membership: the user is known but has no tenant access.
     if not tenant_id or not _is_uuid(tenant_id):
-        raise _forbidden("No tenant membership")
+        raise _no_membership("No tenant membership")
     if app_role not in APP_ROLES:
-        raise _forbidden("No valid app_role")
+        raise _no_membership("No valid app_role")
 
     return TokenClaims(sub=sub, tenant_id=str(tenant_id), app_role=cast(AppRole, app_role))
 

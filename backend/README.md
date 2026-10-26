@@ -170,16 +170,23 @@ stay generic.
 
 ## Known limitations
 
-- **A removed member, or a tenant that is no longer active, keeps API access until their token
-  expires (about an hour).** RLS and the backend trust the `tenant_id` and `app_role` claims,
-  which are fixed when the token is issued (`jwt_expiry`, 3600 s locally). Deleting the
-  `tenant_members` row, changing the role, or setting `tenants.is_active = false` changes
-  nothing for tokens already issued. Only `current_tenant_currency()` re-checks the membership
-  today. **Required before the public demo is deployed** (not implemented yet):
-  in the `user_session` setup, one primary-key lookup per request that checks the
-  `tenant_members` row exists for (user, tenant, role) and `tenants.is_active` is true,
-  refusing with 403 otherwise; and the same membership check in `current_tax_rate_bps()`,
-  in the same change.
+- **Membership re-check (done).** Token claims are fixed for about an hour, so `user_session`
+  and `ai_session` first run `public.is_current_member(user, tenant, role)` (two primary-key
+  lookups) and answer 401 "Membership no longer valid" for a removed member, a changed role or
+  an inactive tenant. The browser refreshes once on a 401; the new token carries the current
+  membership. `apply_user_scope` alone (tests) skips the check. TRD §6.6.
+- **One account holds one membership.** An email with an account in another business can't be
+  invited; a CPA serving several businesses needs one address per business. A tenant switcher
+  is the later fix. TRD §6.6.
+- **Auth emails and demo tenants.** The API never emails demo accounts, but Auth itself answers
+  a direct reset or email-change request. The public demo therefore runs in its own Supabase
+  project without custom SMTP; a Send Email Hook is a launch blocker for any project that has
+  a custom sender and demo tenants. TRD §6.6.
+- **Password-reset limit behind a proxy. Required before the public demo is deployed.**
+  The limit keys on `request.client`, which uvicorn takes from `X-Forwarded-For` only for peers
+  in `FORWARDED_ALLOW_IPS`. On App Service set it to the front end's addresses (never `*`,
+  which trusts the client-written leftmost entry), and check it on the deployed service. The
+  tests prove the behaviour behind a trusted proxy. TRD §6.10.
 - **Orphaned Storage objects are not swept.** **Milestone B** (not implemented yet): one
   scheduled orphan sweep that deletes (1) abandoned raw uploads in `product-uploads` and (2)
   abandoned receipt uploads (`pending-*` in `expense-receipts`), both older than 24 hours

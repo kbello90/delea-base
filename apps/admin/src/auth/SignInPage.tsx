@@ -1,6 +1,6 @@
 import { Button } from "@delea/ui";
 import { useState, type FormEvent } from "react";
-import { Navigate, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import { canVisit } from "../routes/routeTable";
 import { DEFAULT_BRAND } from "../theme/defaults";
 import { useAuth } from "./authContext";
@@ -94,6 +94,9 @@ export function SignInPage() {
             {submitting ? "Signing in…" : "Sign in"}
           </Button>
         </form>
+        <p className="auth-alt">
+          <Link to="/forgot-password">Forgot password?</Link>
+        </p>
       </div>
     </main>
   );

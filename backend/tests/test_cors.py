@@ -93,3 +93,8 @@ def test_cors_origins_setting_parses_comma_separated_list() -> None:
 def test_wildcard_origin_is_rejected() -> None:
     with pytest.raises(ValidationError):
         Settings(cors_origins="*", _env_file=None)
+
+
+def test_the_no_membership_header_is_readable_by_the_browser() -> None:
+    response = client.get("/health", headers={"Origin": "http://localhost:5173"})
+    assert "x-delea-access" in response.headers["access-control-expose-headers"].lower()

@@ -40,6 +40,14 @@ Enterprise one, open the dashboard's **Data API** settings and either disable th
 Then check with a real user token: `GET /rest/v1/products` must fail, and a GraphQL
 `productsCollection` query must return no data. Auth (`/auth/v1`) is unaffected.
 
+## Hosted projects: Auth settings
+
+Also per hosted project, Dashboard → Authentication (the full checklist is in
+`infra/scripts/provision-enterprise.md`): sign-up off, email provider on, minimum password
+length 10, Site URL = the admin app's URL, the invite and recovery templates from
+`templates/`, and custom SMTP on the production project only. Then run
+`backend/scripts/check_auth_settings.py --url <project URL> --key <publishable key>`.
+
 ## Access model in one paragraph
 
 - **RLS:** every table in `public` has RLS enabled. Policies read
@@ -49,6 +57,12 @@ Then check with a real user token: `GET /rest/v1/products` must fail, and a Grap
 - **Service-role-only tables:** `automation_events` and `stripe_events` have no policies and no
   `authenticated` grants.
 - **AI assistant:** reads only the `ai` views, as the `ai_readonly` role.
+- **Membership re-check:** `public.is_current_member()` isn't granted to any app role. The
+  backend calls it on its own login before switching role, so a dedicated production login
+  needs `execute` on it, and `select, insert, delete` on `password_reset_attempts` (written by
+  the public password-reset endpoint through `service_session`).
+- **Team:** `tenant_members_guard` refuses, for every app role, team changes in demo tenants,
+  new owners, removing or demoting the last owner, and changes other than the role.
 
 ## Notes for the backend
 

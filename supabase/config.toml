@@ -46,7 +46,33 @@ enabled = true
 site_url = "http://localhost:5173"
 additional_redirect_urls = ["http://localhost:5174"]
 jwt_expiry = 3600
+# Invite-only: nobody can create an account with the browser key. Accounts come from
+# provisioning (admin API) and owner invites (POST /api/v1/members). backend/tests/
+# test_auth_config.py fails if this is switched back on. Hosted: Dashboard -> Auth ->
+# "Allow new users to sign up" off (infra/scripts/provision-enterprise.md).
+enable_signup = false
+minimum_password_length = 10
+
+# Not the sign-up switch: [auth.email] enable_signup turns the whole email provider on or
+# off, password sign-in included. Leave it on.
+[auth.email]
 enable_signup = true
+# Invite and password-reset links: one-time, valid 24 hours (the setting covers both).
+otp_expiry = 86400
+
+# Links go straight to admin pages that verify the token_hash on submit, so email link
+# scanners that fetch the page can't use up the token.
+[auth.email.template.invite]
+subject = "You're invited to {{ .Data.business_name }} on DELEA"
+content_path = "./supabase/templates/invite.html"
+
+[auth.email.template.recovery]
+subject = "Reset your DELEA password"
+content_path = "./supabase/templates/recovery.html"
+
+# Local only: the default (2 per hour) would stop the test suite. Mail goes to Mailpit.
+[auth.rate_limit]
+email_sent = 1000
 
 # Custom access token hook that adds tenant_id and app_role claims (TRD §2.2).
 # Defined in migrations/20261020000800_auth_hook.sql.

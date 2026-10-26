@@ -13,6 +13,7 @@ from psycopg_pool import PoolTimeout
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
+from app.core.security import ACCESS_HEADER
 from app.db.session import close_pool, create_pool, open_pool
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,8 @@ app.add_middleware(
     # Every method a route uses (tests/test_cors.py checks this against app.routes).
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
+    # The browser reads it to tell "no business membership" from other 403s.
+    expose_headers=[ACCESS_HEADER],
     allow_credentials=False,
 )
 

@@ -298,7 +298,7 @@ create policy products_select on products for select to authenticated
 | `invoices`, `invoice_line_items` | full | read, insert, update status up to `shipped`/`delivered`; no delete | invoices: read only; line items: none |
 | `expenses` | full | none | read |
 | `automation_rules`, `reorder_list` | full | read | none |
-| `stripe_events`, `automation_events` | none (service role only) | none | none |
+| `stripe_events`, `automation_events`, `password_reset_attempts` | none (service role only) | none | none |
 
 Notes:
 - `company_settings` is owner-only because it holds the EIN and Stripe account reference.
@@ -354,7 +354,7 @@ All accepted as recommended on 2026-10-20.
 
 Smaller choices I made that you can veto: separate `quote_number` and `invoice_number` series (a quote gets `QTE-…` at creation and an `INV-…` number when paid, matching the demo's two number formats); `reorder_list` as a small table so the `add_to_reorder_list` automation has somewhere to write; and one SKU per metal rather than a variant model.
 
-## 9. As built (supabase/migrations; last updated with migration 20261020001500)
+## 9. As built (supabase/migrations; last updated with migration 20261025000100)
 
 The migrations in `supabase/migrations/` are now the source of truth. Where the SQL in §3–§7 differs from them, the migrations win, and the differences are:
 
@@ -397,6 +397,12 @@ The migrations in `supabase/migrations/` are now the source of truth. Where the 
   - **REST:** `/rest/v1` returns 404 for every table.
   - **GraphQL:** `pg_graphql` reflects the schemas on the search path, so `public` must stay off the search path too. Verified with `pg_graphql` enabled.
   - **Hosted projects:** the same settings are made in the Data API dashboard (see the provisioning runbook).
+- **Team and the membership re-check (migration 20261025000100).**
+  - `public.is_current_member(user, tenant, role)` (SECURITY DEFINER, no app-role grants): true when `tenant_members` has that row and the tenant is active. The backend runs it on every request; `current_tax_rate_bps()` and `current_tenant_currency()` call it (both now refuse a stale role or an inactive tenant with 42501). The access token hook skips inactive tenants.
+  - `tenant_members_guard` (before insert, update, delete; app roles only, provisioning and Auth cascades trusted): no changes in demo tenants (42501), no owner inserts or promotions (42501), only `app_role` may change (42501), and at least one owner stays (P0001 "A business must keep at least one owner."), under a per-tenant advisory lock.
+  - `tenant_members.invited_by` is now `on delete set null`, so deleting an inviter's Auth user isn't blocked. No other table references `auth.users` outside the `auth` schema.
+  - `tenant_member_list()` and `account_memberships(email)` (SECURITY DEFINER, owner with a current membership only): the team with email and invite status, and whether an email has an account here or elsewhere (never which tenant).
+  - `password_reset_attempts` (id, `email_hash`, `ip_hash`, `created_at`; SHA-256 hashes only; RLS on, no app grants): the public password-reset endpoint's abuse limits. Rows older than a day are deleted as new ones arrive.
 - **Local ports.** `supabase/config.toml` uses 553xx instead of the CLI defaults (543xx), because Windows reserves 54269–54368. The local API is on 55321, the database on 55322, and Studio on 55323.
 - **Seed.** Tenant A "DELEA Demo" uses 800 bps (8%) tax to match the demo; tenant B "Aurora Gems" is a small second tenant for isolation tests.
 

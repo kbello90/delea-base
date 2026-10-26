@@ -115,12 +115,24 @@ describe("no business membership", () => {
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
   });
 
-  it('an API 403 "No tenant membership" shows the no-access page', async () => {
-    const fetch = fakeApi({ "/api/v1/settings/brand": () => jsonResponse(403, { detail: "No tenant membership" }) });
+  it("an API 403 marked X-Delea-Access: no-membership shows the no-access page", async () => {
+    const noMembership = () =>
+      new Response(JSON.stringify({ detail: "No tenant membership" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json", "X-Delea-Access": "no-membership" },
+      });
+    const fetch = fakeApi({ "/api/v1/settings/brand": noMembership });
     renderApp({ path: "/dashboard", fetch });
     expect(
       await screen.findByRole("heading", { name: "Your account has no access to a business yet" }),
     ).toBeInTheDocument();
+  });
+
+  it("the same 403 message without the header is an ordinary error, not no-access", async () => {
+    const fetch = fakeApi({ "/api/v1/dashboard/summary": () => jsonResponse(403, { detail: "No tenant membership" }) });
+    renderApp({ path: "/dashboard", fetch });
+    expect(await screen.findByText("No tenant membership")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Your account has no access to a business yet" })).not.toBeInTheDocument();
   });
 
   it("reads claims only from the token payload", () => {

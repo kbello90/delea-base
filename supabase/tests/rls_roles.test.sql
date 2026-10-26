@@ -89,7 +89,8 @@ insert into cases values
   ('tenant_members',
    $q$insert into public.tenant_members (user_id, tenant_id, app_role) values ('aaaaaaaa-0000-0000-0000-00000000000d', '11111111-1111-1111-1111-111111111111', 'staff')$q$,
    $q$update public.tenant_members set app_role = app_role where tenant_id = '11111111-1111-1111-1111-111111111111'$q$,
-   $q$delete from public.tenant_members where tenant_id = '11111111-1111-1111-1111-111111111111'$q$),
+   -- Not the owner's row: a tenant keeps at least one owner (20261025000100).
+   $q$delete from public.tenant_members where tenant_id = '11111111-1111-1111-1111-111111111111' and app_role <> 'owner'$q$),
   ('tenant_domains',
    $q$insert into public.tenant_domains (domain, tenant_id, kind) values ('new.localhost', '11111111-1111-1111-1111-111111111111', 'admin')$q$,
    $q$update public.tenant_domains set kind = kind where tenant_id = '11111111-1111-1111-1111-111111111111'$q$,

@@ -39,7 +39,7 @@ describe("business details", () => {
     expect(screen.queryByRole("textbox", { name: /currency/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: /currency/i })).not.toBeInTheDocument();
     expect(screen.getByText("Used by your online store once it launches.")).toBeInTheDocument();
-    expect(screen.getByText(/Team management is coming next/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Manage team" })).toHaveAttribute("href", "/settings/team");
   });
 
   it.each([

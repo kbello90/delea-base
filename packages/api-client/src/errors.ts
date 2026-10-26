@@ -1,13 +1,23 @@
-/** One error type for every failed API call. `message` is safe to show to the user. */
+/** Response header the backend sets on a 403 for an account with no business membership. */
+export const ACCESS_HEADER = "X-Delea-Access";
+/** Its value (ApiError.code): the account belongs to no business. */
+export const NO_MEMBERSHIP = "no-membership";
+
+/**
+ * One error type for every failed API call. `message` is safe to show to the user; code
+ * decides on `status` and `code` (from the X-Delea-Access header), never on the message.
+ */
 export class ApiError extends Error {
   readonly status: number;
   readonly detail: unknown;
+  readonly code: string | undefined;
 
-  constructor(status: number, message: string, detail?: unknown) {
+  constructor(status: number, message: string, detail?: unknown, code?: string) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.detail = detail;
+    this.code = code;
   }
 }
 
@@ -43,7 +53,7 @@ function validationMessage(issues: ValidationIssue[]): string | undefined {
  * A string detail is shown exactly as the server wrote it (403 and 409 messages are written
  * for people); a 422 validation list is flattened; anything else gets a generic message.
  */
-export function toApiError(status: number, body: unknown): ApiError {
+export function toApiError(status: number, body: unknown, code?: string): ApiError {
   const detail =
     body && typeof body === "object" && "detail" in body ? (body as { detail: unknown }).detail : undefined;
   let message: string | undefined;
@@ -53,5 +63,5 @@ export function toApiError(status: number, body: unknown): ApiError {
     message = validationMessage(detail as ValidationIssue[]);
   }
   message ??= FALLBACK[status] ?? (status >= 500 ? "Something went wrong on the server." : `Request failed (${status}).`);
-  return new ApiError(status, message, detail);
+  return new ApiError(status, message, detail, code);
 }

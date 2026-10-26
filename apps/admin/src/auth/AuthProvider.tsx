@@ -44,6 +44,8 @@ export function AuthProvider({ backend, children }: { backend: AuthBackend; chil
     () => ({
       state: session === undefined ? { status: "loading" } : toState(session, noMembership),
       signIn: (email, password) => backend.signIn(email, password),
+      verifyLink: (kind, tokenHash) => backend.verifyLink(kind, tokenHash),
+      setPassword: (password) => backend.setPassword(password),
       signOut,
       reportNoMembership: () => setNoMembership(true),
     }),
