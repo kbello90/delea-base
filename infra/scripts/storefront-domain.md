@@ -15,7 +15,9 @@ hosted API exist; until then, use the local equivalent at the end.
   Brand** (name, colours, logo, storefront look). The store can stay switched off until the
   last step.
 - **Launch blockers for any real shop** (TRD §6.6, §6.10): the API's least-privilege runtime
-  login exists and is granted `storefront_reader`, and `FORWARDED_ALLOW_IPS` is set on the
+  login exists and is granted `storefront_reader` and `storefront_writer`,
+  `TURNSTILE_SECRET_KEY` is set (without it the API turns checkout off), and
+  `FORWARDED_ALLOW_IPS` is set on the
   App Service so the per-address limits see real client addresses.
 
 ## 1. Choose the domain
@@ -69,10 +71,13 @@ ADMIN_DATABASE_URL="<admin connection string>" \
 - The API picks the domain up within a minute (host lookups are cached for 60 seconds).
 - Never put the connection string in a file in the repository.
 
-## 6. Turnstile (from Slice A2)
+## 6. Turnstile
 
-When checkout ships, add the domain to the Turnstile widget's hostname list in Cloudflare.
-Until then there is nothing to do here.
+Add the domain to the Turnstile widget's hostname list in Cloudflare (Turnstile > the widget >
+Hostname management). The API accepts a token only when Cloudflare reports this shop's
+hostname, so a missing hostname means every order on that domain is refused. The widget's
+site key is the storefront's `VITE_TURNSTILE_SITE_KEY`; its secret is the API's
+`TURNSTILE_SECRET_KEY` (set in the App Service, never in a file in the repository).
 
 ## 7. Switch the store on
 

@@ -313,14 +313,15 @@ create policy products_select on products for select to authenticated
 |---|---|---|---|
 | `tenants`, `tenant_domains` | read | read | none |
 | `tenant_members` | full | none | none |
-| `brand_config`, `storefront_settings` | full | read | none |
+| `brand_config`, `storefront_settings`, `product_personalization_fields` | full | read | none |
+| `order_contacts` | read, update | read | none |
 | `company_settings` | full | none | none |
 | `products`, `materials`, `product_materials` | full | read | none |
 | `customers` | full | read, insert, update | none |
 | `invoices`, `invoice_line_items` | full | read, insert, update status up to `shipped`/`delivered`; no delete | invoices: read only; line items: none |
 | `expenses` | full | none | read |
 | `automation_rules`, `reorder_list` | full | read | none |
-| `stripe_events`, `automation_events`, `password_reset_attempts` | none (service role only) | none | none |
+| `stripe_events`, `automation_events`, `password_reset_attempts`, `public_rate_hits` | none (service role only) | none | none |
 
 Notes:
 - `company_settings` is owner-only because it holds the EIN and Stripe account reference.
@@ -376,7 +377,7 @@ All accepted as recommended on 2026-10-20.
 
 Smaller choices I made that you can veto: separate `quote_number` and `invoice_number` series (a quote gets `QTE-…` at creation and an `INV-…` number when paid, matching the demo's two number formats); `reorder_list` as a small table so the `add_to_reorder_list` automation has somewhere to write; and one SKU per metal rather than a variant model.
 
-## 9. As built (supabase/migrations; last updated with migration 20261027000100)
+## 9. As built (supabase/migrations; last updated with migration 20261027000400)
 
 The migrations in `supabase/migrations/` are now the source of truth. Where the SQL in §3–§7 differs from them, the migrations win, and the differences are:
 
@@ -431,6 +432,13 @@ The migrations in `supabase/migrations/` are now the source of truth. Where the 
   - **`storefront_settings`**: one row per tenant (backfilled switched off; provisioning creates it). Owner full, staff read, cpa none.
   - **Made to order:** `invoices_decrement_stock` skips made-to-order products (no check, no decrement).
   - **Checks:** the second hero button's link (`https://` with a plain host, or `tel:`, at most 500 characters), the label and text lengths, the presets, the contact email shape.
+- **Storefront checkout (migrations 20261027000200 to 20261027000400).**
+  - **`storefront_settings`** adds shipping (`ship_enabled`, `ship_flat_cents`, `free_ship_over_cents`, `tax_shipping`), pickup (`pickup_enabled`, `pickup_note`), and manual payment (`bank_transfer_enabled`, `pay_on_pickup_enabled` which needs pickup, `manual_payment_instructions` shown only after an order).
+  - **`invoices`** adds `shipping_cents`, `fulfillment` (ship, pickup), `payment_choice` (bank_transfer, pay_on_pickup; card in Slice B), `checkout_key` and `checkout_fingerprint` (unique key per tenant: one order per checkout), and `order_ref` (`W-` and 8 Crockford base32 characters, unique per tenant). Checks: `total_cents = subtotal_cents + tax_cents + shipping_cents` for every invoice; a storefront invoice has all its checkout fields. The staff financial guard covers shipping.
+  - **`order_contacts`**: one row per storefront order (name, email, phone, a US ship-to address all-or-nothing, the shopper's note). Owner select and update, staff select, CPA nothing; no app role inserts or deletes.
+  - **`public_rate_hits`**: SHA-256-hashed counters for checkout attempts and orders per address, email and shop; no app grants.
+  - **`product_personalization_fields`**: positions 1..5 per product (so at most five), labels unique per product ignoring case, `text` with `max_length` 1..200 or `choice` with 1..30 trimmed, distinct choices; owner all, staff read. `invoice_line_items.personalization` is a snapshot array of `{label, value}` (checked by `personalization_snapshot_ok`, granted to `authenticated` and `service_role` because CHECK constraints run as the writer).
+  - **Roles and functions:** `storefront_writer` (nologin, no table grants) executes `storefront_price_cart`, `storefront_find_order`, `storefront_count_attempt` and `storefront_place_order` (all SECURITY DEFINER, `search_path = ''`, tenant re-checked inside); `storefront_reader` executes `storefront_price_cart` only. Views `storefront.orders` and `storefront.order_lines` show one order by tenant and `app.order_token`; `storefront.product_personalization` the fields of published products; `storefront.store` adds the checkout options and the tax rate (never the payment instructions).
 - **Local ports.** `supabase/config.toml` uses 553xx instead of the CLI defaults (543xx), because Windows reserves 54269–54368. The local API is on 55321, the database on 55322, and Studio on 55323.
 - **Seed.** Tenant A "DELEA Demo" uses 800 bps (8%) tax to match the demo; tenant B "Aurora Gems" is a small second tenant for isolation tests.
 
