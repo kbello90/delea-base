@@ -298,6 +298,11 @@ def test_too_many_requests_from_one_address(client: TestClient, monkeypatch) -> 
     refused = get(client, "/store")
     assert refused.status_code == 429
     assert int(refused.headers["retry-after"]) >= 1
+    # The shop may read the 429 (to ask the shopper to wait); an unknown origin may not.
+    assert refused.headers["access-control-allow-origin"] == ORIGIN_A
+    stranger = get(client, "/store", "https://evil.example")
+    assert stranger.status_code == 429
+    assert "access-control-allow-origin" not in stranger.headers
     # Admin paths have their own rules and are not counted here.
     assert client.get("/health").status_code == 200
 

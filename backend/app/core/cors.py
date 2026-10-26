@@ -23,7 +23,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.core import rate_limit
 from app.core.config import get_settings
-from app.core.storefront_hosts import resolve_tenant
+from app.core.storefront_hosts import cached_tenant, resolve_tenant
 
 logger = logging.getLogger(__name__)
 
@@ -57,16 +57,24 @@ class StorefrontCORSMiddleware:
         headers = Headers(scope=scope)
         client = scope.get("client")
         retry_after = rate_limit.public_reads.hit(client[0] if client else "unknown")
+        origin = headers.get("origin")
         if retry_after is not None:
+            response_headers = {
+                "Retry-After": str(max(1, math.ceil(retry_after))),
+                "Vary": "Origin",
+            }
+            # So the shop can tell the shopper to wait: a known storefront origin may read the
+            # 429. Only the cache is consulted; a refused request never reaches the database.
+            if cached_tenant(origin, dev=get_settings().is_dev_environment) is not None:
+                response_headers["Access-Control-Allow-Origin"] = origin
             response = JSONResponse(
                 {"detail": "Too many requests. Please wait a minute and try again."},
                 status_code=429,
-                headers={"Retry-After": str(max(1, math.ceil(retry_after))), "Vary": "Origin"},
+                headers=response_headers,
             )
             await response(scope, receive, send)
             return
 
-        origin = headers.get("origin")
         tenant_id = None
         pool = getattr(scope["app"].state, "db_pool", None)
         if origin and pool is not None:

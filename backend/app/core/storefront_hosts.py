@@ -79,6 +79,14 @@ class HostCache:
 host_cache = HostCache()
 
 
+def cached_tenant(origin: str | None, *, dev: bool) -> str | None:
+    """The tenant for this Origin if the cache already knows it; never touches the database."""
+    host = origin_host(origin, dev=dev)
+    if host is None:
+        return None
+    return host_cache.get(host)[1]
+
+
 async def resolve_tenant(pool: AsyncConnectionPool, origin: str | None, *, dev: bool) -> str | None:
     """The tenant whose storefront sent this Origin, or None."""
     host = origin_host(origin, dev=dev)
