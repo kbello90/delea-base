@@ -231,7 +231,9 @@ def test_a_quote_prices_on_the_server(
     assert quote["has_problems"] is False
 
 
-def test_a_quote_flags_lines_that_cant_be_ordered(client: TestClient, shop: Shop) -> None:
+def test_a_quote_flags_lines_that_cant_be_ordered(client: TestClient, shop: Shop, db) -> None:
+    # Three ring lines below: enough rings, so only their answers decide.
+    db.execute("update public.products set stock_qty = 5 where id = %s", (shop.ring,))
     body = {
         "items": [
             {"product_id": shop.hidden, "qty": 1},
@@ -239,12 +241,13 @@ def test_a_quote_flags_lines_that_cant_be_ordered(client: TestClient, shop: Shop
             {"product_id": shop.ring, "qty": 1},  # ring size missing
             {"product_id": shop.made, "qty": 9},  # made to order: fine
             {"product_id": shop.ring, "qty": 1, "personalization": {shop.ring_size: " 7 "}},
+            {"product_id": shop.ring, "qty": 1, "personalization": {shop.ring_size: "9"}},
         ],
         "fulfillment": "pickup",
     }
     quote = post(client, shop, "/checkout/quote", body).json()
     problems = [line["problem"] for line in quote["lines"]]
-    assert problems == ["unavailable", "unavailable", "options", None, None]
+    assert problems == ["unavailable", "unavailable", "options", None, None, "options"]
     assert quote["has_problems"] is True
     assert quote["lines"][0]["name"] is None  # nothing about an unpublished product leaks
     assert quote["lines"][3]["lead_time_note"] == "3 weeks"
