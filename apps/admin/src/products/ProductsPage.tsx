@@ -117,7 +117,8 @@ function ProductRow({ product, isOwner, currency, onDelete }: { product: Product
       </td>
       <td data-label="Stock">
         {product.stock_qty}
-        {low && <span className="tag tag--warn">Low stock</span>}
+        {low && !product.made_to_order && <span className="tag tag--warn">Low stock</span>}
+        {product.made_to_order && <span className="tag">Made to order</span>}
       </td>
       <td data-label="Status">
         <span className={product.is_published ? "tag tag--ok" : "tag"}>{product.is_published ? "Published" : "Draft"}</span>

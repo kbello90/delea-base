@@ -12,6 +12,8 @@ export interface ProductFormValues {
   stockQty: string;
   lowStockThreshold: string;
   isPublished: boolean;
+  madeToOrder: boolean;
+  leadTimeNote: string;
 }
 
 export type ProductFormErrors = Partial<Record<keyof ProductFormValues, string>>;
@@ -27,7 +29,11 @@ export const EMPTY_FORM: ProductFormValues = {
   stockQty: "0",
   lowStockThreshold: "3",
   isPublished: false,
+  madeToOrder: false,
+  leadTimeNote: "",
 };
+
+export const LEAD_TIME_NOTE_MAX = 60;
 
 const INT32_MAX = 2_147_483_647;
 
@@ -57,6 +63,8 @@ export function toFormValues(p: Product): ProductFormValues {
     stockQty: String(p.stock_qty),
     lowStockThreshold: String(p.low_stock_threshold),
     isPublished: p.is_published,
+    madeToOrder: p.made_to_order,
+    leadTimeNote: p.lead_time_note ?? "",
   };
 }
 
@@ -94,6 +102,8 @@ export function validateProductForm(v: ProductFormValues): { errors: ProductForm
   if (stock.error) errors.stockQty = stock.error;
   const threshold = wholeNumber(v.lowStockThreshold, "The low-stock threshold");
   if (threshold.error) errors.lowStockThreshold = threshold.error;
+  const leadTimeNote = v.leadTimeNote.trim();
+  if (leadTimeNote.length > LEAD_TIME_NOTE_MAX) errors.leadTimeNote = `Use at most ${LEAD_TIME_NOTE_MAX} characters.`;
 
   if (Object.keys(errors).length > 0 || !price.ok || !v.metal) return { errors };
   return {
@@ -109,6 +119,8 @@ export function validateProductForm(v: ProductFormValues): { errors: ProductForm
       stock_qty: stock.value ?? 0,
       low_stock_threshold: threshold.value ?? 3,
       is_published: v.isPublished,
+      made_to_order: v.madeToOrder,
+      lead_time_note: leadTimeNote || null,
       sort_order: 0, // storefront order is edited elsewhere; a PATCH never sends it
     },
   };
@@ -128,6 +140,8 @@ export function changedFields(product: Product, body: ProductCreate): ProductUpd
     stock_qty: product.stock_qty,
     low_stock_threshold: product.low_stock_threshold,
     is_published: product.is_published,
+    made_to_order: product.made_to_order,
+    lead_time_note: product.lead_time_note,
   };
   const fields: Partial<ProductCreate> = { ...body };
   delete fields.sort_order; // never sent on edit

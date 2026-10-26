@@ -82,6 +82,8 @@ describe("product form", () => {
       stock_qty: 0,
       low_stock_threshold: 3,
       is_published: true,
+      made_to_order: false,
+      lead_time_note: null,
       sort_order: 0,
     });
     expect(location.pathname).toMatch(/^\/products\/a/);
@@ -126,5 +128,42 @@ describe("product form", () => {
     await user.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(server.last("PATCH", `/api/v1/products/${product.id}`)?.body).toEqual({ price_cents: 130000 }));
     expect(await screen.findByText("Saved")).toBeInTheDocument();
+  });
+});
+
+describe("made to order", () => {
+  const valid = { ...EMPTY_FORM, name: "Ring", sku: "R-1", metal: "platinum" as const, price: "100" };
+
+  it("sends the flag and a trimmed lead-time note, or null for none", () => {
+    expect(validateProductForm({ ...valid, madeToOrder: true, leadTimeNote: "  Ships in 2-3 weeks " }).body).toMatchObject({
+      made_to_order: true,
+      lead_time_note: "Ships in 2-3 weeks",
+    });
+    expect(validateProductForm({ ...valid, leadTimeNote: "   " }).body).toMatchObject({ made_to_order: false, lead_time_note: null });
+  });
+
+  it("refuses a lead-time note over 60 characters", () => {
+    const { errors, body } = validateProductForm({ ...valid, leadTimeNote: "x".repeat(61) });
+    expect(errors.leadTimeNote).toBe("Use at most 60 characters.");
+    expect(body).toBeUndefined();
+  });
+
+  it("an edit sends only the made-to-order change", () => {
+    const product = makeProduct({ name: "Ring", sku: "R-1", metal: "platinum", price_cents: 10000, stock_qty: 0, is_published: false });
+    const { body } = validateProductForm({ ...valid, madeToOrder: true, leadTimeNote: "Ships in 2 weeks" });
+    expect(changedFields(product, body!)).toEqual({ made_to_order: true, lead_time_note: "Ships in 2 weeks" });
+  });
+
+  it("the owner turns it on in the form", async () => {
+    const product = makeProduct({ name: "Ring", made_to_order: false });
+    const server = productServer([product]);
+    renderApp({ path: `/products/${product.id}`, fetch: server.fetch });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("checkbox", { name: "Made to order" }));
+    await user.type(screen.getByLabelText("Lead time (optional, shown on the storefront)"), "Ships in 2-3 weeks");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() =>
+      expect(server.last("PATCH", `/api/v1/products/${product.id}`)?.body).toEqual({ made_to_order: true, lead_time_note: "Ships in 2-3 weeks" }),
+    );
   });
 });

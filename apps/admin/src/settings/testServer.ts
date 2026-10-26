@@ -1,11 +1,12 @@
 import type { Schemas } from "@delea/api-client";
 import { vi } from "vitest";
-import { COMPANY_RESPONSE, DEFAULT_BRAND_RESPONSE, jsonResponse } from "../test/harness";
+import { COMPANY_RESPONSE, DEFAULT_BRAND_RESPONSE, STOREFRONT_RESPONSE, jsonResponse } from "../test/harness";
 
 export { FakeXhr } from "../products/testServer";
 
 type Company = Schemas["CompanySettingsOut"];
 type Brand = Schemas["BrandConfigOut"];
+type Storefront = Schemas["StorefrontSettingsOut"];
 
 export const LOGO_BASE = "http://127.0.0.1:55321/storage/v1/object/public/brand-assets";
 
@@ -19,9 +20,14 @@ export interface Call {
  * An in-memory settings API: company (owner only; the currency and counters are refused),
  * brand (owner writes, staff read) and the logo endpoints. The role comes from the token.
  */
-export function settingsServer({ company = COMPANY_RESPONSE, brand = DEFAULT_BRAND_RESPONSE }: { company?: Company; brand?: Brand } = {}) {
+export function settingsServer({
+  company = COMPANY_RESPONSE,
+  brand = DEFAULT_BRAND_RESPONSE,
+  storefront = STOREFRONT_RESPONSE,
+}: { company?: Company; brand?: Brand; storefront?: Storefront } = {}) {
   let companyRow = structuredClone(company);
   let brandRow = structuredClone(brand);
+  let storefrontRow = structuredClone(storefront);
   const calls: Call[] = [];
   const overrides = new Map<string, (call: Call) => Response | undefined>();
 
@@ -59,6 +65,11 @@ export function settingsServer({ company = COMPANY_RESPONSE, brand = DEFAULT_BRA
     if (path === "/api/v1/settings/brand" && method === "PATCH") {
       brandRow = { ...brandRow, ...(body as Partial<Brand>), updated_at: new Date().toISOString() };
       return jsonResponse(200, brandRow);
+    }
+    if (path === "/api/v1/settings/storefront" && method === "GET") return jsonResponse(200, storefrontRow);
+    if (path === "/api/v1/settings/storefront" && method === "PATCH") {
+      storefrontRow = { ...storefrontRow, ...(body as Partial<Storefront>), updated_at: new Date().toISOString() };
+      return jsonResponse(200, storefrontRow);
     }
     if (path === "/api/v1/settings/brand/logo/uploads") {
       return jsonResponse(201, { upload_id: "u0000000-0000-4000-8000-000000000002", upload_url: "https://storage.test/upload/brand?token=x", max_bytes: 2 * 1024 * 1024 });

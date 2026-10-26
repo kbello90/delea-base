@@ -13,7 +13,7 @@ from enum import StrEnum
 from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
 
 
 class Language(StrEnum):
@@ -41,11 +41,61 @@ def _distinct_languages(value: list[Language]) -> list[Language]:
     return value
 
 
+# The second hero button's link: https:// with a plain host (https://wa.me/... included) or a
+# tel: number. The database checks the same (brand_config_hero_cta_url).
+_HTTPS_LINK = re.compile(
+    r"https://[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(:[0-9]{1,5})?"
+    r"([/?#][^\s<>\"]*)?",
+    re.IGNORECASE,
+)
+_TEL_LINK = re.compile(r"tel:\+?[0-9][0-9().-]{2,29}")
+# The storefront_settings_contact_email check.
+_EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+
+
+def _hero_link(value: str) -> str:
+    if len(value) > 500 or not (_HTTPS_LINK.fullmatch(value) or _TEL_LINK.fullmatch(value)):
+        raise ValueError(
+            "must be an https:// link (for example https://wa.me/15550100142) or a tel: number"
+        )
+    return value
+
+
+def _email(value: str) -> str:
+    if len(value) > 254 or not _EMAIL.fullmatch(value):
+        raise ValueError("must be an email address")
+    return value
+
+
 HexColor = Annotated[str, AfterValidator(_hex_color)]
 TaxRateBps = Annotated[int, Field(ge=0, le=10000)]
 Languages = Annotated[list[Language], Field(min_length=1), AfterValidator(_distinct_languages)]
 Text = Annotated[str, Field(min_length=1, max_length=200)]
 LongText = Annotated[str, Field(min_length=1, max_length=2000)]
+
+
+def _trimmed(max_length: int) -> Any:
+    return StringConstraints(strip_whitespace=True, min_length=1, max_length=max_length)
+
+
+HeroLink = Annotated[str, StringConstraints(strip_whitespace=True), AfterValidator(_hero_link)]
+Email = Annotated[str, StringConstraints(strip_whitespace=True), AfterValidator(_email)]
+PageText = Annotated[str, _trimmed(20000)]
+
+
+class FontPreset(StrEnum):
+    classic = "classic"  # Fraunces + Archivo
+    modern = "modern"  # DM Serif Display + Work Sans
+
+
+class CornerStyle(StrEnum):
+    square = "square"
+    pill = "pill"
+
+
+class MarkStyle(StrEnum):
+    monogram = "monogram"  # the first letter in a ring, when there is no logo
+    wordmark = "wordmark"  # the business name only
 
 
 def language_rule_errors(row: dict[str, Any]) -> list[str]:
@@ -93,9 +143,27 @@ class BrandConfigUpdate(BaseModel):
     accent_color: HexColor | None = None
     hero_title: Text | None = None
     hero_subtitle: LongText | None = None
+    hero_eyebrow: Annotated[str, _trimmed(60)] | None = None
+    collection_title: Annotated[str, _trimmed(80)] | None = None
+    font_preset: FontPreset | None = None
+    corner_style: CornerStyle | None = None
+    mark_style: MarkStyle | None = None
+    # The optional second hero button; the storefront shows it only when both are set.
+    hero_cta_label: Annotated[str, _trimmed(40)] | None = None
+    hero_cta_url: HeroLink | None = None
 
 
-BRAND_NULLABLE = frozenset({"tagline", "hero_title", "hero_subtitle"})
+BRAND_NULLABLE = frozenset(
+    {
+        "tagline",
+        "hero_title",
+        "hero_subtitle",
+        "hero_eyebrow",
+        "collection_title",
+        "hero_cta_label",
+        "hero_cta_url",
+    }
+)
 
 
 class BrandConfigOut(BaseModel):
@@ -107,6 +175,41 @@ class BrandConfigOut(BaseModel):
     logo_url: str | None  # the public URL of the uploaded logo (brand-assets bucket)
     hero_title: str | None
     hero_subtitle: str | None
+    hero_eyebrow: str | None
+    collection_title: str | None
+    font_preset: FontPreset
+    corner_style: CornerStyle
+    mark_style: MarkStyle
+    hero_cta_label: str | None
+    hero_cta_url: str | None
+    updated_at: datetime
+
+
+class StorefrontSettingsUpdate(BaseModel):
+    """PATCH /settings/storefront. Everything here is shown on the public storefront."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    storefront_enabled: bool | None = None
+    contact_email: Email | None = None
+    return_policy: PageText | None = None
+    privacy_policy: PageText | None = None
+    terms: PageText | None = None
+    custom_orders_info: PageText | None = None  # the "How custom orders work" page
+
+
+STOREFRONT_NULLABLE = frozenset(
+    {"contact_email", "return_policy", "privacy_policy", "terms", "custom_orders_info"}
+)
+
+
+class StorefrontSettingsOut(BaseModel):
+    storefront_enabled: bool
+    contact_email: str | None
+    return_policy: str | None
+    privacy_policy: str | None
+    terms: str | None
+    custom_orders_info: str | None
     updated_at: datetime
 
 

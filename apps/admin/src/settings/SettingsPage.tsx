@@ -10,27 +10,39 @@ import { PageHeader } from "../components/PageHeader";
 import { useToast } from "../components/toastContext";
 import { isAllowedLogoUrl } from "../theme/brand";
 import {
+  CORNER_STYLES,
+  FONT_PRESETS,
   LANGUAGES,
   LOGO_TYPES,
+  MARK_STYLES,
   useBrandSettings,
   useCompanySettings,
   useRemoveLogo,
+  useStorefrontSettings,
   useUpdateBrand,
   useUpdateCompany,
+  useUpdateStorefront,
   useUploadLogo,
   type BrandConfig,
   type CompanySettings,
+  type CornerStyle,
+  type FontPreset,
   type Language,
+  type MarkStyle,
+  type StorefrontSettings,
 } from "./api";
 import {
   brandChanges,
   checkLogoFile,
   companyChanges,
+  storefrontChanges,
   toBrandValues,
   toCompanyValues,
+  toStorefrontValues,
   type BrandFormValues,
   type CompanyFormValues,
   type Errors,
+  type StorefrontFormValues,
 } from "./settingsForm";
 import "./settings.css";
 
@@ -279,6 +291,55 @@ function BrandCard({ brand }: { brand: BrandConfig }) {
         <Field id="hero-subtitle" label="Store introduction" error={errors.heroSubtitle}>
           <textarea id="hero-subtitle" rows={2} value={values.heroSubtitle} onChange={(e) => set("heroSubtitle", e.target.value)} disabled={busy} aria-invalid={Boolean(errors.heroSubtitle)} aria-describedby={describedBy("hero-subtitle", errors.heroSubtitle)} />
         </Field>
+        <fieldset>
+          <legend>Storefront look</legend>
+          <div className="form-grid">
+            <Field id="hero-eyebrow" label="Line above the headline" error={errors.heroEyebrow} hint='For example "Made to order"'>
+              <input id="hero-eyebrow" type="text" maxLength={60} value={values.heroEyebrow} onChange={(e) => set("heroEyebrow", e.target.value)} disabled={busy} aria-invalid={Boolean(errors.heroEyebrow)} aria-describedby={describedBy("hero-eyebrow", errors.heroEyebrow, true)} />
+            </Field>
+            <Field id="collection-title" label="Product list heading" error={errors.collectionTitle} hint='For example "The collection"'>
+              <input id="collection-title" type="text" maxLength={80} value={values.collectionTitle} onChange={(e) => set("collectionTitle", e.target.value)} disabled={busy} aria-invalid={Boolean(errors.collectionTitle)} aria-describedby={describedBy("collection-title", errors.collectionTitle, true)} />
+            </Field>
+          </div>
+          <div className="form-grid">
+            <Field id="font-preset" label="Fonts">
+              <select id="font-preset" value={values.fontPreset} onChange={(e) => set("fontPreset", e.target.value as FontPreset)} disabled={busy}>
+                {FONT_PRESETS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field id="corner-style" label="Buttons">
+              <select id="corner-style" value={values.cornerStyle} onChange={(e) => set("cornerStyle", e.target.value as CornerStyle)} disabled={busy}>
+                {CORNER_STYLES.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field id="mark-style" label="Without a logo, show">
+              <select id="mark-style" value={values.markStyle} onChange={(e) => set("markStyle", e.target.value as MarkStyle)} disabled={busy}>
+                {MARK_STYLES.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <p className="field-hint">A second button next to "Shop the collection". It shows only when both are filled in.</p>
+          <div className="form-grid">
+            <Field id="hero-button-label" label="Second button text" error={errors.heroButtonLabel} hint='For example "Order on WhatsApp"'>
+              <input id="hero-button-label" type="text" maxLength={40} value={values.heroButtonLabel} onChange={(e) => set("heroButtonLabel", e.target.value)} disabled={busy} aria-invalid={Boolean(errors.heroButtonLabel)} aria-describedby={describedBy("hero-button-label", errors.heroButtonLabel, true)} />
+            </Field>
+            <Field id="hero-button-link" label="Second button link" error={errors.heroButtonLink} hint="https://wa.me/15550100142, another https:// link, or tel:+15550100142">
+              <input id="hero-button-link" type="text" inputMode="url" maxLength={500} value={values.heroButtonLink} onChange={(e) => set("heroButtonLink", e.target.value)} disabled={busy} aria-invalid={Boolean(errors.heroButtonLink)} aria-describedby={describedBy("hero-button-link", errors.heroButtonLink, true)} />
+            </Field>
+          </div>
+        </fieldset>
         <div className="form-actions">
           <Button type="submit" disabled={busy}>
             {busy ? "Saving…" : "Save brand"}
@@ -290,9 +351,72 @@ function BrandCard({ brand }: { brand: BrandConfig }) {
   );
 }
 
+const PAGES: { key: "customOrdersInfo" | "returnPolicy" | "privacyPolicy" | "terms"; id: string; label: string; hint?: string }[] = [
+  { key: "customOrdersInfo", id: "custom-orders-info", label: "How custom orders work", hint: 'Shown as a page, with a "How custom orders work" button on your home page.' },
+  { key: "returnPolicy", id: "return-policy", label: "Returns" },
+  { key: "privacyPolicy", id: "privacy-policy", label: "Privacy policy" },
+  { key: "terms", id: "terms", label: "Terms" },
+];
+
+function StorefrontCard({ settings }: { settings: StorefrontSettings }) {
+  const toast = useToast();
+  const update = useUpdateStorefront();
+  const [values, setValues] = useState<StorefrontFormValues>(() => toStorefrontValues(settings));
+  const [errors, setErrors] = useState<Errors<StorefrontFormValues>>({});
+  const set = <K extends keyof StorefrontFormValues>(key: K, value: StorefrontFormValues[K]) => setValues((v) => ({ ...v, [key]: value }));
+  const busy = update.isPending;
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    const { body, errors: found } = storefrontChanges(settings, values);
+    setErrors(found);
+    if (!body) return;
+    if (Object.keys(body).length === 0) return toast({ title: "Nothing to save" });
+    update.mutate(body, {
+      onSuccess: (saved) => {
+        setValues(toStorefrontValues(saved));
+        toast({ title: "Storefront saved", variant: "success" });
+      },
+    });
+  }
+
+  return (
+    <form className="record-form settings-card" onSubmit={submit} noValidate aria-labelledby="storefront-heading">
+      <h2 id="storefront-heading">Storefront</h2>
+      <p className="muted">Everything here is shown on your public store. Empty pages are left out.</p>
+      {update.isError && (
+        <p className="form-error" role="alert">
+          {message(update.error)}
+        </p>
+      )}
+      <label className="check">
+        <input type="checkbox" checked={values.storefrontEnabled} onChange={(e) => set("storefrontEnabled", e.target.checked)} disabled={busy} aria-describedby="storefront-enabled-hint" />
+        Store is online
+      </label>
+      <p id="storefront-enabled-hint" className="field-hint">
+        When off, your store's web address shows "This shop isn't available". Changes can take a minute to appear.
+      </p>
+      <Field id="contact-email" label="Contact email" error={errors.contactEmail} hint="Shown in your store's footer.">
+        <input id="contact-email" type="email" value={values.contactEmail} onChange={(e) => set("contactEmail", e.target.value)} disabled={busy} aria-invalid={Boolean(errors.contactEmail)} aria-describedby={describedBy("contact-email", errors.contactEmail, true)} />
+      </Field>
+      {PAGES.map((page) => (
+        <Field key={page.key} id={page.id} label={page.label} error={errors[page.key]} hint={page.hint}>
+          <textarea id={page.id} rows={4} value={values[page.key]} onChange={(e) => set(page.key, e.target.value)} disabled={busy} aria-invalid={Boolean(errors[page.key])} aria-describedby={describedBy(page.id, errors[page.key], Boolean(page.hint))} />
+        </Field>
+      ))}
+      <div className="form-actions">
+        <Button type="submit" disabled={busy}>
+          {busy ? "Saving…" : "Save storefront"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 export function SettingsPage() {
   const company = useCompanySettings();
   const brand = useBrandSettings();
+  const storefront = useStorefrontSettings();
 
   return (
     <>
@@ -303,6 +427,9 @@ export function SettingsPage() {
       {brand.isPending && <Loading label="Loading brand…" />}
       {brand.isError && <ErrorState title="Brand couldn't be loaded" error={brand.error} onRetry={() => void brand.refetch()} />}
       {brand.data && <BrandCard brand={brand.data} />}
+      {storefront.isPending && <Loading label="Loading storefront…" />}
+      {storefront.isError && <ErrorState title="Storefront settings couldn't be loaded" error={storefront.error} onRetry={() => void storefront.refetch()} />}
+      {storefront.data && <StorefrontCard key={storefront.data.updated_at} settings={storefront.data} />}
       <section className="settings-card settings-note" aria-labelledby="team-heading">
         <h2 id="team-heading">Team</h2>
         <p className="muted">Invite staff and your accountant (CPA), and change or remove their access.</p>

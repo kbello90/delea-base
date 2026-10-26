@@ -12,13 +12,15 @@ from enum import StrEnum
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 BIGINT_MAX = 2**63 - 1
 INT_MAX = 2**31 - 1
 
 Cents = Annotated[int, Field(ge=0, le=BIGINT_MAX)]
 Int32 = Annotated[int, Field(ge=-(2**31), le=INT_MAX)]
+# Shown on the storefront next to a made-to-order product, e.g. "Ships in 2-3 weeks".
+LeadTimeNote = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
 
 
 class MetalType(StrEnum):
@@ -48,6 +50,8 @@ class ProductCreate(BaseModel):
     icon: str | None = None
     is_published: bool = False
     sort_order: Int32 = 0
+    made_to_order: bool = False  # made after the sale: never out of stock, stock not decremented
+    lead_time_note: LeadTimeNote | None = None
 
 
 class ProductUpdate(BaseModel):
@@ -67,11 +71,15 @@ class ProductUpdate(BaseModel):
     icon: str | None = None
     is_published: bool | None = None
     sort_order: Int32 | None = None
+    made_to_order: bool | None = None
+    lead_time_note: LeadTimeNote | None = None
 
 
 # Columns that may be null in the database; for every other PATCH field an explicit null
 # is rejected rather than passed through as a not-null violation.
-NULLABLE_FIELDS = frozenset({"description", "sale_price_cents", "sale_ends_at", "icon"})
+NULLABLE_FIELDS = frozenset(
+    {"description", "sale_price_cents", "sale_ends_at", "icon", "lead_time_note"}
+)
 
 
 class ProductImageOut(BaseModel):
@@ -101,6 +109,8 @@ class ProductOut(BaseModel):
     icon: str | None
     is_published: bool
     sort_order: int
+    made_to_order: bool
+    lead_time_note: str | None
     created_at: datetime
     updated_at: datetime
     images: list[ProductImageOut]

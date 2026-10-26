@@ -2944,6 +2944,77 @@
         ]
       }
     },
+    "/api/v1/settings/storefront": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get Storefront Settings",
+        "operationId": "get_storefront_settings_api_v1_settings_storefront_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorefrontSettingsOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Update Storefront Settings",
+        "description": "Everything here is public. Switching the storefront off makes every one of the\ntenant's storefront domains answer \"Store not found\" (within a minute: lookups are\ncached).",
+        "operationId": "update_storefront_settings_api_v1_settings_storefront_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorefrontSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorefrontSettingsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/settings/currency": {
       "get": {
         "tags": [
@@ -3607,6 +3678,59 @@
             ],
             "title": "Hero Subtitle"
           },
+          "hero_eyebrow": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hero Eyebrow"
+          },
+          "collection_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Title"
+          },
+          "font_preset": {
+            "$ref": "#/components/schemas/FontPreset"
+          },
+          "corner_style": {
+            "$ref": "#/components/schemas/CornerStyle"
+          },
+          "mark_style": {
+            "$ref": "#/components/schemas/MarkStyle"
+          },
+          "hero_cta_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hero Cta Label"
+          },
+          "hero_cta_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hero Cta Url"
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time",
@@ -3623,6 +3747,13 @@
           "logo_url",
           "hero_title",
           "hero_subtitle",
+          "hero_eyebrow",
+          "collection_title",
+          "font_preset",
+          "corner_style",
+          "mark_style",
+          "hero_cta_label",
+          "hero_cta_url",
           "updated_at"
         ],
         "title": "BrandConfigOut"
@@ -3702,6 +3833,86 @@
               }
             ],
             "title": "Hero Subtitle"
+          },
+          "hero_eyebrow": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hero Eyebrow"
+          },
+          "collection_title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Title"
+          },
+          "font_preset": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FontPreset"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "corner_style": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CornerStyle"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mark_style": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MarkStyle"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hero_cta_label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hero Cta Label"
+          },
+          "hero_cta_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hero Cta Url"
           }
         },
         "additionalProperties": false,
@@ -6175,6 +6386,24 @@
             "minimum": -2147483648.0,
             "title": "Sort Order",
             "default": 0
+          },
+          "made_to_order": {
+            "type": "boolean",
+            "title": "Made To Order",
+            "default": false
+          },
+          "lead_time_note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead Time Note"
           }
         },
         "additionalProperties": false,
@@ -6320,6 +6549,21 @@
             "type": "integer",
             "title": "Sort Order"
           },
+          "made_to_order": {
+            "type": "boolean",
+            "title": "Made To Order"
+          },
+          "lead_time_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead Time Note"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -6354,6 +6598,8 @@
           "icon",
           "is_published",
           "sort_order",
+          "made_to_order",
+          "lead_time_note",
           "created_at",
           "updated_at",
           "images"
@@ -6507,6 +6753,30 @@
               }
             ],
             "title": "Sort Order"
+          },
+          "made_to_order": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Made To Order"
+          },
+          "lead_time_note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead Time Note"
           }
         },
         "additionalProperties": false,
@@ -6952,6 +7222,167 @@
         ],
         "title": "StockShortage",
         "description": "A product the lines need more of than is in stock now (summed across lines)."
+      },
+      "StorefrontSettingsOut": {
+        "properties": {
+          "storefront_enabled": {
+            "type": "boolean",
+            "title": "Storefront Enabled"
+          },
+          "contact_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Email"
+          },
+          "return_policy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Policy"
+          },
+          "privacy_policy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privacy Policy"
+          },
+          "terms": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms"
+          },
+          "custom_orders_info": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Orders Info"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "storefront_enabled",
+          "contact_email",
+          "return_policy",
+          "privacy_policy",
+          "terms",
+          "custom_orders_info",
+          "updated_at"
+        ],
+        "title": "StorefrontSettingsOut"
+      },
+      "StorefrontSettingsUpdate": {
+        "properties": {
+          "storefront_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storefront Enabled"
+          },
+          "contact_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Email"
+          },
+          "return_policy": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20000,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Policy"
+          },
+          "privacy_policy": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20000,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privacy Policy"
+          },
+          "terms": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20000,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms"
+          },
+          "custom_orders_info": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20000,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Orders Info"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "StorefrontSettingsUpdate",
+        "description": "PATCH /settings/storefront. Everything here is shown on the public storefront."
       },
       "UploadRequest": {
         "properties": {

@@ -919,3 +919,24 @@ def test_lines_come_back_in_the_order_sent(client, users, db) -> None:
         (quote["id"],),
     ).fetchall()
     assert [p for (p,) in positions] == [1, 2, 3]
+
+
+def test_made_to_order_products_are_never_short_and_keep_their_stock(client, users, db) -> None:
+    """Made after the sale (migration 20261027000100): no shortage in the preview, and paying
+    neither checks nor decrements their stock. A stocked product next to it still is."""
+    staff = users["staff_a"]
+    made = product(db, stock=0)
+    stocked = product(db, stock=5)
+    db.execute("update public.products set made_to_order = true where id = %s", (made,))
+    items = [{"product_id": made, "qty": 3}, {"product_id": stocked, "qty": 2}]
+    assert preview(client, staff, items=items)["stock_shortages"] == []
+
+    sale = create(client, staff, items, pay_now=True, payment_method="cash")
+    assert sale["order_status"] == "paid"
+    stock = dict(
+        db.execute(
+            "select id::text, stock_qty from public.products where id = any(%s::uuid[])",
+            ([made, stocked],),
+        ).fetchall()
+    )
+    assert stock == {made: 0, stocked: 3}

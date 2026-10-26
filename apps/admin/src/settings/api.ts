@@ -9,6 +9,24 @@ export type CompanyUpdate = Schemas["CompanySettingsUpdate"];
 export type BrandConfig = Schemas["BrandConfigOut"];
 export type BrandUpdate = Schemas["BrandConfigUpdate"];
 export type LogoType = Schemas["LogoType"];
+export type StorefrontSettings = Schemas["StorefrontSettingsOut"];
+export type StorefrontUpdate = Schemas["StorefrontSettingsUpdate"];
+export type FontPreset = Schemas["FontPreset"];
+export type CornerStyle = Schemas["CornerStyle"];
+export type MarkStyle = Schemas["MarkStyle"];
+
+export const FONT_PRESETS: { value: FontPreset; label: string }[] = [
+  { value: "classic", label: "Classic (Fraunces and Archivo)" },
+  { value: "modern", label: "Modern (DM Serif Display and Work Sans)" },
+];
+export const CORNER_STYLES: { value: CornerStyle; label: string }[] = [
+  { value: "square", label: "Square" },
+  { value: "pill", label: "Rounded" },
+];
+export const MARK_STYLES: { value: MarkStyle; label: string }[] = [
+  { value: "monogram", label: "Initial in a circle" },
+  { value: "wordmark", label: "Store name only" },
+];
 export type Language = Schemas["Language"];
 
 export const LOGO_MAX_BYTES = 2 * 1024 * 1024;
@@ -48,6 +66,22 @@ export function useUpdateBrand() {
   return useMutation({
     mutationFn: (body: BrandUpdate) => unwrap(api.PATCH("/api/v1/settings/brand", { body })),
     onSuccess: (brand) => client.setQueryData(brandQueryKey, brand),
+  });
+}
+
+const storefrontKey = ["settings", "storefront"] as const;
+
+export function useStorefrontSettings() {
+  const api = useApi();
+  return useQuery({ queryKey: storefrontKey, queryFn: () => unwrap(api.GET("/api/v1/settings/storefront")) });
+}
+
+export function useUpdateStorefront() {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: StorefrontUpdate) => unwrap(api.PATCH("/api/v1/settings/storefront", { body })),
+    onSuccess: (settings) => client.setQueryData(storefrontKey, settings),
   });
 }
 

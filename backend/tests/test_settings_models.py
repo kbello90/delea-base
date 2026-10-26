@@ -82,3 +82,42 @@ def test_the_logo_is_never_set_through_a_brand_update(forged: dict) -> None:
     # Only the logo upload endpoints set it.
     with pytest.raises(ValidationError):
         BrandConfigUpdate(**forged)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://wa.me/15550100142",
+        "https://example.com",
+        "https://shop.example.com:8443/custom?ref=hero#top",
+        "tel:+15550100142",
+        "tel:555-010-0142",
+    ],
+)
+def test_hero_button_links_accepted(url: str) -> None:
+    assert BrandConfigUpdate(hero_cta_url=f"  {url} ").hero_cta_url == url
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://example.com",
+        "javascript:alert(1)",
+        "JavaScript:alert(1)",
+        "data:text/html,hi",
+        "https://wa.me@evil.example",
+        "https://user:pass@example.com",
+        "https://",
+        "https://localhost",
+        "https://exa mple.com",
+        'https://example.com/"onmouseover=x',
+        "tel:",
+        "tel:call-me",
+        "mailto:a@example.com",
+        "//example.com",
+        "",
+    ],
+)
+def test_hero_button_links_refused(url: str) -> None:
+    with pytest.raises(ValidationError):
+        BrandConfigUpdate(hero_cta_url=url)

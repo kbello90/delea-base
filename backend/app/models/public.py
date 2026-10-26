@@ -12,6 +12,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from app.models.product import MetalType
+from app.models.settings import CornerStyle, FontPreset, MarkStyle
 
 
 class Availability(StrEnum):
@@ -19,21 +20,6 @@ class Availability(StrEnum):
     low = "low"  # below the product's low-stock threshold; the count itself is never shown
     out_of_stock = "out_of_stock"
     made_to_order = "made_to_order"  # made after the order; never out of stock
-
-
-class FontPreset(StrEnum):
-    classic = "classic"  # Fraunces + Archivo
-    modern = "modern"  # DM Serif Display + Work Sans
-
-
-class CornerStyle(StrEnum):
-    square = "square"
-    pill = "pill"
-
-
-class MarkStyle(StrEnum):
-    monogram = "monogram"  # the first letter in a ring, when there is no logo
-    wordmark = "wordmark"  # the business name only
 
 
 class PageSlug(StrEnum):

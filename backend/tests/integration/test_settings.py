@@ -17,6 +17,7 @@ INVOICES = "/api/v1/invoices"
 COMPANY = "/api/v1/settings/company"
 BRAND = "/api/v1/settings/brand"
 CURRENCY = "/api/v1/settings/currency"
+STOREFRONT = "/api/v1/settings/storefront"
 
 _COMPANY_COLS = (
     "legal_name",
@@ -37,13 +38,32 @@ _BRAND_COLS = (
     "logo_path",
     "hero_title",
     "hero_subtitle",
+    "hero_eyebrow",
+    "collection_title",
+    "font_preset",
+    "corner_style",
+    "mark_style",
+    "hero_cta_label",
+    "hero_cta_url",
+)
+_STOREFRONT_COLS = (
+    "storefront_enabled",
+    "contact_email",
+    "return_policy",
+    "privacy_policy",
+    "terms",
+    "custom_orders_info",
 )
 
 
 @pytest.fixture(autouse=True)
 def restore_settings(db: psycopg.Connection) -> Iterator[None]:
     saved = {}
-    for table, cols in (("company_settings", _COMPANY_COLS), ("brand_config", _BRAND_COLS)):
+    for table, cols in (
+        ("company_settings", _COMPANY_COLS),
+        ("brand_config", _BRAND_COLS),
+        ("storefront_settings", _STOREFRONT_COLS),
+    ):
         saved[table] = (
             cols,
             db.execute(
@@ -309,3 +329,139 @@ def test_a_tax_rate_change_never_rewrites_existing_invoices(client, users, db) -
         )
     )
     assert sorted(r["tax_rate_bps"] for r in rows) == ["500", "800", "800"]
+
+
+# ---------------------------------------------------------------------------
+# Storefront look (brand) and storefront settings (migration 20261027000100)
+# ---------------------------------------------------------------------------
+def test_the_storefront_look_is_part_of_the_brand(client: TestClient, users) -> None:
+    owner = users["owner_a"].headers
+    brand = client.get(BRAND, headers=owner).json()
+    assert (brand["font_preset"], brand["corner_style"], brand["mark_style"]) == (
+        "classic",
+        "square",
+        "monogram",
+    )
+    updated = client.patch(
+        BRAND,
+        json={
+            "hero_eyebrow": " Made to order ",
+            "collection_title": "The collection",
+            "font_preset": "modern",
+            "corner_style": "pill",
+            "mark_style": "wordmark",
+            "hero_cta_label": "Order on WhatsApp",
+            "hero_cta_url": "https://wa.me/15550100142",
+        },
+        headers=owner,
+    )
+    assert updated.status_code == 200, updated.text
+    body = updated.json()
+    assert body["hero_eyebrow"] == "Made to order"
+    assert (body["font_preset"], body["corner_style"], body["mark_style"]) == (
+        "modern",
+        "pill",
+        "wordmark",
+    )
+    assert body["hero_cta_url"] == "https://wa.me/15550100142"
+    phone = client.patch(BRAND, json={"hero_cta_url": "tel:+15550100142"}, headers=owner)
+    assert phone.json()["hero_cta_url"] == "tel:+15550100142"
+    cleared = client.patch(
+        BRAND, json={"hero_cta_label": None, "hero_cta_url": None}, headers=owner
+    )
+    assert (cleared.json()["hero_cta_label"], cleared.json()["hero_cta_url"]) == (None, None)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://example.com",
+        "javascript:alert(1)",
+        "data:text/html,hi",
+        "https://wa.me@evil.example",
+        "https://user:pass@example.com",
+        "https://localhost",
+        "//example.com",
+        "mailto:hello@example.com",
+        "tel:call-me",
+        "https://example.com/" + "a" * 500,
+        "",
+    ],
+)
+def test_the_second_hero_button_accepts_only_https_and_tel_links(
+    client: TestClient, users, db, url: str
+) -> None:
+    owner = users["owner_a"].headers
+    response = client.patch(BRAND, json={"hero_cta_url": url}, headers=owner)
+    assert response.status_code == 422, url
+    assert db.execute(
+        "select hero_cta_url from public.brand_config where tenant_id = %s", (TENANT_A,)
+    ).fetchone() == (None,)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"font_preset": "comic"},
+        {"corner_style": "round"},
+        {"mark_style": "emoji"},
+        {"hero_eyebrow": "x" * 61},
+        {"collection_title": "   "},
+        {"hero_cta_label": "x" * 41},
+        {"font_preset": None},
+    ],
+)
+def test_storefront_look_validation(client: TestClient, users, bad: dict) -> None:
+    assert client.patch(BRAND, json=bad, headers=users["owner_a"].headers).status_code == 422
+
+
+def test_storefront_settings_role_matrix(client: TestClient, users: dict[str, TestUser]) -> None:
+    assert_access(client, users, "GET", STOREFRONT, {"owner_a": 200, "owner_b": 200})
+    assert_access(
+        client,
+        users,
+        "PATCH",
+        STOREFRONT,
+        {"owner_a": 200, "owner_b": 200},
+        json={"contact_email": "it@example.com"},
+    )
+
+
+def test_storefront_settings_get_and_patch(client: TestClient, users, db) -> None:
+    owner = users["owner_a"].headers
+    current = client.get(STOREFRONT, headers=owner).json()
+    assert current["storefront_enabled"] is True
+    assert current["contact_email"] == "hello@example.com"
+
+    updated = client.patch(
+        STOREFRONT,
+        json={
+            "privacy_policy": "  We keep your order details only to make and ship it.  ",
+            "terms": "IT terms",
+            "return_policy": None,
+        },
+        headers=owner,
+    )
+    assert updated.status_code == 200, updated.text
+    body = updated.json()
+    assert body["privacy_policy"] == "We keep your order details only to make and ship it."
+    assert (body["terms"], body["return_policy"]) == ("IT terms", None)
+    # Tenant B is untouched.
+    assert db.execute(
+        "select terms from public.storefront_settings where tenant_id = %s", (TENANT_B,)
+    ).fetchone() == (None,)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"contact_email": "not an email"},
+        {"terms": "x" * 20001},
+        {"terms": "   "},
+        {"storefront_enabled": None},
+        {"tenant_id": TENANT_B},
+        {},
+    ],
+)
+def test_storefront_settings_validation(client: TestClient, users, bad: dict) -> None:
+    assert client.patch(STOREFRONT, json=bad, headers=users["owner_a"].headers).status_code == 422

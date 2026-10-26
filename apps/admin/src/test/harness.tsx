@@ -93,6 +93,23 @@ export const DEFAULT_BRAND_RESPONSE: Schemas["BrandConfigOut"] = {
   logo_url: null,
   hero_title: null,
   hero_subtitle: null,
+  hero_eyebrow: null,
+  collection_title: null,
+  font_preset: "classic",
+  corner_style: "square",
+  mark_style: "monogram",
+  hero_cta_label: null,
+  hero_cta_url: null,
+  updated_at: "2026-10-20T00:00:00Z",
+};
+
+export const STOREFRONT_RESPONSE: Schemas["StorefrontSettingsOut"] = {
+  storefront_enabled: false,
+  contact_email: null,
+  return_policy: null,
+  privacy_policy: null,
+  terms: null,
+  custom_orders_info: null,
   updated_at: "2026-10-20T00:00:00Z",
 };
 
@@ -154,6 +171,7 @@ type Responder = (request: Request) => Response | Promise<Response>;
 const DEFAULT_RESPONSES: Record<string, unknown> = {
   "/api/v1/settings/brand": DEFAULT_BRAND_RESPONSE,
   "/api/v1/settings/company": COMPANY_RESPONSE,
+  "/api/v1/settings/storefront": STOREFRONT_RESPONSE,
   "/api/v1/settings/currency": { currency: "USD" },
   "/api/v1/dashboard/summary": SUMMARY_RESPONSE,
   "/api/v1/dashboard/monthly": MONTHLY_RESPONSE,

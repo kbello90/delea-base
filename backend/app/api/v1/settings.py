@@ -1,10 +1,12 @@
-"""Brand config, company/tax info, and the brand logo (TRD §6.9).
+"""Brand config, company/tax info, the brand logo and the storefront settings (TRD §6.9).
 
 company_settings: owner only (it holds the tax ID and the Stripe account reference). The
 currency is read-only here: it is set at provisioning and the database refuses a change once
 the tenant has data. A default tax-rate change applies to new quotes only: every invoice keeps
 the rate it was created with (invoices.tax_rate_bps), and replacing a quote's lines reuses it.
 brand_config: read by owner and staff, written by the owner (RLS: owner all, staff select).
+storefront_settings: owner only here (everything in it is public on the storefront: the
+on/off switch, the contact email and the pages).
 currency: read by owner, staff and cpa through current_tenant_currency() (SECURITY DEFINER),
 so staff and cpa learn the currency without reading company_settings.
 require_role gives a clear 403 up front, but RLS (user session as `authenticated`) is the
@@ -40,6 +42,7 @@ from app.models.settings import (
     BRAND_NULLABLE,
     COMPANY_NULLABLE,
     LOGO_EXTENSIONS,
+    STOREFRONT_NULLABLE,
     BrandConfigOut,
     BrandConfigUpdate,
     CompanySettingsOut,
@@ -49,6 +52,8 @@ from app.models.settings import (
     LogoType,
     LogoUploadRequest,
     LogoUploadTicket,
+    StorefrontSettingsOut,
+    StorefrontSettingsUpdate,
     language_rule_errors,
 )
 from app.services.brand_logo import MAX_BYTES, ImageRejected, process_logo_async
@@ -69,7 +74,12 @@ _COMPANY_COLUMNS = (
 )
 _BRAND_COLUMNS = (
     "tenant_id, business_name, tagline, primary_color, accent_color, logo_path, hero_title, "
-    "hero_subtitle, updated_at"
+    "hero_subtitle, hero_eyebrow, collection_title, font_preset, corner_style, mark_style, "
+    "hero_cta_label, hero_cta_url, updated_at"
+)
+_STOREFRONT_COLUMNS = (
+    "storefront_enabled, contact_email, return_policy, privacy_policy, terms, "
+    "custom_orders_info, updated_at"
 )
 
 
@@ -161,6 +171,44 @@ async def update_brand_config(
     if row is None:
         raise NotFoundError("Brand config not found")
     return brand_out(row)
+
+
+@router.get("/storefront", response_model=StorefrontSettingsOut, dependencies=[OwnerOnly])
+async def get_storefront_settings(claims: CurrentClaims, conn: DbConn) -> StorefrontSettingsOut:
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            f"select {_STOREFRONT_COLUMNS} from public.storefront_settings where tenant_id = %s",
+            (claims.tenant_id,),
+        )
+        row = await cur.fetchone()
+    if row is None:
+        raise NotFoundError("Storefront settings not found")
+    return StorefrontSettingsOut.model_validate(row)
+
+
+@router.patch("/storefront", response_model=StorefrontSettingsOut, dependencies=[OwnerOnly])
+async def update_storefront_settings(
+    body: StorefrontSettingsUpdate, claims: CurrentClaims, conn: DbConn
+) -> StorefrontSettingsOut:
+    """Everything here is public. Switching the storefront off makes every one of the
+    tenant's storefront domains answer "Store not found" (within a minute: lookups are
+    cached)."""
+    changes = patch_changes(body, STOREFRONT_NULLABLE)
+    query = update_statement(
+        "storefront_settings",
+        changes,
+        StorefrontSettingsUpdate,
+        _STOREFRONT_COLUMNS,
+        key_column="tenant_id",
+    )
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            query, {**changes, "key": claims.tenant_id, "tenant_id": claims.tenant_id}
+        )
+        row = await cur.fetchone()
+    if row is None:
+        raise NotFoundError("Storefront settings not found")
+    return StorefrontSettingsOut.model_validate(row)
 
 
 @router.get("/currency", response_model=CurrencyOut, dependencies=[AnyMember])

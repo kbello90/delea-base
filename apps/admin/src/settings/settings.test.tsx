@@ -172,3 +172,75 @@ describe("roles", () => {
     expect(server.calls.filter((c) => c.path === "/api/v1/settings/company")).toEqual([]);
   });
 });
+
+describe("storefront look", () => {
+  it("saves the presets and the second hero button", async () => {
+    const { server, user } = setup();
+    await user.type(await screen.findByLabelText("Line above the headline"), "Made to order");
+    await user.selectOptions(screen.getByLabelText("Fonts"), "modern");
+    await user.selectOptions(screen.getByLabelText("Buttons"), "pill");
+    await user.selectOptions(screen.getByLabelText("Without a logo, show"), "wordmark");
+    await user.type(screen.getByLabelText("Second button text"), "Order on WhatsApp");
+    await user.type(screen.getByLabelText("Second button link"), " https://wa.me/15550100142 ");
+    await user.click(screen.getByRole("button", { name: "Save brand" }));
+    await waitFor(() =>
+      expect(server.last("PATCH", "/api/v1/settings/brand")?.body).toEqual({
+        hero_eyebrow: "Made to order",
+        font_preset: "modern",
+        corner_style: "pill",
+        mark_style: "wordmark",
+        hero_cta_label: "Order on WhatsApp",
+        hero_cta_url: "https://wa.me/15550100142",
+      }),
+    );
+  });
+
+  it.each(["http://example.com", "javascript:alert(1)", "https://wa.me@evil.example", "www.example.com", "tel:call-me"])(
+    "refuses the button link %s before sending anything",
+    async (link) => {
+      const { server, user } = setup();
+      await user.type(await screen.findByLabelText("Second button link"), link);
+      await user.click(screen.getByRole("button", { name: "Save brand" }));
+      expect(await screen.findByText(/Use an https:\/\/ link/)).toBeInTheDocument();
+      expect(screen.getByLabelText("Second button link")).toHaveAttribute("aria-invalid", "true");
+      expect(server.last("PATCH", "/api/v1/settings/brand")).toBeUndefined();
+    },
+  );
+
+  it("accepts a tel: link", async () => {
+    const { server, user } = setup();
+    await user.type(await screen.findByLabelText("Second button link"), "tel:+15550100142");
+    await user.click(screen.getByRole("button", { name: "Save brand" }));
+    await waitFor(() => expect(server.last("PATCH", "/api/v1/settings/brand")?.body).toEqual({ hero_cta_url: "tel:+15550100142" }));
+  });
+});
+
+describe("storefront", () => {
+  const card = () => within(screen.getByRole("form", { name: "Storefront" }));
+
+  it("turns the store on and saves the contact email and pages (trimmed; empty is null)", async () => {
+    const { server, user } = setup();
+    const form = await screen.findByRole("form", { name: "Storefront" });
+    await user.click(within(form).getByRole("checkbox", { name: "Store is online" }));
+    await user.type(card().getByLabelText("Contact email"), "hello@shop.test");
+    await user.type(card().getByLabelText("How custom orders work"), "  Tell us your size.  ");
+    await user.type(card().getByLabelText("Privacy policy"), "We keep your details private.");
+    await user.click(card().getByRole("button", { name: "Save storefront" }));
+    await waitFor(() =>
+      expect(server.last("PATCH", "/api/v1/settings/storefront")?.body).toEqual({
+        storefront_enabled: true,
+        contact_email: "hello@shop.test",
+        custom_orders_info: "Tell us your size.",
+        privacy_policy: "We keep your details private.",
+      }),
+    );
+  });
+
+  it("refuses a malformed contact email", async () => {
+    const { server, user } = setup();
+    await user.type(await screen.findByLabelText("Contact email"), "not-an-email");
+    await user.click(card().getByRole("button", { name: "Save storefront" }));
+    expect(await screen.findByText("Enter an email address like hello@yourshop.com.")).toBeInTheDocument();
+    expect(server.last("PATCH", "/api/v1/settings/storefront")).toBeUndefined();
+  });
+});

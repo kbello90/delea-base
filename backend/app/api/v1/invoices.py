@@ -210,14 +210,15 @@ async def _stock_shortages(
     conn: AsyncConnection, claims: TokenClaims, items: Sequence[LineItemIn]
 ) -> list[StockShortage]:
     """Products the lines need more of than is in stock right now (quantities summed per
-    product, as the database checks when the invoice is paid)."""
+    product, as the database checks when the invoice is paid). Made-to-order products are
+    never short: the database neither checks nor decrements them."""
     needed: dict[UUID, int] = {}
     for item in items:
         needed[item.product_id] = needed.get(item.product_id, 0) + item.qty
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
             "select id, sku, stock_qty from public.products "
-            "where tenant_id = %s and id = any(%s) order by sku",
+            "where tenant_id = %s and id = any(%s) and not made_to_order order by sku",
             (claims.tenant_id, list(needed)),
         )
         rows = await cur.fetchall()

@@ -1,5 +1,19 @@
 import { formatPercent, parsePercent } from "../lib/percent";
-import { LOGO_MAX_BYTES, LOGO_TYPES, type BrandConfig, type BrandUpdate, type CompanySettings, type CompanyUpdate, type Language, type LogoType } from "./api";
+import {
+  LOGO_MAX_BYTES,
+  LOGO_TYPES,
+  type BrandConfig,
+  type BrandUpdate,
+  type CompanySettings,
+  type CompanyUpdate,
+  type CornerStyle,
+  type FontPreset,
+  type Language,
+  type LogoType,
+  type MarkStyle,
+  type StorefrontSettings,
+  type StorefrontUpdate,
+} from "./api";
 
 export interface CompanyFormValues {
   legalName: string;
@@ -17,11 +31,37 @@ export interface BrandFormValues {
   accentColor: string;
   heroTitle: string;
   heroSubtitle: string;
+  heroEyebrow: string;
+  collectionTitle: string;
+  fontPreset: FontPreset;
+  cornerStyle: CornerStyle;
+  markStyle: MarkStyle;
+  heroButtonLabel: string;
+  heroButtonLink: string;
+}
+
+export interface StorefrontFormValues {
+  storefrontEnabled: boolean;
+  contactEmail: string;
+  customOrdersInfo: string;
+  returnPolicy: string;
+  privacyPolicy: string;
+  terms: string;
 }
 
 export type Errors<T> = Partial<Record<keyof T, string>>;
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
+// The second hero button's link: https:// with a plain host, or a tel: number. The server and
+// the database check the same.
+const HTTPS_LINK = /^https:\/\/[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(:[0-9]{1,5})?([/?#][^\s<>"]*)?$/i;
+const TEL_LINK = /^tel:\+?[0-9][0-9().-]{2,29}$/;
+const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+export const PAGE_MAX = 20000;
+
+export function isHeroLink(value: string): boolean {
+  return value.length <= 500 && (HTTPS_LINK.test(value) || TEL_LINK.test(value));
+}
 const text = (v: string) => (v.trim() ? v.trim() : null);
 
 export function toCompanyValues(c: CompanySettings): CompanyFormValues {
@@ -66,6 +106,13 @@ export function toBrandValues(b: BrandConfig): BrandFormValues {
     accentColor: b.accent_color,
     heroTitle: b.hero_title ?? "",
     heroSubtitle: b.hero_subtitle ?? "",
+    heroEyebrow: b.hero_eyebrow ?? "",
+    collectionTitle: b.collection_title ?? "",
+    fontPreset: b.font_preset,
+    cornerStyle: b.corner_style,
+    markStyle: b.mark_style,
+    heroButtonLabel: b.hero_cta_label ?? "",
+    heroButtonLink: b.hero_cta_url ?? "",
   };
 }
 
@@ -79,6 +126,13 @@ export function brandChanges(saved: BrandConfig, v: BrandFormValues): { body?: B
   if (v.tagline.trim().length > 200) errors.tagline = "Use at most 200 characters.";
   if (v.heroTitle.trim().length > 200) errors.heroTitle = "Use at most 200 characters.";
   if (v.heroSubtitle.trim().length > 2000) errors.heroSubtitle = "Use at most 2000 characters.";
+  if (v.heroEyebrow.trim().length > 60) errors.heroEyebrow = "Use at most 60 characters.";
+  if (v.collectionTitle.trim().length > 80) errors.collectionTitle = "Use at most 80 characters.";
+  if (v.heroButtonLabel.trim().length > 40) errors.heroButtonLabel = "Use at most 40 characters.";
+  const link = v.heroButtonLink.trim();
+  if (link && !isHeroLink(link)) {
+    errors.heroButtonLink = "Use an https:// link (for example https://wa.me/15550100142) or a phone number like tel:+15550100142.";
+  }
   if (Object.keys(errors).length > 0) return { errors };
 
   const body: BrandUpdate = {};
@@ -88,6 +142,49 @@ export function brandChanges(saved: BrandConfig, v: BrandFormValues): { body?: B
   if (v.accentColor.trim().toUpperCase() !== saved.accent_color.toUpperCase()) body.accent_color = v.accentColor.trim();
   if (text(v.heroTitle) !== saved.hero_title) body.hero_title = text(v.heroTitle);
   if (text(v.heroSubtitle) !== saved.hero_subtitle) body.hero_subtitle = text(v.heroSubtitle);
+  if (text(v.heroEyebrow) !== saved.hero_eyebrow) body.hero_eyebrow = text(v.heroEyebrow);
+  if (text(v.collectionTitle) !== saved.collection_title) body.collection_title = text(v.collectionTitle);
+  if (v.fontPreset !== saved.font_preset) body.font_preset = v.fontPreset;
+  if (v.cornerStyle !== saved.corner_style) body.corner_style = v.cornerStyle;
+  if (v.markStyle !== saved.mark_style) body.mark_style = v.markStyle;
+  if (text(v.heroButtonLabel) !== saved.hero_cta_label) body.hero_cta_label = text(v.heroButtonLabel);
+  if (text(link) !== saved.hero_cta_url) body.hero_cta_url = text(link);
+  return { body, errors };
+}
+
+export function toStorefrontValues(s: StorefrontSettings): StorefrontFormValues {
+  return {
+    storefrontEnabled: s.storefront_enabled,
+    contactEmail: s.contact_email ?? "",
+    customOrdersInfo: s.custom_orders_info ?? "",
+    returnPolicy: s.return_policy ?? "",
+    privacyPolicy: s.privacy_policy ?? "",
+    terms: s.terms ?? "",
+  };
+}
+
+const PAGE_FIELDS = [
+  ["customOrdersInfo", "custom_orders_info"],
+  ["returnPolicy", "return_policy"],
+  ["privacyPolicy", "privacy_policy"],
+  ["terms", "terms"],
+] as const;
+
+export function storefrontChanges(saved: StorefrontSettings, v: StorefrontFormValues): { body?: StorefrontUpdate; errors: Errors<StorefrontFormValues> } {
+  const errors: Errors<StorefrontFormValues> = {};
+  const email = v.contactEmail.trim();
+  if (email && (email.length > 254 || !EMAIL.test(email))) errors.contactEmail = "Enter an email address like hello@yourshop.com.";
+  for (const [key] of PAGE_FIELDS) {
+    if (v[key].trim().length > PAGE_MAX) errors[key] = `Use at most ${PAGE_MAX.toLocaleString("en-US")} characters.`;
+  }
+  if (Object.keys(errors).length > 0) return { errors };
+
+  const body: StorefrontUpdate = {};
+  if (v.storefrontEnabled !== saved.storefront_enabled) body.storefront_enabled = v.storefrontEnabled;
+  if (text(email) !== saved.contact_email) body.contact_email = text(email);
+  for (const [key, column] of PAGE_FIELDS) {
+    if (text(v[key]) !== saved[column]) body[column] = text(v[key]);
+  }
   return { body, errors };
 }
 

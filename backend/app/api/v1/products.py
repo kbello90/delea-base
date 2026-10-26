@@ -38,7 +38,7 @@ OwnerOnly = Depends(require_role("owner"))
 _COLUMNS = (
     "id, tenant_id, sku, name, description, metal::text as metal, price_cents, "
     "sale_price_cents, sale_ends_at, stock_qty, low_stock_threshold, icon, "
-    "is_published, sort_order, created_at, updated_at"
+    "is_published, sort_order, made_to_order, lead_time_note, created_at, updated_at"
 )
 
 
@@ -140,12 +140,14 @@ async def create_product(body: ProductCreate, claims: CurrentClaims, conn: DbCon
             f"""
             insert into public.products
               (tenant_id, sku, name, description, metal, price_cents, sale_price_cents,
-               sale_ends_at, stock_qty, low_stock_threshold, icon, is_published, sort_order)
+               sale_ends_at, stock_qty, low_stock_threshold, icon, is_published, sort_order,
+               made_to_order, lead_time_note)
             values
               (%(tenant_id)s, %(sku)s, %(name)s, %(description)s,
                %(metal)s::public.metal_type, %(price_cents)s, %(sale_price_cents)s,
                %(sale_ends_at)s, %(stock_qty)s, %(low_stock_threshold)s,
-               %(icon)s, %(is_published)s, %(sort_order)s)
+               %(icon)s, %(is_published)s, %(sort_order)s,
+               %(made_to_order)s, %(lead_time_note)s)
             returning {_COLUMNS}
             """,
             {**values, "tenant_id": claims.tenant_id},

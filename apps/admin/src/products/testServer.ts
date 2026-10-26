@@ -38,6 +38,8 @@ export function makeProduct(overrides: Partial<Product> = {}): Product {
     icon: null,
     is_published: true,
     sort_order: 0,
+    made_to_order: false,
+    lead_time_note: null,
     created_at: "2026-10-01T00:00:00Z",
     updated_at: "2026-10-01T00:00:00Z",
     images: [],

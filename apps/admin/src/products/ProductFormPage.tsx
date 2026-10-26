@@ -17,6 +17,7 @@ import { ImageManager } from "./ImageManager";
 import {
   changedFields,
   EMPTY_FORM,
+  LEAD_TIME_NOTE_MAX,
   toFormValues,
   validateProductForm,
   type ProductFormErrors,
@@ -110,6 +111,27 @@ function ProductForm({
         />
         Published (visible on the storefront)
       </label>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={values.madeToOrder}
+          onChange={(e) => set("madeToOrder", e.target.checked)}
+          disabled={busy}
+          aria-describedby="madeToOrder-hint"
+        />
+        Made to order
+      </label>
+      <p id="madeToOrder-hint" className="field-hint">
+        Made after the sale: shoppers can always order it, and stock isn't counted down when it sells.
+      </p>
+      <Field
+        id="leadTimeNote"
+        label="Lead time (optional, shown on the storefront)"
+        error={errors.leadTimeNote}
+        hint={`For example "Ships in 2-3 weeks". Up to ${LEAD_TIME_NOTE_MAX} characters.`}
+      >
+        <input type="text" maxLength={LEAD_TIME_NOTE_MAX} {...text("leadTimeNote", {}, true)} />
+      </Field>
       <div className="form-actions">
         <Button type="submit" disabled={busy} aria-busy={busy}>
           {busy ? "Saving…" : submitLabel}
@@ -258,7 +280,13 @@ function ViewProduct({ product }: { product: Product }) {
           </>
         )}
         <dt>Stock</dt>
-        <dd>{product.stock_qty}</dd>
+        <dd>{product.made_to_order ? "Made to order" : product.stock_qty}</dd>
+        {product.lead_time_note && (
+          <>
+            <dt>Lead time</dt>
+            <dd>{product.lead_time_note}</dd>
+          </>
+        )}
         <dt>Status</dt>
         <dd>{product.is_published ? "Published" : "Draft"}</dd>
         {product.description && (

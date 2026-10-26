@@ -592,6 +592,29 @@ export interface paths {
         patch: operations["update_brand_config_api_v1_settings_brand_patch"];
         trace?: never;
     };
+    "/api/v1/settings/storefront": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Storefront Settings */
+        get: operations["get_storefront_settings_api_v1_settings_storefront_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Storefront Settings
+         * @description Everything here is public. Switching the storefront off makes every one of the
+         *     tenant's storefront domains answer "Store not found" (within a minute: lookups are
+         *     cached).
+         */
+        patch: operations["update_storefront_settings_api_v1_settings_storefront_patch"];
+        trace?: never;
+    };
     "/api/v1/settings/currency": {
         parameters: {
             query?: never;
@@ -856,6 +879,17 @@ export interface components {
             hero_title: string | null;
             /** Hero Subtitle */
             hero_subtitle: string | null;
+            /** Hero Eyebrow */
+            hero_eyebrow: string | null;
+            /** Collection Title */
+            collection_title: string | null;
+            font_preset: components["schemas"]["FontPreset"];
+            corner_style: components["schemas"]["CornerStyle"];
+            mark_style: components["schemas"]["MarkStyle"];
+            /** Hero Cta Label */
+            hero_cta_label: string | null;
+            /** Hero Cta Url */
+            hero_cta_url: string | null;
             /**
              * Updated At
              * Format: date-time
@@ -876,6 +910,17 @@ export interface components {
             hero_title?: string | null;
             /** Hero Subtitle */
             hero_subtitle?: string | null;
+            /** Hero Eyebrow */
+            hero_eyebrow?: string | null;
+            /** Collection Title */
+            collection_title?: string | null;
+            font_preset?: components["schemas"]["FontPreset"] | null;
+            corner_style?: components["schemas"]["CornerStyle"] | null;
+            mark_style?: components["schemas"]["MarkStyle"] | null;
+            /** Hero Cta Label */
+            hero_cta_label?: string | null;
+            /** Hero Cta Url */
+            hero_cta_url?: string | null;
         };
         /** CompanySettingsOut */
         CompanySettingsOut: {
@@ -1704,6 +1749,13 @@ export interface components {
              * @default 0
              */
             sort_order: number;
+            /**
+             * Made To Order
+             * @default false
+             */
+            made_to_order: boolean;
+            /** Lead Time Note */
+            lead_time_note?: string | null;
         };
         /**
          * ProductImageOut
@@ -1763,6 +1815,10 @@ export interface components {
             is_published: boolean;
             /** Sort Order */
             sort_order: number;
+            /** Made To Order */
+            made_to_order: boolean;
+            /** Lead Time Note */
+            lead_time_note: string | null;
             /**
              * Created At
              * Format: date-time
@@ -1804,6 +1860,10 @@ export interface components {
             is_published?: boolean | null;
             /** Sort Order */
             sort_order?: number | null;
+            /** Made To Order */
+            made_to_order?: boolean | null;
+            /** Lead Time Note */
+            lead_time_note?: string | null;
         };
         /** PublicImageOut */
         PublicImageOut: {
@@ -1950,6 +2010,44 @@ export interface components {
             available: number;
             /** Needed */
             needed: number;
+        };
+        /** StorefrontSettingsOut */
+        StorefrontSettingsOut: {
+            /** Storefront Enabled */
+            storefront_enabled: boolean;
+            /** Contact Email */
+            contact_email: string | null;
+            /** Return Policy */
+            return_policy: string | null;
+            /** Privacy Policy */
+            privacy_policy: string | null;
+            /** Terms */
+            terms: string | null;
+            /** Custom Orders Info */
+            custom_orders_info: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * StorefrontSettingsUpdate
+         * @description PATCH /settings/storefront. Everything here is shown on the public storefront.
+         */
+        StorefrontSettingsUpdate: {
+            /** Storefront Enabled */
+            storefront_enabled?: boolean | null;
+            /** Contact Email */
+            contact_email?: string | null;
+            /** Return Policy */
+            return_policy?: string | null;
+            /** Privacy Policy */
+            privacy_policy?: string | null;
+            /** Terms */
+            terms?: string | null;
+            /** Custom Orders Info */
+            custom_orders_info?: string | null;
         };
         /** UploadRequest */
         UploadRequest: {
@@ -3549,6 +3647,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BrandConfigOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_storefront_settings_api_v1_settings_storefront_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorefrontSettingsOut"];
+                };
+            };
+        };
+    };
+    update_storefront_settings_api_v1_settings_storefront_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StorefrontSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorefrontSettingsOut"];
                 };
             };
             /** @description Validation Error */

@@ -242,3 +242,28 @@ def test_unknown_product_is_404(client: TestClient, users: dict[str, TestUser]) 
     assert client.patch(missing, json={"name": "x"}, headers=owner.headers).status_code == 404
     assert client.delete(missing, headers=owner.headers).status_code == 404
     assert client.get(f"{PRODUCTS}/not-a-uuid", headers=owner.headers).status_code == 422
+
+
+def test_made_to_order_and_lead_time_note(client: TestClient, users: dict[str, TestUser]) -> None:
+    owner = users["owner_a"].headers
+    created = client.post(
+        PRODUCTS,
+        json=product_payload(made_to_order=True, lead_time_note="  Ships in 2-3 weeks  "),
+        headers=owner,
+    )
+    assert created.status_code == 201, created.text
+    product = created.json()
+    assert (product["made_to_order"], product["lead_time_note"]) == (True, "Ships in 2-3 weeks")
+
+    url = f"{PRODUCTS}/{product['id']}"
+    cleared = client.patch(
+        url, json={"made_to_order": False, "lead_time_note": None}, headers=owner
+    )
+    assert (cleared.json()["made_to_order"], cleared.json()["lead_time_note"]) == (False, None)
+    plain = client.post(PRODUCTS, json=product_payload(), headers=owner).json()
+    assert plain["made_to_order"] is False
+
+    for bad in ({"lead_time_note": "x" * 61}, {"lead_time_note": "   "}, {"made_to_order": None}):
+        assert client.patch(url, json=bad, headers=owner).status_code == 422, bad
+    staff = client.patch(url, json={"made_to_order": True}, headers=users["staff_a"].headers)
+    assert staff.status_code == 403
