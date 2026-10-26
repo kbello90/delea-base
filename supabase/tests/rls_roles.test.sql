@@ -95,6 +95,10 @@ insert into cases values
    $q$insert into public.tenant_domains (domain, tenant_id, kind) values ('new.localhost', '11111111-1111-1111-1111-111111111111', 'admin')$q$,
    $q$update public.tenant_domains set kind = kind where tenant_id = '11111111-1111-1111-1111-111111111111'$q$,
    $q$delete from public.tenant_domains where tenant_id = '11111111-1111-1111-1111-111111111111'$q$),
+  ('storefront_settings',
+   $q$insert into public.storefront_settings (tenant_id) values ('11111111-1111-1111-1111-111111111111') on conflict (tenant_id) do update set terms = excluded.terms$q$,
+   $q$update public.storefront_settings set terms = 'X' where tenant_id = '11111111-1111-1111-1111-111111111111'$q$,
+   $q$delete from public.storefront_settings where tenant_id = '11111111-1111-1111-1111-111111111111'$q$),
   ('brand_config',
    $q$insert into public.brand_config (tenant_id, business_name) values ('11111111-1111-1111-1111-111111111111', 'X') on conflict (tenant_id) do update set business_name = excluded.business_name$q$,
    $q$update public.brand_config set tagline = 'X' where tenant_id = '11111111-1111-1111-1111-111111111111'$q$,
@@ -152,6 +156,7 @@ insert into expected values
   ('owner', 'tenants',            true,  false, false, false),
   ('owner', 'tenant_domains',     true,  false, false, false),
   ('owner', 'tenant_members',     true,  true,  true,  true),
+  ('owner', 'storefront_settings', true,  true,  true,  true),
   ('owner', 'brand_config',       true,  true,  true,  true),
   ('owner', 'company_settings',   true,  true,  true,  true),
   ('owner', 'products',           true,  true,  true,  true),
@@ -167,6 +172,7 @@ insert into expected values
   ('staff', 'tenants',            true,  false, false, false),
   ('staff', 'tenant_domains',     true,  false, false, false),
   ('staff', 'tenant_members',     false, false, false, false),
+  ('staff', 'storefront_settings', true,  false, false, false),
   ('staff', 'brand_config',       true,  false, false, false),
   ('staff', 'company_settings',   false, false, false, false),
   ('staff', 'products',           true,  false, false, false),
@@ -182,6 +188,7 @@ insert into expected values
   ('cpa',   'tenants',            false, false, false, false),
   ('cpa',   'tenant_domains',     false, false, false, false),
   ('cpa',   'tenant_members',     false, false, false, false),
+  ('cpa',   'storefront_settings', false, false, false, false),
   ('cpa',   'brand_config',       false, false, false, false),
   ('cpa',   'company_settings',   false, false, false, false),
   ('cpa',   'products',           false, false, false, false),
@@ -194,7 +201,7 @@ insert into expected values
   ('cpa',   'automation_rules',   false, false, false, false),
   ('cpa',   'reorder_list',       false, false, false, false);
 
-select is((select count(*)::int from expected), 42, 'matrix covers 14 tables x 3 roles');
+select is((select count(*)::int from expected), 45, 'matrix covers 15 tables x 3 roles');
 
 -- Runs every matrix check for one role. Denied select/update/delete are filtered to zero
 -- rows by RLS; denied insert fails the RLS check (42501).

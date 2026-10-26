@@ -167,7 +167,7 @@ create temp table public_tables as
   from pg_class c
   where c.relnamespace = 'public'::regnamespace and c.relkind = 'r';
 
-select is((select count(*)::int from public_tables), 18, 'checking all 18 public tables');
+select is((select count(*)::int from public_tables), 19, 'checking all 19 public tables');
 
 select throws_ok(format('select pg_temp.count_as(%L, %L)', 'ai_readonly',
                         format('select count(*) from public.%I', tbl)),

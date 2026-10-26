@@ -83,9 +83,9 @@ select tables_are(
     'products', 'product_images', 'materials', 'product_materials',
     'customers', 'invoices', 'invoice_line_items',
     'expenses', 'automation_rules', 'reorder_list', 'automation_events', 'stripe_events',
-    'password_reset_attempts'
+    'password_reset_attempts', 'storefront_settings'
   ],
-  'public contains exactly the 18 Schema tables'
+  'public contains exactly the 19 Schema tables'
 );
 
 -- Every function in public pins search_path (covers every SECURITY DEFINER function).

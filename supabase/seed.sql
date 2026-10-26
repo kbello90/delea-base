@@ -38,6 +38,27 @@ values
   ('22222222-2222-2222-2222-222222222222', 'Aurora Gems Inc.', '98-7654321',
    '12 Harbor Street, Portland, ME', 'USD', 'en', '{en}', 550, 1, 1);
 
+-- Storefront look (migration 20261027000100): A follows the approved preview, B is the
+-- "rebrand" example (modern fonts, pill buttons, wordmark, a WhatsApp button).
+update public.brand_config
+   set hero_eyebrow = 'Made to order', collection_title = 'The collection',
+       hero_title = 'Handcrafted pieces in 14K gold and 925 silver',
+       hero_subtitle = 'Each piece is made for you. Choose your metal, add your initial or birth flower, and track your order from workshop to doorstep.'
+ where tenant_id = '11111111-1111-1111-1111-111111111111';
+update public.brand_config
+   set collection_title = 'Most requested', font_preset = 'modern', corner_style = 'pill',
+       mark_style = 'wordmark', hero_cta_label = 'Order on WhatsApp',
+       hero_cta_url = 'https://wa.me/15550100142'
+ where tenant_id = '22222222-2222-2222-2222-222222222222';
+
+insert into public.storefront_settings
+  (tenant_id, storefront_enabled, contact_email, return_policy, custom_orders_info)
+values
+  ('11111111-1111-1111-1111-111111111111', true, 'hello@example.com',
+   'Unworn pieces can be returned within 30 days. Personalized and made-to-order pieces are final sale.',
+   'Choose a piece, tell us your initial, birth flower or size, and we start making it after you order. Most pieces ship in 2 to 3 weeks.'),
+  ('22222222-2222-2222-2222-222222222222', true, 'hola@example.com', null, null);
+
 -- ---------------------------------------------------------------------------
 -- Catalog
 -- ---------------------------------------------------------------------------
