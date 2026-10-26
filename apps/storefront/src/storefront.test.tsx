@@ -37,7 +37,7 @@ describe("home", () => {
     expect(card("Monogram Ring").getByText("$125.50")).toBeInTheDocument();
     expect(card("Monogram Ring").getByText("Made to order", { selector: ".badge" })).toBeInTheDocument();
     expect(card("Monogram Ring").getByRole("img", { name: "Monogram Ring" })).toHaveAttribute("src", PRODUCTS[3].images[0].thumb_url);
-    expect(screen.getByRole("link", { name: "View Engagement Ring" })).toHaveAttribute("href", `/products/${PRODUCTS[2].id}`);
+    expect(screen.getByRole("link", { name: "View piece: Engagement Ring" })).toHaveAttribute("href", `/products/${PRODUCTS[2].id}`);
   });
 
   it("has no bag or checkout until checkout ships", async () => {
@@ -160,7 +160,7 @@ describe("whole-shop states", () => {
 });
 
 describe("product page", () => {
-  it("shows the piece, its photos, lead time and how to order for now", async () => {
+  it("shows the piece, its photos, lead time, and how to order while checkout is off", async () => {
     const product = PRODUCTS[3];
     const user = userEvent.setup();
     renderShop(`/products/${product.id}`);
@@ -172,7 +172,7 @@ describe("product page", () => {
     expect(main).toHaveAttribute("src", product.images[0].url);
     await user.click(screen.getByRole("button", { name: "Photo 2 of 2" }));
     expect(screen.getByRole("img", { name: "Monogram Ring" })).toHaveAttribute("src", product.images[1].url);
-    expect(screen.getByText(/Online ordering opens soon/)).toBeInTheDocument();
+    expect(screen.getByText(/Online ordering is temporarily unavailable/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "hello@example.com" })).toHaveAttribute("href", "mailto:hello@example.com?subject=Monogram%20Ring");
   });
 

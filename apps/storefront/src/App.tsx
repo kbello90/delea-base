@@ -1,6 +1,7 @@
 import type { ApiClient } from "@delea/api-client";
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { BagProvider } from "./components/BagProvider";
 import { ApiContext } from "./lib/apiClient";
 import { routes } from "./routes";
 
@@ -10,7 +11,9 @@ export function App({ api, queryClient }: { api: ApiClient; queryClient: QueryCl
   return (
     <ApiContext.Provider value={api}>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <BagProvider>
+          <RouterProvider router={router} />
+        </BagProvider>
       </QueryClientProvider>
     </ApiContext.Provider>
   );

@@ -8,6 +8,8 @@ configure({ asyncUtilTimeout: 5000 });
 afterEach(() => {
   if (typeof document === "undefined") return;
   cleanup();
+  localStorage.clear();
+  document.querySelector('meta[name="referrer"]')?.remove();
   document.documentElement.removeAttribute("style");
   delete document.documentElement.dataset.font;
   delete document.documentElement.dataset.corners;

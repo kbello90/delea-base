@@ -1,6 +1,10 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ProductArt } from "../components/Art";
+import { PersonalizationFields } from "../components/PersonalizationFields";
+import { QtyStepper } from "../components/QtyStepper";
+import { useBag } from "../lib/bagContext";
+import { answerErrors, cleanAnswers } from "../lib/personalization";
 import { artKind } from "../lib/artKind";
 import { AvailabilityBadge, Price } from "../components/ProductCard";
 import { isNotFound, useProduct, type Product, type Store } from "../lib/api";
@@ -45,8 +49,8 @@ function OrderNote({ product, store }: { product: Product; store: Store }) {
     return <p className="order-note">This piece is sold out.</p>;
   }
   return (
-    <p className="order-note">
-      Online ordering opens soon.
+    <p className="order-note" role="status">
+      Online ordering is temporarily unavailable.
       {store.contact_email && (
         <>
           {" "}
@@ -54,6 +58,55 @@ function OrderNote({ product, store }: { product: Product; store: Store }) {
         </>
       )}
     </p>
+  );
+}
+
+function AddToBag({ product }: { product: Product }) {
+  const bag = useBag();
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [qty, setQty] = useState(1);
+  const [added, setAdded] = useState(false);
+  const fields = product.personalization;
+
+  function add(event: FormEvent) {
+    event.preventDefault();
+    const found = answerErrors(fields, answers);
+    setErrors(found);
+    setAdded(false);
+    if (Object.keys(found).length > 0) {
+      document.getElementById(`answer-${Object.keys(found)[0]}`)?.focus();
+      return;
+    }
+    bag.add(product.id, qty, cleanAnswers(fields, answers));
+    setAdded(true);
+  }
+
+  return (
+    <form className="add-to-bag" onSubmit={add} noValidate aria-label={`Add ${product.name} to your bag`}>
+      <PersonalizationFields
+        fields={fields}
+        values={answers}
+        errors={errors}
+        onChange={(id, value) => {
+          setAnswers((current) => ({ ...current, [id]: value }));
+          setAdded(false);
+        }}
+      />
+      <div className="add-to-bag__row">
+        <QtyStepper value={qty} onChange={setQty} label={`Quantity of ${product.name}`} />
+        <button type="submit" className="button button--primary add-to-bag__button">
+          Add to bag
+        </button>
+      </div>
+      <p className="add-to-bag__done" role="status" aria-live="polite">
+        {added && (
+          <>
+            Added to your bag. <Link to="/bag">View bag</Link>
+          </>
+        )}
+      </p>
+    </form>
   );
 }
 
@@ -118,7 +171,7 @@ export function ProductPage() {
             </p>
           )}
           {p.description && <p className="product__description">{p.description}</p>}
-          <OrderNote product={p} store={store} />
+          {store.checkout_enabled && p.availability !== "out_of_stock" ? <AddToBag product={p} /> : <OrderNote product={p} store={store} />}
         </div>
       </div>
     </article>

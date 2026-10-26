@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { isNotFound, isRateLimited, useStore, type Store } from "../lib/api";
+import { useBag } from "../lib/bagContext";
 import { applyStoreTheme, clearStoreTheme, isSafeImageUrl } from "../lib/theme";
 
 function BrandMark({ store }: { store: Store }) {
@@ -32,8 +33,24 @@ function Header({ store }: { store: Store }) {
           </NavLink>
           {store.has_made_to_order && <NavLink to="/made-to-order">Made to order</NavLink>}
         </nav>
+        <BagButton store={store} />
       </div>
     </header>
+  );
+}
+
+function BagButton({ store }: { store: Store }) {
+  const { count } = useBag();
+  // Shown when the shop takes orders, or when something is already in the bag.
+  if (!store.checkout_enabled && count === 0) return null;
+  return (
+    <Link to="/bag" className="bag-button" aria-label={`Bag, ${count} ${count === 1 ? "item" : "items"}`}>
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+        <path d="M6 8h12l-1 12H7z" />
+        <path d="M9 8V6a3 3 0 016 0v2" />
+      </svg>
+      Bag ({count})
+    </Link>
   );
 }
 

@@ -53,3 +53,46 @@ export function usePage(slug: PageSlug | undefined) {
     queryFn: () => unwrap(api.GET("/api/v1/public/pages/{slug}", { params: { path: { slug: slug! } } })),
   });
 }
+
+// ---------------------------------------------------------------------------
+// Checkout (Slice A2)
+// ---------------------------------------------------------------------------
+export type Quote = Schemas["QuoteOut"];
+export type QuoteLine = Schemas["QuoteLineOut"];
+export type Order = Schemas["OrderOut"];
+export type OrderRequest = Schemas["OrderRequest"];
+export type Fulfillment = "ship" | "pickup";
+export type PaymentChoice = "bank_transfer" | "pay_on_pickup";
+export type CartItem = { product_id: string; qty: number; personalization: Record<string, string> };
+
+/** The server's price for this cart (nothing is written). Re-asked whenever the cart changes. */
+export function useQuote(items: CartItem[], fulfillment: Fulfillment | null) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["quote", items, fulfillment],
+    enabled: items.length > 0,
+    staleTime: 0,
+    queryFn: () => unwrap(api.POST("/api/v1/public/checkout/quote", { body: { items, fulfillment } })),
+  });
+}
+
+export function useOrder(token: string | undefined, initial?: Order) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["order", token],
+    enabled: Boolean(token),
+    initialData: initial,
+    staleTime: initial ? 30_000 : 0,
+    queryFn: () => unwrap(api.GET("/api/v1/public/orders/{public_token}", { params: { path: { public_token: token! } } })),
+  });
+}
+
+/** What a refused order says, read from the whole error body (ApiError.body). */
+export function refusal(error: unknown): { reason?: string; quote?: Quote } {
+  if (!(error instanceof ApiError) || !error.body || typeof error.body !== "object") return {};
+  const body = error.body as { reason?: unknown; quote?: unknown };
+  return {
+    reason: typeof body.reason === "string" ? body.reason : undefined,
+    quote: body.quote && typeof body.quote === "object" ? (body.quote as Quote) : undefined,
+  };
+}

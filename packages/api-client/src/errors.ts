@@ -11,13 +11,16 @@ export class ApiError extends Error {
   readonly status: number;
   readonly detail: unknown;
   readonly code: string | undefined;
+  /** The whole response body (some answers carry more than `detail`, e.g. a new quote). */
+  readonly body: unknown;
 
-  constructor(status: number, message: string, detail?: unknown, code?: string) {
+  constructor(status: number, message: string, detail?: unknown, code?: string, body?: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.detail = detail;
     this.code = code;
+    this.body = body;
   }
 }
 
@@ -63,5 +66,5 @@ export function toApiError(status: number, body: unknown, code?: string): ApiErr
     message = validationMessage(detail as ValidationIssue[]);
   }
   message ??= FALLBACK[status] ?? (status >= 500 ? "Something went wrong on the server." : `Request failed (${status}).`);
-  return new ApiError(status, message, detail, code);
+  return new ApiError(status, message, detail, code, body);
 }

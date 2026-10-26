@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { Availability, Product } from "../lib/api";
+import { useBag } from "../lib/bagContext";
 import { formatPrice, metalLabel } from "../lib/format";
 import { isSafeImageUrl } from "../lib/theme";
 import { artKind } from "../lib/artKind";
@@ -50,7 +52,34 @@ export function ProductImage({ product, size }: { product: Product; size: "thumb
   return <ProductArt kind={artKind(product.name)} className="tile__art" />;
 }
 
-export function ProductCard({ product, currency }: { product: Product; currency: string }) {
+function CardAction({ product, canOrder }: { product: Product; canOrder: boolean }) {
+  const bag = useBag();
+  const [added, setAdded] = useState(false);
+  const quickAdd = canOrder && product.availability !== "out_of_stock" && !product.personalization.some((f) => f.required);
+  if (!quickAdd) {
+    const label = canOrder && product.personalization.length > 0 && product.availability !== "out_of_stock" ? "Choose options" : "View piece";
+    return (
+      <Link to={`/products/${product.id}`} className="button button--outline button--block" aria-label={`${label}: ${product.name}`}>
+        {label}
+      </Link>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="button button--outline button--block"
+      aria-label={added ? `${product.name} added to your bag` : `Add ${product.name} to bag`}
+      onClick={() => {
+        bag.add(product.id, 1, {});
+        setAdded(true);
+      }}
+    >
+      {added ? "Added ✓" : "Add to bag"}
+    </button>
+  );
+}
+
+export function ProductCard({ product, currency, canOrder = false }: { product: Product; currency: string; canOrder?: boolean }) {
   const metal = metalLabel(product.metal);
   return (
     <li className="card">
@@ -67,9 +96,7 @@ export function ProductCard({ product, currency }: { product: Product; currency:
         {metal && <span>{metal}</span>}
         <AvailabilityBadge availability={product.availability} />
       </span>
-      <Link to={`/products/${product.id}`} className="button button--outline button--block" aria-label={`View ${product.name}`}>
-        View piece
-      </Link>
+      <CardAction product={product} canOrder={canOrder} />
     </li>
   );
 }

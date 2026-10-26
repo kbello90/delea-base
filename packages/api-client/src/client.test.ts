@@ -174,6 +174,17 @@ describe("ApiError normalization", () => {
     });
   });
 
+  it("keeps the whole body, so extra fields (a new quote) are readable", async () => {
+    const body = { detail: "Prices changed", reason: "price_changed", quote: { total_cents: 11184 } };
+    const { fetch } = fakeFetch(() => json(409, body));
+    const api = createApiClient({ baseUrl: BASE, fetch });
+    await expect(unwrap(api.GET("/api/v1/settings/brand"))).rejects.toMatchObject({
+      status: 409,
+      message: "Prices changed",
+      body,
+    });
+  });
+
   it("a network failure becomes status 0", async () => {
     const fetch = vi.fn(async () => {
       throw new TypeError("Failed to fetch");

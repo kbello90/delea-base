@@ -89,7 +89,7 @@ function Collection({ store, madeToOrderOnly }: { store: Store; madeToOrderOnly:
           </p>
           <ul className="grid">
             {shown.map((product) => (
-              <ProductCard key={product.id} product={product} currency={store.currency} />
+              <ProductCard key={product.id} product={product} currency={store.currency} canOrder={store.checkout_enabled} />
             ))}
           </ul>
         </>

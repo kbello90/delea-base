@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 import { createQueryClient } from "../lib/api";
 import { ApiContext, createStorefrontApi } from "../lib/apiClient";
+import { BagProvider } from "../components/BagProvider";
 import { ShopRoutes } from "./ShopRoutes";
 
 type Store = Schemas["PublicStoreOut"];
@@ -100,14 +101,14 @@ export const PAGES: Record<string, Page> = {
 
 export const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
-export type Responder = (url: URL) => Response;
+export type Responder = (url: URL, request: Request) => Response | Promise<Response>;
 
 /** A fake public API: the store, products and pages above, overridable per path. */
 export function fakeApi({ store = STORE, products = PRODUCTS, pages = PAGES, routes: custom = {} }: { store?: Store; products?: Product[]; pages?: Record<string, Page>; routes?: Record<string, Responder> } = {}) {
   return vi.fn(async (request: Request) => {
     const url = new URL(request.url);
     const path = url.pathname;
-    if (custom[path]) return custom[path](url);
+    if (custom[path]) return custom[path](url, request);
     if (path === "/api/v1/public/store") return json(200, store);
     if (path === "/api/v1/public/products") return json(200, products);
     const product = path.match(/^\/api\/v1\/public\/products\/([^/]+)$/);
@@ -128,9 +129,11 @@ export function renderShop(path = "/", fetch = fakeApi()) {
   const utils = render(
     <ApiContext.Provider value={api}>
       <QueryClientProvider client={createQueryClient()}>
-        <MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-          <ShopRoutes />
-        </MemoryRouter>
+        <BagProvider>
+          <MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+            <ShopRoutes />
+          </MemoryRouter>
+        </BagProvider>
       </QueryClientProvider>
     </ApiContext.Provider>,
   );
