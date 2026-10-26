@@ -451,17 +451,20 @@ def test_the_checks_pass_on_the_loaded_tenant(showcase, settings) -> None:
     assert run_async(_check_with(settings, showcase["id"], "select %(t)s", run)) == []
 
 
-def test_a_broken_invoice_total_is_caught(showcase, settings) -> None:
+def test_a_broken_invoice_tax_is_caught(showcase, settings) -> None:
+    # The database refuses a total that isn't subtotal + tax + shipping (migration
+    # 20261027000200), so the break moves tax and total together: the tax is then wrong.
     problems = run_async(
         _check_with(
             settings,
             showcase["id"],
-            "update public.invoices set total_cents = total_cents + 1 where id = "
+            "update public.invoices set tax_cents = tax_cents + 1, total_cents = total_cents + 1 "
+            "where id = "
             "(select id from public.invoices where tenant_id = %(t)s order by created_at limit 1)",
             integrity.check_documents,
         )
     )
-    assert len(problems) == 1 and "isn't subtotal + tax" in problems[0]
+    assert len(problems) == 1 and "isn't subtotal x" in problems[0]
 
 
 def test_a_line_that_no_longer_matches_the_subtotal_is_caught(showcase, settings) -> None:

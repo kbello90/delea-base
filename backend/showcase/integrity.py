@@ -7,8 +7,8 @@ if any fails.
 2. Document counters at max + 1, numbers unique and in date order, numbers only on
    documents that left quote.
 3. Each invoice: line_total = unit price x qty, subtotal = sum of lines, tax = subtotal x rate
-   rounded half up, total = subtotal + tax; refunds only on paid invoices; timestamps in order
-   and not in the future.
+   rounded half up, total = subtotal + tax + shipping (always 0 in the showcase); refunds only
+   on paid invoices; timestamps in order and not in the future.
 4. Stock equals the expected values (the YAML's), product images as listed, one primary.
 5. No automation event left unprocessed (a future worker must find nothing to send).
 """
@@ -133,7 +133,8 @@ async def check_documents(conn: AsyncConnection, tenant_id: UUID) -> list[str]:
     rows = await _rows(
         conn,
         "select id, order_status::text, quote_number, invoice_number, subtotal_cents, "
-        "tax_rate_bps, tax_cents, total_cents, created_at, paid_at, refunded_at, cancelled_at, "
+        "tax_rate_bps, tax_cents, shipping_cents, total_cents, created_at, paid_at, refunded_at, "
+        "cancelled_at, "
         "now() from public.invoices where tenant_id = %s",
         (tenant_id,),
     )
@@ -157,6 +158,7 @@ async def check_documents(conn: AsyncConnection, tenant_id: UUID) -> list[str]:
         sub,
         rate,
         tax,
+        shipping,
         total,
         created,
         paid,
@@ -171,8 +173,8 @@ async def check_documents(conn: AsyncConnection, tenant_id: UUID) -> list[str]:
             problems.append(f"invoice {iid}: subtotal {sub} isn't the sum of its lines")
         if tax != round_half_up_bps(sub, rate):
             problems.append(f"invoice {iid}: tax {tax} isn't subtotal x {rate} bps")
-        if total != sub + tax:
-            problems.append(f"invoice {iid}: total {total} isn't subtotal + tax")
+        if total != sub + tax + shipping:
+            problems.append(f"invoice {iid}: total {total} isn't subtotal + tax + shipping")
         if qno is None:
             problems.append(f"invoice {iid}: no quote number")
         left_quote = status != "quote"
@@ -204,8 +206,8 @@ async def check_documents(conn: AsyncConnection, tenant_id: UUID) -> list[str]:
         (tenant_id,),
     )
     # (date, number) pairs: quotes by created_at, invoices by paid_at.
-    quotes = sorted((r[8], r[2]) for r in rows if r[2] is not None)
-    invoices = sorted((r[9], r[3]) for r in rows if r[3] is not None)
+    quotes = sorted((r[9], r[2]) for r in rows if r[2] is not None)
+    invoices = sorted((r[10], r[3]) for r in rows if r[3] is not None)
     for kind, numbered, next_value in (
         ("quote", quotes, next_quote),
         ("invoice", invoices, next_invoice),
