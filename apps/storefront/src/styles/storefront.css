@@ -260,8 +260,13 @@ a {
 }
 
 /* ---------- sections and grid ---------- */
+.site {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
 .site-main {
-  min-height: 60vh;
+  flex: 1;
 }
 .section {
   max-width: var(--page-max);
