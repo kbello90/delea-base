@@ -3398,10 +3398,152 @@
           }
         ]
       }
+    },
+    "/api/v1/public/store": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Get Store",
+        "operationId": "get_store_api_v1_public_store_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicStoreOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/pages/{slug}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Get Page",
+        "operationId": "get_page_api_v1_public_pages__slug__get",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/PageSlug"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicPageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/products": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "List Products",
+        "description": "The published catalog in storefront order (at most 200).",
+        "operationId": "list_products_api_v1_public_products_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PublicProductOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Products Api V1 Public Products Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/products/{product_id}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Get Product",
+        "description": "One published product. Unpublished, missing and other tenants' products are the same\n404, so the answer never tells them apart.",
+        "operationId": "get_product_api_v1_public_products__product_id__get",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Product Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProductOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "Availability": {
+        "type": "string",
+        "enum": [
+          "in_stock",
+          "low",
+          "out_of_stock",
+          "made_to_order"
+        ],
+        "title": "Availability"
+      },
       "BrandConfigOut": {
         "properties": {
           "tenant_id": {
@@ -3749,6 +3891,14 @@
         "additionalProperties": false,
         "type": "object",
         "title": "CompanySettingsUpdate"
+      },
+      "CornerStyle": {
+        "type": "string",
+        "enum": [
+          "square",
+          "pill"
+        ],
+        "title": "CornerStyle"
       },
       "CurrencyOut": {
         "properties": {
@@ -4686,6 +4836,14 @@
         "type": "object",
         "title": "ExpenseUpdate"
       },
+      "FontPreset": {
+        "type": "string",
+        "enum": [
+          "classic",
+          "modern"
+        ],
+        "title": "FontPreset"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -4698,6 +4856,25 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HeroButton": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "url"
+        ],
+        "title": "HeroButton",
+        "description": "The optional second hero button: present only when both label and link are set."
       },
       "ImageOrder": {
         "properties": {
@@ -5363,6 +5540,14 @@
         ],
         "title": "LogoUploadTicket"
       },
+      "MarkStyle": {
+        "type": "string",
+        "enum": [
+          "monogram",
+          "wordmark"
+        ],
+        "title": "MarkStyle"
+      },
       "MaterialCreate": {
         "properties": {
           "name": {
@@ -5751,6 +5936,33 @@
         ],
         "title": "OrderStatus",
         "description": "Matches the `order_status` enum; declaration order is the forward order."
+      },
+      "PageLink": {
+        "properties": {
+          "slug": {
+            "$ref": "#/components/schemas/PageSlug"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slug",
+          "title"
+        ],
+        "title": "PageLink"
+      },
+      "PageSlug": {
+        "type": "string",
+        "enum": [
+          "returns",
+          "privacy",
+          "terms",
+          "custom-orders"
+        ],
+        "title": "PageSlug"
       },
       "PasswordResetAccepted": {
         "properties": {
@@ -6301,6 +6513,308 @@
         "type": "object",
         "title": "ProductUpdate",
         "description": "PATCH body: only the fields sent are changed."
+      },
+      "PublicImageOut": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "thumb_url": {
+            "type": "string",
+            "title": "Thumb Url"
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          },
+          "is_primary": {
+            "type": "boolean",
+            "title": "Is Primary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "thumb_url",
+          "width",
+          "height",
+          "is_primary"
+        ],
+        "title": "PublicImageOut"
+      },
+      "PublicPageOut": {
+        "properties": {
+          "slug": {
+            "$ref": "#/components/schemas/PageSlug"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slug",
+          "title",
+          "body"
+        ],
+        "title": "PublicPageOut"
+      },
+      "PublicProductOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "metal": {
+            "$ref": "#/components/schemas/MetalType"
+          },
+          "price_cents": {
+            "type": "integer",
+            "title": "Price Cents"
+          },
+          "sale_price_cents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sale Price Cents"
+          },
+          "sale_ends_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sale Ends At"
+          },
+          "unit_price_cents": {
+            "type": "integer",
+            "title": "Unit Price Cents"
+          },
+          "availability": {
+            "$ref": "#/components/schemas/Availability"
+          },
+          "lead_time_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead Time Note"
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/PublicImageOut"
+            },
+            "type": "array",
+            "title": "Images"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "metal",
+          "price_cents",
+          "sale_price_cents",
+          "sale_ends_at",
+          "unit_price_cents",
+          "availability",
+          "lead_time_note",
+          "images"
+        ],
+        "title": "PublicProductOut"
+      },
+      "PublicStoreOut": {
+        "properties": {
+          "business_name": {
+            "type": "string",
+            "title": "Business Name"
+          },
+          "tagline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tagline"
+          },
+          "primary_color": {
+            "type": "string",
+            "title": "Primary Color"
+          },
+          "accent_color": {
+            "type": "string",
+            "title": "Accent Color"
+          },
+          "logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Url"
+          },
+          "hero_eyebrow": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hero Eyebrow"
+          },
+          "hero_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hero Title"
+          },
+          "hero_subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hero Subtitle"
+          },
+          "collection_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Title"
+          },
+          "font_preset": {
+            "$ref": "#/components/schemas/FontPreset"
+          },
+          "corner_style": {
+            "$ref": "#/components/schemas/CornerStyle"
+          },
+          "mark_style": {
+            "$ref": "#/components/schemas/MarkStyle"
+          },
+          "hero_button": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HeroButton"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "contact_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Email"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/PageLink"
+            },
+            "type": "array",
+            "title": "Pages"
+          },
+          "has_made_to_order": {
+            "type": "boolean",
+            "title": "Has Made To Order"
+          },
+          "checkout_enabled": {
+            "type": "boolean",
+            "title": "Checkout Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "business_name",
+          "tagline",
+          "primary_color",
+          "accent_color",
+          "logo_url",
+          "hero_eyebrow",
+          "hero_title",
+          "hero_subtitle",
+          "collection_title",
+          "font_preset",
+          "corner_style",
+          "mark_style",
+          "hero_button",
+          "currency",
+          "contact_email",
+          "pages",
+          "has_made_to_order",
+          "checkout_enabled"
+        ],
+        "title": "PublicStoreOut"
       },
       "ReceiptLink": {
         "properties": {

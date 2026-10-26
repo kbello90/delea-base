@@ -92,6 +92,10 @@ def test_the_tenant_and_its_settings_brand_and_members_exist(tenant, db) -> None
         "where tenant_id = %s",
         (tid,),
     ).fetchone() == ("IT Provisioned Jewelry", "#6B2737", "#B8935B")
+    # The storefront starts switched off.
+    assert db.execute(
+        "select storefront_enabled from public.storefront_settings where tenant_id = %s", (tid,)
+    ).fetchone() == (False,)
     members = dict(
         db.execute(
             "select user_id::text, app_role::text from public.tenant_members where tenant_id = %s",
@@ -243,6 +247,7 @@ def test_deleting_a_demo_tenant_removes_all_its_rows(settings, db) -> None:
             ("tenants", "id"),
             ("company_settings", "tenant_id"),
             ("brand_config", "tenant_id"),
+            ("storefront_settings", "tenant_id"),
             ("tenant_members", "tenant_id"),
             ("tenant_domains", "tenant_id"),
             ("products", "tenant_id"),

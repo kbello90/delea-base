@@ -15,6 +15,7 @@ from app.api.v1 import (
     password_reset,
     product_images,
     products,
+    public,
     settings,
     stripe_webhooks,
 )
@@ -34,6 +35,7 @@ for module in (
     password_reset,
     ai,
     dashboard,
+    public,
     stripe_webhooks,
 ):
     api_router.include_router(module.router)

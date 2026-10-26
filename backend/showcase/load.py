@@ -45,6 +45,7 @@ from showcase.catalog import CatalogError, ProductEntry, check_photos, load_cata
 from showcase.history import SEED, TAX_RATE_BPS, History, SaleProduct, generate, stable_id
 
 SHOWCASE_TENANT_ID = uuid.UUID("5ca1ab1e-0000-4000-8000-de1ea5000001")
+SHOWCASE_STOREFRONT_DOMAIN = "showcase.localhost:5174"
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,9 @@ class ShowcaseConfig:
     tenant_name: str = "DELEA Showcase"
     business_name: str = "DELEA Jewelry"
     seed: int = SEED
+    # The local storefront host (`pnpm --filter @delea/storefront dev`); None on a hosted
+    # target, whose storefront domain is added by hand (infra/scripts/storefront-domain.md).
+    storefront_domain: str | None = SHOWCASE_STOREFRONT_DOMAIN
 
 
 @dataclass(frozen=True)
@@ -417,6 +421,12 @@ async def load_showcase(config: ShowcaseConfig, expected_hook=None) -> LoadRepor
                         default_tax_rate_bps=TAX_RATE_BPS,
                         members=tuple(members),
                         created_at=history.tenant_created_at,
+                        domains=(
+                            ((config.storefront_domain, "storefront"),)
+                            if config.storefront_domain
+                            else ()
+                        ),
+                        storefront_enabled=True,
                     ),
                 )
                 images = await _insert_catalog(conn, config, entries, processed, history, uploaded)

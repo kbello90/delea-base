@@ -4,8 +4,9 @@ This is the customer-provisioning path (used today by the showcase loader). It r
 administrative database connection (no app_role claim, RLS bypassed): app users can't create
 tenants, and the tenants_is_demo_guard trigger refuses is_demo from any other role.
 
-provision_tenant writes, in one transaction: tenants, company_settings, brand_config, any
-tenant_domains, and the members (tenant_members). The member users must already exist in
+provision_tenant writes, in one transaction: tenants, company_settings, brand_config,
+storefront_settings (switched off unless the spec says otherwise), any tenant_domains, and the
+members (tenant_members). The member users must already exist in
 Supabase Auth (see app/core/auth_admin.py); the access token hook reads tenant_members at
 their next sign-in.
 
@@ -58,6 +59,7 @@ class TenantSpec:
     primary_color: str | None = None  # None: the database default (burgundy)
     accent_color: str | None = None  # None: the database default (gold)
     domains: tuple[tuple[str, str], ...] = field(default=())  # (domain, kind)
+    storefront_enabled: bool = False  # off until the owner's domain and pages are ready
     created_at: datetime | None = None  # None: now()
 
 
@@ -109,6 +111,11 @@ async def provision_tenant(conn: AsyncConnection, spec: TenantSpec) -> UUID:
                 sql.SQL(", ").join(sql.Placeholder() * len(brand)),
             ),
             list(brand.values()),
+        )
+        await conn.execute(
+            "insert into public.storefront_settings (tenant_id, storefront_enabled) "
+            "values (%s, %s)",
+            (tenant_id, spec.storefront_enabled),
         )
         for domain, kind in spec.domains:
             await conn.execute(

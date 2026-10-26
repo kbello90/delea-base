@@ -174,6 +174,7 @@ _SEED_TABLES = (
     "tenant_domains",
     "brand_config",
     "company_settings",
+    "storefront_settings",
     "products",
     "materials",
     "product_materials",

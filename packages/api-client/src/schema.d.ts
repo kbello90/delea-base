@@ -751,10 +751,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/store": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Store */
+        get: operations["get_store_api_v1_public_store_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/pages/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Page */
+        get: operations["get_page_api_v1_public_pages__slug__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Products
+         * @description The published catalog in storefront order (at most 200).
+         */
+        get: operations["list_products_api_v1_public_products_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/products/{product_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Product
+         * @description One published product. Unpublished, missing and other tenants' products are the same
+         *     404, so the answer never tells them apart.
+         */
+        get: operations["get_product_api_v1_public_products__product_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * Availability
+         * @enum {string}
+         */
+        Availability: "in_stock" | "low" | "out_of_stock" | "made_to_order";
         /** BrandConfigOut */
         BrandConfigOut: {
             /**
@@ -843,6 +923,11 @@ export interface components {
             /** Default Tax Rate Bps */
             default_tax_rate_bps?: number | null;
         };
+        /**
+         * CornerStyle
+         * @enum {string}
+         */
+        CornerStyle: "square" | "pill";
         /**
          * CurrencyOut
          * @description The tenant's currency code; every amount is hundredths of its major unit.
@@ -1127,10 +1212,25 @@ export interface components {
             /** Is Tax Deductible */
             is_tax_deductible?: boolean | null;
         };
+        /**
+         * FontPreset
+         * @enum {string}
+         */
+        FontPreset: "classic" | "modern";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * HeroButton
+         * @description The optional second hero button: present only when both label and link are set.
+         */
+        HeroButton: {
+            /** Label */
+            label: string;
+            /** Url */
+            url: string;
         };
         /** ImageOrder */
         ImageOrder: {
@@ -1345,6 +1445,11 @@ export interface components {
             /** Max Bytes */
             max_bytes: number;
         };
+        /**
+         * MarkStyle
+         * @enum {string}
+         */
+        MarkStyle: "monogram" | "wordmark";
         /** MaterialCreate */
         MaterialCreate: {
             /** Name */
@@ -1500,6 +1605,17 @@ export interface components {
          * @enum {string}
          */
         OrderStatus: "quote" | "paid" | "in_production" | "shipped" | "delivered";
+        /** PageLink */
+        PageLink: {
+            slug: components["schemas"]["PageSlug"];
+            /** Title */
+            title: string;
+        };
+        /**
+         * PageSlug
+         * @enum {string}
+         */
+        PageSlug: "returns" | "privacy" | "terms" | "custom-orders";
         /** PasswordResetAccepted */
         PasswordResetAccepted: {
             /** Detail */
@@ -1688,6 +1804,88 @@ export interface components {
             is_published?: boolean | null;
             /** Sort Order */
             sort_order?: number | null;
+        };
+        /** PublicImageOut */
+        PublicImageOut: {
+            /** Url */
+            url: string;
+            /** Thumb Url */
+            thumb_url: string;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /** Is Primary */
+            is_primary: boolean;
+        };
+        /** PublicPageOut */
+        PublicPageOut: {
+            slug: components["schemas"]["PageSlug"];
+            /** Title */
+            title: string;
+            /** Body */
+            body: string;
+        };
+        /** PublicProductOut */
+        PublicProductOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string | null;
+            metal: components["schemas"]["MetalType"];
+            /** Price Cents */
+            price_cents: number;
+            /** Sale Price Cents */
+            sale_price_cents: number | null;
+            /** Sale Ends At */
+            sale_ends_at: string | null;
+            /** Unit Price Cents */
+            unit_price_cents: number;
+            availability: components["schemas"]["Availability"];
+            /** Lead Time Note */
+            lead_time_note: string | null;
+            /** Images */
+            images: components["schemas"]["PublicImageOut"][];
+        };
+        /** PublicStoreOut */
+        PublicStoreOut: {
+            /** Business Name */
+            business_name: string;
+            /** Tagline */
+            tagline: string | null;
+            /** Primary Color */
+            primary_color: string;
+            /** Accent Color */
+            accent_color: string;
+            /** Logo Url */
+            logo_url: string | null;
+            /** Hero Eyebrow */
+            hero_eyebrow: string | null;
+            /** Hero Title */
+            hero_title: string | null;
+            /** Hero Subtitle */
+            hero_subtitle: string | null;
+            /** Collection Title */
+            collection_title: string | null;
+            font_preset: components["schemas"]["FontPreset"];
+            corner_style: components["schemas"]["CornerStyle"];
+            mark_style: components["schemas"]["MarkStyle"];
+            hero_button: components["schemas"]["HeroButton"] | null;
+            /** Currency */
+            currency: string;
+            /** Contact Email */
+            contact_email: string | null;
+            /** Pages */
+            pages: components["schemas"]["PageLink"][];
+            /** Has Made To Order */
+            has_made_to_order: boolean;
+            /** Checkout Enabled */
+            checkout_enabled: boolean;
         };
         /** ReceiptLink */
         ReceiptLink: {
@@ -3687,6 +3885,108 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MonthlyTrend"];
+                };
+            };
+        };
+    };
+    get_store_api_v1_public_store_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicStoreOut"];
+                };
+            };
+        };
+    };
+    get_page_api_v1_public_pages__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["schemas"]["PageSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicPageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_products_api_v1_public_products_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicProductOut"][];
+                };
+            };
+        };
+    };
+    get_product_api_v1_public_products__product_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicProductOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

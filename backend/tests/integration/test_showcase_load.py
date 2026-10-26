@@ -121,6 +121,7 @@ def showcase(settings, photos) -> dict:
         now=datetime.now(UTC).replace(minute=0, second=0, microsecond=0),
         tenant_id=uuid.uuid4(),
         tenant_name="IT Showcase",
+        storefront_domain=f"it-showcase-{uuid.uuid4().hex[:8]}.localhost:5174",
     )
     report = run_async(load_showcase(config))
     yield {"config": config, "report": report, "id": str(config.tenant_id)}
@@ -193,6 +194,12 @@ def test_the_tenant_is_a_demo_tenant_with_its_members(showcase, db) -> None:
     assert db.execute(
         "select business_name from public.brand_config where tenant_id = %s", (tid,)
     ).fetchone() == ("DELEA Jewelry",)
+    # Its local storefront is on.
+    assert db.execute(
+        "select d.domain, d.kind, s.storefront_enabled from public.tenant_domains d "
+        "join public.storefront_settings s using (tenant_id) where d.tenant_id = %s",
+        (tid,),
+    ).fetchall() == [(showcase["config"].storefront_domain, "storefront", True)]
     roles = Counter(
         r[0]
         for r in db.execute(

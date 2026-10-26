@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from app.core.config import Settings
-from showcase.load import ShowcaseConfig
+from showcase.load import SHOWCASE_STOREFRONT_DOMAIN, ShowcaseConfig
 
 LOCAL_DEV_PASSWORD = "delea-local-dev"  # same as scripts/create_dev_users.py; local only
 DEFAULT_EMAILS = {
@@ -100,4 +100,5 @@ def build_config(
         members=members,
         password=password,
         now=now,
+        storefront_domain=SHOWCASE_STOREFRONT_DOMAIN if local else None,
     )

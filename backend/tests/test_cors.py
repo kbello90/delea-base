@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.core.config import Settings
+from app.core.cors import PUBLIC_PREFIX
 from app.main import app
 
 client = TestClient(app)
@@ -41,9 +42,11 @@ def _walk(routes, prefix: str = ""):
 
 
 def _route_methods() -> list[tuple[str, str]]:
-    """(method, path) for one route per HTTP method any API route uses, read from app.routes."""
+    """(method, path) for one admin route per HTTP method any API route uses, from app.routes."""
     found: dict[str, str] = {}
     for path, route in _walk(app.routes):
+        if path.startswith(PUBLIC_PREFIX):
+            continue  # storefront CORS: per-tenant origins (integration/test_public_storefront.py)
         for method in route.methods:
             found.setdefault(method, path)
     return sorted(found.items())

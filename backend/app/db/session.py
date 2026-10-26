@@ -1,11 +1,14 @@
 """DB session/connection helpers (TRD locked decision 6).
 
-The backend talks to Postgres directly through a psycopg async pool. Three kinds of session,
+The backend talks to Postgres directly through a psycopg async pool. Four kinds of session,
 each one transaction:
 
 - user_session: every authenticated request. Re-checks the membership, then runs as
   `authenticated` with the caller's verified JWT claims, so RLS is the enforcement.
-- service_session: no role switch. Public endpoints, Stripe webhooks, automation worker only.
+- storefront_session: public storefront reads. A read-only transaction as `storefront_reader`,
+  which can select from the storefront views only, scoped by `app.tenant_id` (the tenant
+  resolved from the request's Origin host, never from request input).
+- service_session: no role switch. Public writes, Stripe webhooks, automation worker only.
 - ai_session: the AI assistant. Runs as `ai_readonly`, scoped by `app.tenant_id` (TRD §3.2).
 
 Schema is owned by supabase/migrations/, never by the backend.
@@ -113,6 +116,24 @@ async def user_session(
     """
     async with pool.connection() as conn, conn.transaction():
         await apply_checked_user_scope(conn, claims)
+        yield conn
+
+
+@asynccontextmanager
+async def storefront_session(
+    pool: AsyncConnectionPool, tenant_id: str | None = None
+) -> AsyncIterator[AsyncConnection]:
+    """One read-only transaction as `storefront_reader` (TRD §1.3, §6.11).
+
+    The role selects from the storefront views only, which list public columns and filter on
+    `app.tenant_id`; with no tenant set they return nothing (except `storefront.hosts`, which
+    maps a host to its tenant). The connection role must be granted `storefront_reader`.
+    """
+    async with pool.connection() as conn, conn.transaction():
+        await conn.execute("set transaction read only")
+        await conn.execute("set local role storefront_reader")
+        if tenant_id is not None:
+            await conn.execute("select set_config('app.tenant_id', %s, true)", (tenant_id,))
         yield conn
 
 

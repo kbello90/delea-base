@@ -137,6 +137,7 @@ def test_local_defaults() -> None:
     assert config.password == LOCAL_DEV_PASSWORD
     assert [role for _, role in config.members] == ["owner", "staff", "cpa"]
     assert all(email.endswith("@showcase.delea.test") for email, _ in config.members)
+    assert config.storefront_domain == "showcase.localhost:5174"
 
 
 def test_the_emails_are_configurable() -> None:
@@ -169,6 +170,8 @@ def test_remote_needs_its_own_database_url_and_a_password() -> None:
     config = build_config({**env, "SHOWCASE_PASSWORD": "from-the-env"}, remote, allow_remote=True)
     assert config.database_url == env["SHOWCASE_DATABASE_URL"]
     assert config.password == "from-the-env"
+    # A hosted showcase gets its storefront domain by hand, never a *.localhost one.
+    assert config.storefront_domain is None
 
 
 def test_showcase_dir_is_required() -> None:

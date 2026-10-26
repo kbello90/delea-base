@@ -9,6 +9,10 @@ from functools import lru_cache
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Environments where development shortcuts are allowed: *.localhost storefront hosts and plain
+# http:// storefront origins. Every other value (staging, production, ...) refuses them.
+DEV_ENVIRONMENTS = frozenset({"local", "test"})
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -45,6 +49,10 @@ class Settings(BaseSettings):
         if "*" in value:
             raise ValueError("CORS_ORIGINS must list exact origins; '*' is not allowed")
         return value
+
+    @property
+    def is_dev_environment(self) -> bool:
+        return self.environment.strip().lower() in DEV_ENVIRONMENTS
 
     @property
     def cors_origin_list(self) -> list[str]:
