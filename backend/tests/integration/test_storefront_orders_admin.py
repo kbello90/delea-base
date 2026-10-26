@@ -178,12 +178,18 @@ def test_confirming_payment_makes_it_an_invoice_and_takes_stock(
     assert (tracked["status"], tracked["payment_instructions"]) == ("paid", None)
 
 
-def test_the_csv_has_a_shipping_column(client: TestClient, shop) -> None:
+def test_the_csv_has_a_shipping_column_last(client: TestClient, shop) -> None:
     place(client, shop)
     response = client.get(f"{INVOICES}/export.csv", headers=shop["tenant"].headers("owner"))
     rows = list(csv.DictReader(io.StringIO(response.text)))
     assert [(r["subtotal"], r["tax"], r["shipping"], r["total"], r["source"]) for r in rows] == [
         ("145.00", "11.60", "6.00", "162.60", "storefront")
     ]
+    # Last, so every earlier column keeps the position it had before Slice A2.
     header = response.text.splitlines()[0].split(",")
-    assert header.index("shipping") == header.index("tax") + 1
+    assert header[-1] == "shipping"
+    assert header[:-1] == [
+        "quote_number", "invoice_number", "order_status", "customer_name", "created_at",
+        "paid_at", "payment_method", "due_date", "currency", "subtotal", "tax_rate_bps", "tax",
+        "total", "refunded_at", "cancelled_at", "source",
+    ]  # fmt: skip

@@ -401,11 +401,11 @@ CSV_HEADER = (
     "subtotal",
     "tax_rate_bps",
     "tax",
-    "shipping",
     "total",
     "refunded_at",
     "cancelled_at",
     "source",
+    "shipping",  # last, so the columns before it keep their positions (Slice A2)
 )
 
 
@@ -432,8 +432,8 @@ async def export_invoices_csv(
                 async for r in cur.stream(
                     "select quote_number, invoice_number, order_status::text, customer_name, "
                     "created_at, paid_at, payment_method::text, due_date, subtotal_cents, "
-                    "tax_rate_bps, tax_cents, shipping_cents, total_cents, refunded_at, "
-                    f"cancelled_at, source from public.invoices {_WHERE} order by created_at, id",
+                    "tax_rate_bps, tax_cents, total_cents, refunded_at, cancelled_at, source, "
+                    f"shipping_cents from public.invoices {_WHERE} order by created_at, id",
                     _params(claims, filters),
                 ):
                     yield (
@@ -443,8 +443,8 @@ async def export_invoices_csv(
                         r[9],
                         cents_to_decimal(r[10]),
                         cents_to_decimal(r[11]),
-                        cents_to_decimal(r[12]),
-                        *r[13:],
+                        *r[12:15],
+                        cents_to_decimal(r[15]),
                     )
         except Exception:
             logger.exception("Invoice CSV export failed mid-stream")
