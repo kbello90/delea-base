@@ -23,7 +23,7 @@ async function capture(page: Page, name: string) {
   await page.screenshot({ path: shots(`${name}`) });
   const flat = await page.addStyleTag({ content: ".site-header, .pay-bar { position: static !important; }" });
   await page.screenshot({ path: shots(`${name}-full`), fullPage: true });
-  await flat.evaluate((el) => el.remove());
+  await flat.evaluate((el) => (el as Element).remove());
 }
 
 /** Waits for Turnstile's test widget to hand over its token. */
