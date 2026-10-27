@@ -467,6 +467,21 @@ def test_a_broken_invoice_tax_is_caught(showcase, settings) -> None:
     assert len(problems) == 1 and "isn't subtotal x" in problems[0]
 
 
+def test_a_paid_invoice_without_its_payment_is_caught(showcase, settings) -> None:
+    problems = run_async(
+        _check_with(
+            settings,
+            showcase["id"],
+            "update public.payments set status = 'voided', voided_at = now() where id = "
+            "(select p.id from public.payments p join public.invoices i on i.id = p.invoice_id "
+            " where p.tenant_id = %(t)s and i.refunded_at is null and p.kind = 'payment' "
+            " order by p.received_at limit 1)",
+            integrity.check_payments,
+        )
+    )
+    assert problems == ["1 invoice(s) don't match their payments"]
+
+
 def test_a_line_that_no_longer_matches_the_subtotal_is_caught(showcase, settings) -> None:
     problems = run_async(
         _check_with(

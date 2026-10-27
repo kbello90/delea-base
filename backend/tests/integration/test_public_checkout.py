@@ -646,6 +646,13 @@ def test_tracking_shows_one_order_in_its_own_shop(client: TestClient, shop: Shop
     )
     assert client.get(url).status_code == 404  # no Origin
 
+    # Paid in full first: an invoice leaves quote only when its payments cover the total.
+    db.execute(
+        "insert into public.payments (tenant_id, invoice_id, kind, method, amount_cents, currency) "
+        "select tenant_id, id, 'payment', 'bank_transfer', total_cents, 'USD' "
+        "from public.invoices where public_token = %s",
+        (token,),
+    )
     db.execute(
         "update public.invoices set order_status = 'paid', payment_method = 'bank_transfer' "
         "where public_token = %s",

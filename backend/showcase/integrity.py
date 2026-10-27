@@ -11,6 +11,7 @@ if any fails.
    on paid invoices; timestamps in order and not in the future.
 4. Stock equals the expected values (the YAML's), product images as listed, one primary.
 5. No automation event left unprocessed (a future worker must find nothing to send).
+6. The payments ledger matches the invoices.
 """
 
 from dataclasses import dataclass
@@ -222,6 +223,19 @@ async def check_documents(conn: AsyncConnection, tenant_id: UUID) -> list[str]:
     return problems
 
 
+async def check_payments(conn: AsyncConnection, tenant_id: UUID) -> list[str]:
+    """The ledger: a paid invoice's payments equal its total (nothing, once refunded); a
+    quote holds none (the showcase takes no deposits)."""
+    ((unmatched,),) = await _rows(
+        conn,
+        "select count(*) from public.invoices i where i.tenant_id = %s "
+        "and public.invoice_amount_paid(i.id) <> case when i.paid_at is null "
+        "or i.refunded_at is not null then 0 else i.total_cents end",
+        (tenant_id,),
+    )
+    return [f"{unmatched} invoice(s) don't match their payments"] if unmatched else []
+
+
 async def check_catalog(conn: AsyncConnection, tenant_id: UUID, expected: Expected) -> list[str]:
     problems = []
     stock = dict(
@@ -278,5 +292,6 @@ async def run_all(conn: AsyncConnection, tenant_id: UUID, expected: Expected) ->
     problems += await check_documents(conn, tenant_id)
     problems += await check_catalog(conn, tenant_id, expected)
     problems += await check_events(conn, tenant_id)
+    problems += await check_payments(conn, tenant_id)
     if problems:
         raise IntegrityError(problems)

@@ -43,7 +43,7 @@ export function makeProduct(overrides: Partial<Product> = {}): Product {
 
 export function makeInvoice(overrides: Partial<Invoice> = {}): Invoice {
   const n = next();
-  return {
+  const invoice: Invoice = {
     id: `i0000000-0000-0000-0000-${n}`,
     tenant_id: TENANT_A,
     quote_number: `QTE-2026-${n.slice(-3)}`,
@@ -68,14 +68,29 @@ export function makeInvoice(overrides: Partial<Invoice> = {}): Invoice {
     fulfillment: null,
     payment_choice: null,
     order_ref: null,
+    amount_paid_cents: 0,
+    balance_cents: 0,
+    production_started_at: null,
+    stock_short: false,
     items: [],
+    payments: [],
     ...overrides,
   };
+  // The ledger follows the total unless the test says otherwise: a quote owes it all.
+  if (overrides.balance_cents === undefined) invoice.balance_cents = invoice.total_cents - invoice.amount_paid_cents;
+  return invoice;
 }
 
 /** A paid invoice (number, paid_at, method) at the given status. */
 export function paidInvoice(overrides: Partial<Invoice> = {}): Invoice {
-  const invoice = makeInvoice({ order_status: "paid", payment_method: "card", paid_at: "2026-10-20T15:05:00Z", ...overrides });
+  const total = overrides.total_cents ?? 10800;
+  const invoice = makeInvoice({
+    order_status: "paid",
+    payment_method: "card",
+    paid_at: "2026-10-20T15:05:00Z",
+    amount_paid_cents: total,
+    ...overrides,
+  });
   return { ...invoice, invoice_number: invoice.invoice_number ?? invoice.quote_number?.replace("QTE", "INV") ?? null };
 }
 
@@ -180,6 +195,9 @@ export function invoiceServer({
     invoiceNumber += 1;
     invoice.invoice_number = `INV-2026-${invoiceNumber}`;
     invoice.paid_at = "2026-10-22T16:00:00Z";
+    // The backend records a payment for the balance before the move.
+    invoice.amount_paid_cents = invoice.total_cents;
+    invoice.balance_cents = 0;
     return null;
   }
 

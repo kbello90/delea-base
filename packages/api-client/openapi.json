@@ -2026,7 +2026,7 @@
           "invoices"
         ],
         "summary": "Change Status",
-        "description": "Move the status forward (skips allowed). Leaving quote is the payment, so it needs a\npayment method; any other move refuses one. The database enforces the order and, when an\ninvoice leaves quote, assigns its number and decrements stock; its messages pass through\n(backward: 422; insufficient stock: 409, with nothing changed). Cancelled or refunded\ninvoices keep their status (409).",
+        "description": "Move the status forward (skips allowed). Leaving quote is the payment, so it needs a\npayment method and records a payment for whatever is still due; any other move refuses\none. A quote whose production has started becomes in production rather than paid. The\ndatabase enforces the order and, when an invoice leaves quote, assigns its number and\ndecrements stock; its messages pass through (backward: 422; insufficient stock: 409, with\nnothing changed). Cancelled or refunded invoices keep their status (409).",
         "operationId": "change_status_api_v1_invoices__invoice_id__status_post",
         "security": [
           {
@@ -2085,7 +2085,7 @@
           "invoices"
         ],
         "summary": "Refund Invoice",
-        "description": "Mark a paid invoice refunded (no restock in v1). The status enum is unchanged.",
+        "description": "Refund everything received (no restock in v1): a refund row for the net amount paid.\n\n- A paid invoice is also marked refunded. The status enum is unchanged.\n- A quote holding a deposit stays an open quote with nothing held, so it can then be\n  cancelled (a quote holding money can't be).\nCard payments taken online are refunded in Stripe (Slice B2), never here.",
         "operationId": "refund_invoice_api_v1_invoices__invoice_id__refund_post",
         "security": [
           {
@@ -2136,6 +2136,273 @@
         "summary": "Cancel Invoice",
         "description": "Mark an invoice cancelled (no restock in v1). The status enum is unchanged.",
         "operationId": "cancel_invoice_api_v1_invoices__invoice_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "invoice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Invoice Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/{invoice_id}/payments": {
+      "get": {
+        "tags": [
+          "invoices"
+        ],
+        "summary": "List Payments",
+        "description": "The invoice's ledger, oldest first. The CPA reads it too (D15).",
+        "operationId": "list_payments_api_v1_invoices__invoice_id__payments_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "invoice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Invoice Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PaymentOut"
+                  },
+                  "title": "Response List Payments Api V1 Invoices  Invoice Id  Payments Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "invoices"
+        ],
+        "summary": "Record Payment",
+        "description": "Record a payment taken in person or by transfer: a deposit, or the rest. When it brings\nthe balance to zero the invoice becomes paid (in production if production had started)\nand stock goes down. If stock is short the payment is still kept and the invoice stays a\nquote with `stock_short` true; complete it with POST /settle after restocking.",
+        "operationId": "record_payment_api_v1_invoices__invoice_id__payments_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "invoice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Invoice Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/{invoice_id}/payments/{payment_id}/void": {
+      "post": {
+        "tags": [
+          "invoices"
+        ],
+        "summary": "Void Payment",
+        "description": "Void a payment or refund recorded by mistake, while the invoice is still a quote. It\nstays in the ledger, marked voided, and counts for nothing.",
+        "operationId": "void_payment_api_v1_invoices__invoice_id__payments__payment_id__void_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "invoice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Invoice Id"
+            }
+          },
+          {
+            "name": "payment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Payment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/{invoice_id}/start-production": {
+      "post": {
+        "tags": [
+          "invoices"
+        ],
+        "summary": "Start Production",
+        "description": "Mark that work has started on a quote holding a deposit. It can't be undone: from now\non the lines are locked, and paying the rest makes it in production rather than paid.",
+        "operationId": "start_production_api_v1_invoices__invoice_id__start_production_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "invoice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Invoice Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/{invoice_id}/settle": {
+      "post": {
+        "tags": [
+          "invoices"
+        ],
+        "summary": "Settle Invoice",
+        "description": "Complete a quote that is paid in full but was short of stock, once stock is back.",
+        "operationId": "settle_invoice_api_v1_invoices__invoice_id__settle_post",
         "security": [
           {
             "HTTPBearer": []
@@ -5945,6 +6212,30 @@
             "format": "date-time",
             "title": "Updated At"
           },
+          "amount_paid_cents": {
+            "type": "integer",
+            "title": "Amount Paid Cents"
+          },
+          "balance_cents": {
+            "type": "integer",
+            "title": "Balance Cents"
+          },
+          "production_started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Production Started At"
+          },
+          "stock_short": {
+            "type": "boolean",
+            "title": "Stock Short"
+          },
           "items": {
             "anyOf": [
               {
@@ -5968,6 +6259,20 @@
                 "type": "null"
               }
             ]
+          },
+          "payments": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PaymentOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payments"
           }
         },
         "type": "object",
@@ -5995,7 +6300,11 @@
           "refunded_at",
           "cancelled_at",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "amount_paid_cents",
+          "balance_cents",
+          "production_started_at",
+          "stock_short"
         ],
         "title": "InvoiceOut"
       },
@@ -7071,6 +7380,40 @@
         ],
         "title": "PasswordResetRequest"
       },
+      "PaymentCreate": {
+        "properties": {
+          "amount_cents": {
+            "type": "integer",
+            "maximum": 100000000000.0,
+            "minimum": 1.0,
+            "title": "Amount Cents"
+          },
+          "method": {
+            "$ref": "#/components/schemas/PaymentMethod"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount_cents",
+          "method"
+        ],
+        "title": "PaymentCreate",
+        "description": "A payment taken outside DELEA's card checkout: a deposit or the rest of the balance.\nIt can't be more than what is still due; it is received now."
+      },
       "PaymentMethod": {
         "type": "string",
         "enum": [
@@ -7081,6 +7424,109 @@
         ],
         "title": "PaymentMethod",
         "description": "Matches the `payment_method` enum. Recorded when an invoice is paid; null on quotes and\non invoices paid before it existed."
+      },
+      "PaymentOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "payment",
+              "refund"
+            ],
+            "title": "Kind"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "stripe"
+            ],
+            "title": "Provider"
+          },
+          "method": {
+            "$ref": "#/components/schemas/PaymentMethod"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "succeeded",
+              "failed",
+              "expired",
+              "voided"
+            ],
+            "title": "Status"
+          },
+          "amount_cents": {
+            "type": "integer",
+            "title": "Amount Cents"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Received At"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "refund_of": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refund Of"
+          },
+          "voided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voided At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "provider",
+          "method",
+          "status",
+          "amount_cents",
+          "currency",
+          "received_at",
+          "note",
+          "refund_of",
+          "voided_at"
+        ],
+        "title": "PaymentOut",
+        "description": "One row of the ledger: money received (payment) or returned (refund). Only succeeded\nrows count towards what has been paid."
       },
       "PaymentTerms": {
         "type": "string",

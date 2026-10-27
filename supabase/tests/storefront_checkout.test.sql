@@ -126,6 +126,8 @@ select lives_ok(
 -- The staff financial guard covers shipping.
 insert into public.invoices (id, tenant_id, customer_name, subtotal_cents, tax_cents, shipping_cents, total_cents)
 values ('5c000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'Paid', 1000, 0, 600, 1600);
+insert into public.payments (tenant_id, invoice_id, kind, method, amount_cents, currency)
+values ('11111111-1111-1111-1111-111111111111', '5c000000-0000-0000-0000-000000000002', 'payment', 'cash', 1600, 'USD');
 update public.invoices set order_status = 'paid', payment_method = 'cash' where id = '5c000000-0000-0000-0000-000000000002';
 select pg_temp.set_claims('11111111-1111-1111-1111-111111111111', 'staff');
 select throws_ok(format('select pg_temp.write_as(%L, %L)', 'authenticated',

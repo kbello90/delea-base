@@ -150,6 +150,13 @@ values
   ('a7000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111',
    'a1000000-0000-0000-0000-000000000001', 'Custom Initial Necklace', 1, 9800, 9800);
 
+-- Its payment first: an invoice leaves quote only when its payments cover the total
+-- (migration 20261028000300). The invoice itself keeps no method, like one paid before
+-- methods were recorded.
+insert into public.payments (tenant_id, invoice_id, kind, method, amount_cents, currency)
+values ('11111111-1111-1111-1111-111111111111', 'a7000000-0000-0000-0000-000000000001',
+        'payment', 'other', 10584, 'USD');
+
 update public.invoices set order_status = 'paid'
   where id = 'a7000000-0000-0000-0000-000000000001';
 
@@ -179,6 +186,10 @@ insert into public.invoice_line_items
 values
   ('b8000000-0000-0000-0000-000000000001', '22222222-2222-2222-2222-222222222222',
    'b2000000-0000-0000-0000-000000000001', 'Sapphire Pendant', 1, 32000, 32000);
+
+insert into public.payments (tenant_id, invoice_id, kind, method, amount_cents, currency)
+values ('22222222-2222-2222-2222-222222222222', 'b8000000-0000-0000-0000-000000000001',
+        'payment', 'other', 33760, 'USD');
 
 -- ---------------------------------------------------------------------------
 -- Expenses

@@ -426,10 +426,11 @@ export interface paths {
         /**
          * Change Status
          * @description Move the status forward (skips allowed). Leaving quote is the payment, so it needs a
-         *     payment method; any other move refuses one. The database enforces the order and, when an
-         *     invoice leaves quote, assigns its number and decrements stock; its messages pass through
-         *     (backward: 422; insufficient stock: 409, with nothing changed). Cancelled or refunded
-         *     invoices keep their status (409).
+         *     payment method and records a payment for whatever is still due; any other move refuses
+         *     one. A quote whose production has started becomes in production rather than paid. The
+         *     database enforces the order and, when an invoice leaves quote, assigns its number and
+         *     decrements stock; its messages pass through (backward: 422; insufficient stock: 409, with
+         *     nothing changed). Cancelled or refunded invoices keep their status (409).
          */
         post: operations["change_status_api_v1_invoices__invoice_id__status_post"];
         delete?: never;
@@ -449,7 +450,12 @@ export interface paths {
         put?: never;
         /**
          * Refund Invoice
-         * @description Mark a paid invoice refunded (no restock in v1). The status enum is unchanged.
+         * @description Refund everything received (no restock in v1): a refund row for the net amount paid.
+         *
+         *     - A paid invoice is also marked refunded. The status enum is unchanged.
+         *     - A quote holding a deposit stays an open quote with nothing held, so it can then be
+         *       cancelled (a quote holding money can't be).
+         *     Card payments taken online are refunded in Stripe (Slice B2), never here.
          */
         post: operations["refund_invoice_api_v1_invoices__invoice_id__refund_post"];
         delete?: never;
@@ -472,6 +478,95 @@ export interface paths {
          * @description Mark an invoice cancelled (no restock in v1). The status enum is unchanged.
          */
         post: operations["cancel_invoice_api_v1_invoices__invoice_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{invoice_id}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Payments
+         * @description The invoice's ledger, oldest first. The CPA reads it too (D15).
+         */
+        get: operations["list_payments_api_v1_invoices__invoice_id__payments_get"];
+        put?: never;
+        /**
+         * Record Payment
+         * @description Record a payment taken in person or by transfer: a deposit, or the rest. When it brings
+         *     the balance to zero the invoice becomes paid (in production if production had started)
+         *     and stock goes down. If stock is short the payment is still kept and the invoice stays a
+         *     quote with `stock_short` true; complete it with POST /settle after restocking.
+         */
+        post: operations["record_payment_api_v1_invoices__invoice_id__payments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{invoice_id}/payments/{payment_id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Void Payment
+         * @description Void a payment or refund recorded by mistake, while the invoice is still a quote. It
+         *     stays in the ledger, marked voided, and counts for nothing.
+         */
+        post: operations["void_payment_api_v1_invoices__invoice_id__payments__payment_id__void_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{invoice_id}/start-production": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Production
+         * @description Mark that work has started on a quote holding a deposit. It can't be undone: from now
+         *     on the lines are locked, and paying the rest makes it in production rather than paid.
+         */
+        post: operations["start_production_api_v1_invoices__invoice_id__start_production_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{invoice_id}/settle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Settle Invoice
+         * @description Complete a quote that is paid in full but was short of stock, once stock is back.
+         */
+        post: operations["settle_invoice_api_v1_invoices__invoice_id__settle_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1568,9 +1663,19 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Amount Paid Cents */
+            amount_paid_cents: number;
+            /** Balance Cents */
+            balance_cents: number;
+            /** Production Started At */
+            production_started_at: string | null;
+            /** Stock Short */
+            stock_short: boolean;
             /** Items */
             items?: components["schemas"]["InvoiceLineOut"][] | null;
             contact?: components["schemas"]["OrderContactOut"] | null;
+            /** Payments */
+            payments?: components["schemas"]["PaymentOut"][] | null;
         };
         /**
          * InvoicePreview
@@ -1958,12 +2063,67 @@ export interface components {
             email: string;
         };
         /**
+         * PaymentCreate
+         * @description A payment taken outside DELEA's card checkout: a deposit or the rest of the balance.
+         *     It can't be more than what is still due; it is received now.
+         */
+        PaymentCreate: {
+            /** Amount Cents */
+            amount_cents: number;
+            method: components["schemas"]["PaymentMethod"];
+            /** Note */
+            note?: string | null;
+        };
+        /**
          * PaymentMethod
          * @description Matches the `payment_method` enum. Recorded when an invoice is paid; null on quotes and
          *     on invoices paid before it existed.
          * @enum {string}
          */
         PaymentMethod: "cash" | "card" | "bank_transfer" | "other";
+        /**
+         * PaymentOut
+         * @description One row of the ledger: money received (payment) or returned (refund). Only succeeded
+         *     rows count towards what has been paid.
+         */
+        PaymentOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "payment" | "refund";
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "manual" | "stripe";
+            method: components["schemas"]["PaymentMethod"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "succeeded" | "failed" | "expired" | "voided";
+            /** Amount Cents */
+            amount_cents: number;
+            /** Currency */
+            currency: string;
+            /**
+             * Received At
+             * Format: date-time
+             */
+            received_at: string;
+            /** Note */
+            note: string | null;
+            /** Refund Of */
+            refund_of: string | null;
+            /** Voided At */
+            voided_at: string | null;
+        };
         /**
          * PaymentTerms
          * @enum {string}
@@ -3716,6 +3876,166 @@ export interface operations {
         };
     };
     cancel_invoice_api_v1_invoices__invoice_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_payments_api_v1_invoices__invoice_id__payments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_payment_api_v1_invoices__invoice_id__payments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    void_payment_api_v1_invoices__invoice_id__payments__payment_id__void_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+                payment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_production_api_v1_invoices__invoice_id__start_production_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    settle_invoice_api_v1_invoices__invoice_id__settle_post: {
         parameters: {
             query?: never;
             header?: never;

@@ -155,6 +155,34 @@ class InvoicePreviewOut(BaseModel):
     stock_shortages: list[StockShortage]
 
 
+class PaymentCreate(BaseModel):
+    """A payment taken outside DELEA's card checkout: a deposit or the rest of the balance.
+    It can't be more than what is still due; it is received now."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    amount_cents: Annotated[int, Field(ge=1, le=100_000_000_000)]
+    method: PaymentMethod
+    note: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+
+
+class PaymentOut(BaseModel):
+    """One row of the ledger: money received (payment) or returned (refund). Only succeeded
+    rows count towards what has been paid."""
+
+    id: UUID
+    kind: Literal["payment", "refund"]
+    provider: Literal["manual", "stripe"]
+    method: PaymentMethod
+    status: Literal["pending", "succeeded", "failed", "expired", "voided"]
+    amount_cents: int
+    currency: str
+    received_at: datetime
+    note: str | None
+    refund_of: UUID | None
+    voided_at: datetime | None
+
+
 class InvoiceOut(BaseModel):
     id: UUID
     tenant_id: UUID
@@ -180,6 +208,14 @@ class InvoiceOut(BaseModel):
     cancelled_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    # The ledger: net money received (payments minus refunds) and what is still due. A quote
+    # holding money is a deposit; it is paid in full when the balance reaches zero.
+    amount_paid_cents: int
+    balance_cents: int
+    production_started_at: datetime | None
+    # A quote paid in full that couldn't be completed: not enough stock (Slice B1, Rule 3).
+    stock_short: bool
     # None when the caller can't read line items (cpa) or on list endpoints; never [] for that.
     items: list[InvoiceLineOut] | None = None
     contact: OrderContactOut | None = None  # storefront orders, owner and staff
+    payments: list[PaymentOut] | None = None  # the invoice's ledger; single-invoice reads only

@@ -288,6 +288,22 @@ async def _insert_sales(conn: AsyncConnection, tid: uuid.UUID, history: History)
                 ),
             )
         await _stamp_events(conn, tid, inv.created_at)
+        if inv.steps:
+            # Paid in full when it left quote (an invoice can't leave quote otherwise).
+            await conn.execute(
+                "insert into public.payments (id, tenant_id, invoice_id, kind, method, "
+                "amount_cents, currency, received_at, created_at) "
+                "values (%s, %s, %s, 'payment', %s::public.payment_method, %s, 'USD', %s, %s)",
+                (
+                    stable_id(tid, "payment", str(inv.id)),
+                    tid,
+                    inv.id,
+                    inv.payment_method,
+                    q.total_cents,
+                    inv.steps[0][1],
+                    inv.steps[0][1],
+                ),
+            )
         for status, at in inv.steps:
             # The first step is the payment, which records how it was paid.
             await conn.execute(
@@ -297,6 +313,22 @@ async def _insert_sales(conn: AsyncConnection, tid: uuid.UUID, history: History)
                 (status, inv.payment_method, inv.id, tid),
             )
             await _stamp_events(conn, tid, at)
+        if inv.refunded_at is not None:  # refunded in full, after it was paid
+            await conn.execute(
+                "insert into public.payments (id, tenant_id, invoice_id, kind, method, "
+                "amount_cents, currency, received_at, created_at, refund_of) "
+                "values (%s, %s, %s, 'refund', %s::public.payment_method, %s, 'USD', %s, %s, %s)",
+                (
+                    stable_id(tid, "refund", str(inv.id)),
+                    tid,
+                    inv.id,
+                    inv.payment_method,
+                    q.total_cents,
+                    inv.refunded_at,
+                    inv.refunded_at,
+                    stable_id(tid, "payment", str(inv.id)),
+                ),
+            )
         for column, at in (("refunded_at", inv.refunded_at), ("cancelled_at", inv.cancelled_at)):
             if at is not None:
                 await conn.execute(

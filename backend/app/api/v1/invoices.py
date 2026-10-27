@@ -11,6 +11,12 @@ A cancelled or refunded invoice keeps its status, a cancelled one can't be refun
 refunded one can't be cancelled: checked here for a clear message, and enforced by the
 database (invoices_08_closed_guard).
 
+Payments (Slice B1, TRD §6.13): every payment is a row in public.payments. An invoice leaves
+quote only when its payments cover its total (invoices_09_paid_in_full_guard), so "pay now"
+and a status move out of quote first record a payment for the balance. A smaller payment is a
+deposit: the invoice stays a quote, and becomes paid (or in production) when the balance
+reaches zero (public.invoice_settle).
+
 Money is never accepted from the client: prices come from the products, totals from
 app/services/pricing.py, the tax rate from public.current_tax_rate_bps() (or the owner's
 override, stored as the snapshot). Every query also filters on the caller's tenant.
@@ -49,7 +55,9 @@ from app.models.invoice import (
     LineItemIn,
     OrderContactOut,
     OrderStatus,
+    PaymentCreate,
     PaymentMethod,
+    PaymentOut,
     PreviewLineOut,
     StockShortage,
 )
@@ -76,10 +84,18 @@ _COLUMNS = (
     "id, tenant_id, quote_number, invoice_number, order_status::text as order_status, "
     "customer_id, customer_name, source, subtotal_cents, tax_rate_bps, tax_cents, total_cents, "
     "due_date, notes, payment_method::text as payment_method, paid_at, refunded_at, "
-    "cancelled_at, created_at, updated_at, shipping_cents, fulfillment, payment_choice, order_ref"
+    "cancelled_at, created_at, updated_at, shipping_cents, fulfillment, payment_choice, order_ref, "
+    "production_started_at, public.invoice_amount_paid(id) as amount_paid_cents, "
+    "total_cents - public.invoice_amount_paid(id) as balance_cents, "
+    "(order_status = 'quote' and cancelled_at is null and refunded_at is null and total_cents > 0 "
+    "and public.invoice_amount_paid(id) >= total_cents) as stock_short"
 )
 _LINE_COLUMNS = (
     "id, product_id, description, qty, unit_price_cents, line_total_cents, personalization"
+)
+_PAYMENT_COLUMNS = (
+    "id, kind, provider, method::text as method, status, amount_cents, currency, received_at, "
+    "note, refund_of, voided_at"
 )
 _CONTACT_COLUMNS = (
     "first_name, last_name, email, phone, ship_line1, ship_line2, ship_city, ship_state, "
@@ -100,6 +116,12 @@ async def _load(conn: AsyncConnection, claims: TokenClaims, invoice_id: UUID) ->
         if row is None:
             raise NotFoundError("Invoice not found")
         invoice = InvoiceOut.model_validate(row)
+        await cur.execute(
+            f"select {_PAYMENT_COLUMNS} from public.payments "
+            "where invoice_id = %s and tenant_id = %s order by received_at, created_at, id",
+            (invoice_id, claims.tenant_id),
+        )
+        invoice.payments = [PaymentOut.model_validate(r) for r in await cur.fetchall()]
         if claims.app_role != "cpa":  # cpa can't read line items (RLS)
             await cur.execute(
                 f"select {_LINE_COLUMNS} from public.invoice_line_items "
@@ -298,6 +320,41 @@ def _check_payment_method(*, paying: bool, payment_method: PaymentMethod | None)
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             "the payment method is recorded only when a quote is paid",
         )
+
+
+async def _take_balance(
+    conn: AsyncConnection, claims: TokenClaims, invoice_id: UUID, method: PaymentMethod | None
+) -> None:
+    """Record a payment for whatever is still due, so the move out of quote that follows is
+    paid in full. Nothing is recorded when nothing is due (a zero total, or a quote already
+    paid by its deposits). Called in the same transaction as the move: if the move fails
+    (not enough stock), the payment goes with it."""
+    cur = await conn.execute(
+        "select public.invoice_balance(id) from public.invoices where id = %s and tenant_id = %s",
+        (invoice_id, claims.tenant_id),
+    )
+    (balance,) = await cur.fetchone()
+    if balance > 0 and method is not None:
+        await _insert_payment(conn, claims, invoice_id, "payment", balance, method, None)
+
+
+async def _insert_payment(
+    conn: AsyncConnection,
+    claims: TokenClaims,
+    invoice_id: UUID,
+    kind: str,
+    amount_cents: int,
+    method: PaymentMethod,
+    note: str | None,
+) -> None:
+    """The database sets the currency, the time and who recorded it, and refuses an amount
+    beyond what is due (payments) or was received (refunds)."""
+    await conn.execute(
+        "insert into public.payments (tenant_id, invoice_id, kind, method, amount_cents, "
+        "currency, note) values (%s, %s, %s, %s::public.payment_method, %s, "
+        "public.current_tenant_currency(), %s)",
+        (claims.tenant_id, invoice_id, kind, method, amount_cents, note),
+    )
 
 
 def _refuse_override_unless_owner(claims: TokenClaims, override_bps: int | None) -> None:
@@ -515,7 +572,9 @@ async def create_invoice(body: InvoiceCreate, claims: CurrentClaims, conn: DbCon
     await _insert_lines(conn, claims, invoice_id, quote)
 
     if body.pay_now:
-        # The database assigns the invoice number and decrements stock (or refuses: 409).
+        # Paid in full now; the database assigns the invoice number and decrements stock (or
+        # refuses: 409, and the payment goes too).
+        await _take_balance(conn, claims, invoice_id, body.payment_method)
         await conn.execute(
             "update public.invoices set order_status = 'paid', "
             "payment_method = %s::public.payment_method where id = %s and tenant_id = %s",
@@ -544,8 +603,9 @@ async def replace_items(
     rate snapshot is kept (an owner override stays in force)."""
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
-            "select order_status::text as order_status, customer_id, tax_rate_bps, source "
-            "from public.invoices where id = %s and tenant_id = %s for update",
+            "select order_status::text as order_status, customer_id, tax_rate_bps, source, "
+            "production_started_at from public.invoices where id = %s and tenant_id = %s "
+            "for update",
             (invoice_id, claims.tenant_id),
         )
         invoice = await cur.fetchone()
@@ -554,6 +614,7 @@ async def replace_items(
     if invoice["order_status"] != OrderStatus.quote:
         raise ConflictError("only quotes can be edited")
     _refuse_website_order(invoice)
+    _refuse_if_in_production(invoice)
 
     customer = None
     if invoice["customer_id"] is not None:
@@ -590,8 +651,8 @@ async def preview_items(
     rate). Writes nothing."""
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
-            "select order_status::text as order_status, customer_id, tax_rate_bps, source "
-            "from public.invoices where id = %s and tenant_id = %s",
+            "select order_status::text as order_status, customer_id, tax_rate_bps, source, "
+            "production_started_at from public.invoices where id = %s and tenant_id = %s",
             (invoice_id, claims.tenant_id),
         )
         invoice = await cur.fetchone()
@@ -600,6 +661,7 @@ async def preview_items(
     if invoice["order_status"] != OrderStatus.quote:
         raise ConflictError("only quotes can be edited")
     _refuse_website_order(invoice)
+    _refuse_if_in_production(invoice)
     customer = await _customer(conn, claims, invoice["customer_id"])
     return await _preview(conn, claims, customer, body.items, invoice["tax_rate_bps"], None)
 
@@ -617,6 +679,15 @@ def _refuse_website_order(row: dict[str, Any]) -> None:
         raise ConflictError(WEBSITE_ORDER_LOCKED)
 
 
+IN_PRODUCTION_LOCKED = "Production has started, so the items can't change."
+
+
+def _refuse_if_in_production(row: dict[str, Any]) -> None:
+    """Same message as the database guard (invoice_line_items_quote_only_guard)."""
+    if row["production_started_at"] is not None:
+        raise ConflictError(IN_PRODUCTION_LOCKED)
+
+
 def _refuse_if_closed(row: dict[str, Any]) -> None:
     """Same messages as the database guard (invoices_08_closed_guard)."""
     if row["cancelled_at"] is not None:
@@ -630,10 +701,11 @@ async def change_status(
     invoice_id: UUID, body: InvoiceStatusChange, claims: CurrentClaims, conn: DbConn
 ) -> InvoiceOut:
     """Move the status forward (skips allowed). Leaving quote is the payment, so it needs a
-    payment method; any other move refuses one. The database enforces the order and, when an
-    invoice leaves quote, assigns its number and decrements stock; its messages pass through
-    (backward: 422; insufficient stock: 409, with nothing changed). Cancelled or refunded
-    invoices keep their status (409)."""
+    payment method and records a payment for whatever is still due; any other move refuses
+    one. A quote whose production has started becomes in production rather than paid. The
+    database enforces the order and, when an invoice leaves quote, assigns its number and
+    decrements stock; its messages pass through (backward: 422; insufficient stock: 409, with
+    nothing changed). Cancelled or refunded invoices keep their status (409)."""
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
             "select order_status::text as order_status, refunded_at, cancelled_at "
@@ -645,10 +717,10 @@ async def change_status(
         raise NotFoundError("Invoice not found")
     if body.status != row["order_status"]:
         _refuse_if_closed(row)
-    _check_payment_method(
-        paying=row["order_status"] == OrderStatus.quote and body.status != OrderStatus.quote,
-        payment_method=body.payment_method,
-    )
+    paying = row["order_status"] == OrderStatus.quote and body.status != OrderStatus.quote
+    _check_payment_method(paying=paying, payment_method=body.payment_method)
+    if paying:
+        await _take_balance(conn, claims, invoice_id, body.payment_method)
     await conn.execute(
         "update public.invoices set order_status = %s::public.order_status, "
         "payment_method = coalesce(%s::public.payment_method, payment_method) "
@@ -691,6 +763,17 @@ async def update_invoice(
             casts={"payment_method": "public.payment_method"},
         )
         await cur.execute(query, {**changes, "key": invoice_id, "tenant_id": claims.tenant_id})
+        if "payment_method" in changes:
+            # Paid in one payment: the ledger row is corrected too, so the two agree. Paid in
+            # several, the invoice's method is only a summary and the rows keep theirs.
+            await cur.execute(
+                "update public.payments set method = %(m)s::public.payment_method "
+                "where invoice_id = %(i)s and tenant_id = %(t)s and provider = 'manual' "
+                "and kind = 'payment' and status = 'succeeded' "
+                "and (select count(*) from public.payments p where p.invoice_id = %(i)s "
+                "     and p.kind = 'payment' and p.status = 'succeeded') = 1",
+                {"m": changes["payment_method"], "i": invoice_id, "t": claims.tenant_id},
+            )
     return await _load(conn, claims, invoice_id)
 
 
@@ -699,8 +782,12 @@ async def _lock_for_owner_action(
 ) -> dict[str, Any]:
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
-            "select paid_at, refunded_at, cancelled_at from public.invoices "
-            "where id = %s and tenant_id = %s for update",
+            "select order_status::text as order_status, paid_at, refunded_at, cancelled_at, "
+            "payment_method::text as payment_method, production_started_at, "
+            "public.invoice_amount_paid(id) as amount_paid_cents, "
+            "exists (select 1 from public.payments p where p.invoice_id = i.id "
+            "        and p.provider = 'stripe' and p.status = 'succeeded') as has_card_payment "
+            "from public.invoices i where id = %s and tenant_id = %s for update",
             (invoice_id, claims.tenant_id),
         )
         row = await cur.fetchone()
@@ -709,21 +796,57 @@ async def _lock_for_owner_action(
     return row
 
 
+CARD_REFUNDS_IN_STRIPE = "This invoice was paid by card online. Refund it in Stripe."
+
+
 @router.post("/{invoice_id}/refund", response_model=InvoiceOut, dependencies=[OwnerOnly])
 async def refund_invoice(invoice_id: UUID, claims: CurrentClaims, conn: DbConn) -> InvoiceOut:
-    """Mark a paid invoice refunded (no restock in v1). The status enum is unchanged."""
+    """Refund everything received (no restock in v1): a refund row for the net amount paid.
+
+    - A paid invoice is also marked refunded. The status enum is unchanged.
+    - A quote holding a deposit stays an open quote with nothing held, so it can then be
+      cancelled (a quote holding money can't be).
+    Card payments taken online are refunded in Stripe (Slice B2), never here."""
     row = await _lock_for_owner_action(conn, claims, invoice_id)
-    if row["paid_at"] is None:
-        raise ConflictError("only paid invoices can be refunded")
-    if row["refunded_at"] is not None:
-        raise ConflictError("this invoice is already refunded")
     if row["cancelled_at"] is not None:
         raise ConflictError("A cancelled invoice can't be refunded.")
-    await conn.execute(
-        "update public.invoices set refunded_at = now() where id = %s and tenant_id = %s",
+    if row["refunded_at"] is not None:
+        raise ConflictError("this invoice is already refunded")
+    deposit = row["paid_at"] is None and row["amount_paid_cents"] > 0
+    if row["paid_at"] is None and not deposit:
+        raise ConflictError("only paid invoices can be refunded")
+    if row["has_card_payment"]:
+        raise ConflictError(CARD_REFUNDS_IN_STRIPE)
+    if row["amount_paid_cents"] > 0:
+        await _insert_payment(
+            conn,
+            claims,
+            invoice_id,
+            "refund",
+            row["amount_paid_cents"],
+            await _refund_method(conn, claims, invoice_id),
+            None,
+        )
+    if not deposit:
+        await conn.execute(
+            "update public.invoices set refunded_at = now() where id = %s and tenant_id = %s",
+            (invoice_id, claims.tenant_id),
+        )
+    return await _load(conn, claims, invoice_id)
+
+
+async def _refund_method(
+    conn: AsyncConnection, claims: TokenClaims, invoice_id: UUID
+) -> PaymentMethod:
+    """The way the money came in, when it all came in one way; otherwise 'other'."""
+    cur = await conn.execute(
+        "select case when count(distinct method) = 1 then min(method::text) else 'other' end "
+        "from public.payments where invoice_id = %s and tenant_id = %s "
+        "and kind = 'payment' and status = 'succeeded'",
         (invoice_id, claims.tenant_id),
     )
-    return await _load(conn, claims, invoice_id)
+    (method,) = await cur.fetchone()
+    return PaymentMethod(method or "other")
 
 
 @router.post("/{invoice_id}/cancel", response_model=InvoiceOut, dependencies=[OwnerOnly])
@@ -734,10 +857,154 @@ async def cancel_invoice(invoice_id: UUID, claims: CurrentClaims, conn: DbConn) 
         raise ConflictError("this invoice is already cancelled")
     if row["refunded_at"] is not None:
         raise ConflictError("A refunded invoice can't be cancelled.")
+    if row["order_status"] == OrderStatus.quote and row["amount_paid_cents"] > 0:
+        raise ConflictError(DEPOSIT_HELD)  # the database refuses it too
     await conn.execute(
         "update public.invoices set cancelled_at = now() where id = %s and tenant_id = %s",
         (invoice_id, claims.tenant_id),
     )
+    return await _load(conn, claims, invoice_id)
+
+
+DEPOSIT_HELD = "This quote holds a deposit. Refund it before cancelling."
+
+
+# ---------------------------------------------------------------------------
+# Payments and deposits (Slice B1)
+# ---------------------------------------------------------------------------
+@router.get("/{invoice_id}/payments", response_model=list[PaymentOut], dependencies=[ReadRoles])
+async def list_payments(invoice_id: UUID, claims: CurrentClaims, conn: DbConn) -> list[PaymentOut]:
+    """The invoice's ledger, oldest first. The CPA reads it too (D15)."""
+    invoice = await _load(conn, claims, invoice_id)
+    return invoice.payments or []
+
+
+async def _lock_quote_for_payment(
+    conn: AsyncConnection, claims: TokenClaims, invoice_id: UUID
+) -> dict[str, Any]:
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            "select order_status::text as order_status, cancelled_at, refunded_at, "
+            "production_started_at, public.invoice_balance(id) as balance_cents, "
+            "public.invoice_amount_paid(id) as amount_paid_cents "
+            "from public.invoices where id = %s and tenant_id = %s for update",
+            (invoice_id, claims.tenant_id),
+        )
+        row = await cur.fetchone()
+    if row is None:
+        raise NotFoundError("Invoice not found")
+    if row["cancelled_at"] is not None:
+        raise ConflictError("This invoice is cancelled, so it can't take payments.")
+    if row["refunded_at"] is not None:
+        raise ConflictError("This invoice is refunded, so it can't take payments.")
+    if row["order_status"] != OrderStatus.quote:
+        raise ConflictError("This invoice is already paid.")
+    return row
+
+
+@router.post(
+    "/{invoice_id}/payments",
+    response_model=InvoiceOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Writers],
+)
+async def record_payment(
+    invoice_id: UUID, body: PaymentCreate, claims: CurrentClaims, conn: DbConn
+) -> InvoiceOut:
+    """Record a payment taken in person or by transfer: a deposit, or the rest. When it brings
+    the balance to zero the invoice becomes paid (in production if production had started)
+    and stock goes down. If stock is short the payment is still kept and the invoice stays a
+    quote with `stock_short` true; complete it with POST /settle after restocking."""
+    row = await _lock_quote_for_payment(conn, claims, invoice_id)
+    if row["balance_cents"] <= 0:
+        raise ConflictError("Nothing is due on this invoice.")
+    if body.amount_cents > row["balance_cents"]:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"That is more than the {row['balance_cents'] / 100:.2f} still due.",
+        )
+    await _insert_payment(
+        conn, claims, invoice_id, "payment", body.amount_cents, body.method, body.note
+    )
+    await conn.execute("select public.invoice_settle(%s)", (invoice_id,))
+    return await _load(conn, claims, invoice_id)
+
+
+@router.post(
+    "/{invoice_id}/payments/{payment_id}/void", response_model=InvoiceOut, dependencies=[OwnerOnly]
+)
+async def void_payment(
+    invoice_id: UUID, payment_id: UUID, claims: CurrentClaims, conn: DbConn
+) -> InvoiceOut:
+    """Void a payment or refund recorded by mistake, while the invoice is still a quote. It
+    stays in the ledger, marked voided, and counts for nothing."""
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            "select p.status, p.provider, i.order_status::text as order_status "
+            "from public.payments p join public.invoices i on i.id = p.invoice_id "
+            "where p.id = %s and p.invoice_id = %s and p.tenant_id = %s for update of p",
+            (payment_id, invoice_id, claims.tenant_id),
+        )
+        row = await cur.fetchone()
+    if row is None:
+        raise NotFoundError("Payment not found")
+    if row["provider"] != "manual":
+        raise ConflictError("Card payments are managed in Stripe.")
+    if row["status"] != "succeeded":
+        raise ConflictError("Only a recorded payment can be voided.")
+    if row["order_status"] != OrderStatus.quote:
+        raise ConflictError(
+            "This invoice is paid, so its payments can't be voided. Refund it instead."
+        )
+    await conn.execute(
+        "update public.payments set status = 'voided' where id = %s and tenant_id = %s",
+        (payment_id, claims.tenant_id),
+    )
+    return await _load(conn, claims, invoice_id)
+
+
+@router.post("/{invoice_id}/start-production", response_model=InvoiceOut, dependencies=[Writers])
+async def start_production(invoice_id: UUID, claims: CurrentClaims, conn: DbConn) -> InvoiceOut:
+    """Mark that work has started on a quote holding a deposit. It can't be undone: from now
+    on the lines are locked, and paying the rest makes it in production rather than paid."""
+    row = await _lock_quote_for_payment(conn, claims, invoice_id)
+    if row["production_started_at"] is not None:
+        raise ConflictError("Production has already started.")
+    if row["amount_paid_cents"] <= 0:
+        raise ConflictError("Record a deposit before starting production.")
+    await conn.execute(
+        "update public.invoices set production_started_at = now() where id = %s and tenant_id = %s",
+        (invoice_id, claims.tenant_id),
+    )
+    return await _load(conn, claims, invoice_id)
+
+
+@router.post("/{invoice_id}/settle", response_model=InvoiceOut, dependencies=[Writers])
+async def settle_invoice(invoice_id: UUID, claims: CurrentClaims, conn: DbConn) -> InvoiceOut:
+    """Complete a quote that is paid in full but was short of stock, once stock is back."""
+    row = await _lock_quote_for_payment(conn, claims, invoice_id)
+    if row["balance_cents"] > 0:
+        raise ConflictError("This invoice isn't paid in full yet.")
+    cur = await conn.execute("select public.invoice_settle(%s)", (invoice_id,))
+    (outcome,) = await cur.fetchone()
+    if outcome == "stock_short":
+        async with conn.cursor(row_factory=dict_row) as lines:
+            await lines.execute(
+                "select product_id, qty from public.invoice_line_items "
+                "where invoice_id = %s and tenant_id = %s and product_id is not null",
+                (invoice_id, claims.tenant_id),
+            )
+            items = [
+                LineItemIn(product_id=r["product_id"], qty=r["qty"]) for r in await lines.fetchall()
+            ]
+        short = await _stock_shortages(conn, claims, items)
+        raise ConflictError(
+            " ".join(
+                f"Not enough stock for SKU {s.sku}: {s.available} available, {s.needed} needed."
+                for s in short
+            )
+            or "Not enough stock to complete this order."
+        )
     return await _load(conn, claims, invoice_id)
 
 
