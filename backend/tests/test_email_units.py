@@ -61,7 +61,7 @@ def test_shop_and_shopper_text_is_escaped_everywhere() -> None:
     out = t.new_order_alert(nasty, "#123456", invoice, 'https://admin.example/x"><b>')
     assert "<script>" not in out.html and "&lt;script&gt;" in out.html
     assert '"><b>' not in out.html
-    assert "W-ABCDEFGH" in out.subject and "$162.60" in out.text and "card" in out.text
+    assert "W-ABCDEFGH" in out.subject and "$162.60" in out.text and "paying by card" in out.text
 
 
 def test_a_colour_that_isnt_hex_falls_back() -> None:

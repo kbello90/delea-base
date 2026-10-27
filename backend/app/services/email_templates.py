@@ -23,9 +23,9 @@ _SYMBOLS = {
 }
 
 PAYMENT_CHOICES = {
-    "bank_transfer": "bank transfer",
+    "bank_transfer": "paying by bank transfer",
     "pay_on_pickup": "paying on pickup",
-    "card": "card",
+    "card": "paying by card",
 }
 
 

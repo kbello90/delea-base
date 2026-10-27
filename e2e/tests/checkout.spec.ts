@@ -290,3 +290,42 @@ test("card: the owner connects Stripe, a shopper pays by card, the invoice is pa
   await desk.close();
 });
 
+const MAILPIT = "http://127.0.0.1:55324";
+
+test("email: the owner gets a new-order alert; Settings › Emails shows it sent", async ({ browser }) => {
+  const s = shop();
+  // The worker, once, into the local mail catcher only (never Resend, whatever backend/.env says).
+  execFileSync(PYTHON, ["-m", "app.worker", "--once"], {
+    cwd: BACKEND,
+    env: { ...process.env, EMAIL_PROVIDER: "mailpit", RESEND_API_KEY: "", ADMIN_APP_URL: `http://localhost:${PORTS.admin}` },
+  });
+  const found = (await (await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:${s.owner_email}`)}`)).json()) as {
+    messages: { ID: string; Subject: string }[];
+  };
+  const alert = found.messages.find((m) => m.Subject.startsWith("New website order W-"));
+  expect(alert, "a new-order alert in the mail catcher").toBeTruthy();
+  const message = (await (await fetch(`${MAILPIT}/api/v1/message/${alert!.ID}`)).json()) as { HTML: string; Text: string };
+  expect(message.Text).not.toMatch(/Main St|Elm St|Pine St|555/); // no street address or phone
+
+  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  const mail = await phone.newPage();
+  await mail.setContent(message.HTML);
+  await expect(mail.getByRole("heading", { name: /^New website order W-/ })).toBeVisible();
+  await mail.screenshot({ path: shots("17-email-new-order-alert-phone"), fullPage: true });
+  await phone.close();
+
+  const desk = await browser.newContext({ viewport: { width: 1440, height: 1700 } });
+  const admin = await desk.newPage();
+  await admin.goto(`http://localhost:${PORTS.admin}/sign-in`);
+  await admin.getByLabel("Email").fill(s.owner_email);
+  await admin.getByLabel("Password").fill(s.owner_password);
+  await admin.getByRole("button", { name: "Sign in" }).click();
+  await admin.getByRole("link", { name: /^Settings/ }).click();
+  const emails = admin.getByRole("region", { name: "Emails" });
+  await expect(emails.getByText("Local mail catcher (development)")).toBeVisible();
+  await expect(emails.getByRole("table", { name: "Latest emails" }).getByText("Sent").first()).toBeVisible();
+  await emails.scrollIntoViewIfNeeded();
+  await admin.screenshot({ path: shots("18-admin-settings-emails") });
+  await desk.close();
+});
+

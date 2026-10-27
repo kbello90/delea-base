@@ -81,7 +81,7 @@ export function EmailsCard({ settings }: { settings: EmailSettings }) {
         <div>
           <dt>Replies go to</dt>
           <dd>
-            {settings.reply_to ?? <span className="muted">Not set: replies go nowhere useful</span>}
+            {settings.reply_to ?? <span className="muted">Not set yet: replies would go to an address nobody reads</span>}
             {settings.reply_to_pending && <span className="field-hint"> Waiting for confirmation: {settings.reply_to_pending}</span>}
           </dd>
         </div>
@@ -121,7 +121,7 @@ export function EmailsCard({ settings }: { settings: EmailSettings }) {
             <input type="checkbox" checked={alerts[a.key]} onChange={(e) => setAlerts({ ...alerts, [a.key]: e.target.checked })} disabled={update.isPending} />
             <span>
               {a.label}
-              <span className="field-hint"> {a.hint}</span>
+              <span className="field-hint emails-card__hint">{a.hint}</span>
             </span>
           </label>
         ))}

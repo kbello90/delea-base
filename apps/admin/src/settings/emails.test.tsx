@@ -20,7 +20,7 @@ describe("settings › emails", () => {
     const section = await card();
     expect(section.getByText("Local mail catcher (development)")).toBeInTheDocument();
     expect(section.getByText("DELEA <notifications@mail.deleajewelry.com>")).toBeInTheDocument();
-    expect(section.getByText(/Not set: replies go nowhere useful/)).toBeInTheDocument();
+    expect(section.getByText(/Not set yet: replies would go to an address nobody reads/)).toBeInTheDocument();
     expect(section.getByText("No emails yet.")).toBeInTheDocument();
   });
 
