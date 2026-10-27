@@ -42,6 +42,7 @@ from app.models.public import (
     OrderRequest,
     PageLink,
     PageSlug,
+    PayNowOut,
     PickupOption,
     PublicImageOut,
     PublicPageOut,
@@ -51,6 +52,8 @@ from app.models.public import (
     QuoteRequest,
     ShippingOption,
 )
+from app.services.card_checkout import start_card_payment
+from app.services.stripe_service import StripeGateway, gateway_dependency
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -80,6 +83,7 @@ def storefront_tenant(request: Request) -> str:
 
 Tenant = Annotated[str, Depends(storefront_tenant)]
 Pool = Annotated[AsyncConnectionPool, Depends(get_pool)]
+Gateway = Annotated[StripeGateway | None, Depends(gateway_dependency)]
 
 
 def _hash(value: str) -> str:
@@ -103,8 +107,9 @@ def _limit(limiter: rate_limit.SlidingWindowLimiter, request: Request) -> None:
 # ---------------------------------------------------------------------------
 # Store, pages, products
 # ---------------------------------------------------------------------------
-def _store_out(row: dict[str, Any]) -> PublicStoreOut:
+def _store_out(row: dict[str, Any], *, stripe_ready: bool) -> PublicStoreOut:
     settings = get_settings()
+    card = bool(row.pop("card_enabled")) and stripe_ready
     logo = row.pop("logo_path")
     label, url = row.pop("hero_cta_label"), row.pop("hero_cta_url")
     pages = [
@@ -118,9 +123,11 @@ def _store_out(row: dict[str, Any]) -> PublicStoreOut:
         payment_choices.append("bank_transfer")
     if row["pay_on_pickup_enabled"] and picks:
         payment_choices.append("pay_on_pickup")
+    if card:
+        payment_choices.append("card")
     can_receive = ships or picks
-    # Paying on pickup needs pickup; bank transfer works with either.
-    can_pay = "bank_transfer" in payment_choices or "pay_on_pickup" in payment_choices
+    # Paying on pickup needs pickup; bank transfer and card work with either.
+    can_pay = bool(payment_choices)
     return PublicStoreOut.model_validate(
         {
             **row,
@@ -143,7 +150,9 @@ def _store_out(row: dict[str, Any]) -> PublicStoreOut:
 
 
 @router.get("/store", response_model=PublicStoreOut)
-async def get_store(tenant_id: Tenant, pool: Pool, response: Response) -> PublicStoreOut:
+async def get_store(
+    tenant_id: Tenant, pool: Pool, response: Response, gateway: Gateway
+) -> PublicStoreOut:
     async with (
         storefront_session(pool, tenant_id) as conn,
         conn.cursor(row_factory=dict_row) as cur,
@@ -153,7 +162,7 @@ async def get_store(tenant_id: Tenant, pool: Pool, response: Response) -> Public
     if row is None:
         raise NotFoundError(STORE_NOT_FOUND)
     response.headers["Cache-Control"] = CACHE_CONTROL
-    return _store_out(row)
+    return _store_out(row, stripe_ready=gateway is not None)
 
 
 @router.get("/pages/{slug}", response_model=PublicPageOut)
@@ -341,9 +350,16 @@ _INVALID = {
     responses={200: {"model": OrderOut, "description": "The same request again: the same order"}},
 )
 async def place_order(
-    body: OrderRequest, request: Request, response: Response, tenant_id: Tenant, pool: Pool
+    body: OrderRequest,
+    request: Request,
+    response: Response,
+    tenant_id: Tenant,
+    pool: Pool,
+    gateway: Gateway,
 ) -> OrderOut | JSONResponse:
-    """Place an order (unpaid: the owner confirms the payment in the admin).
+    """Place an order. Bank transfer and pay on pickup: unpaid, the owner confirms the payment
+    in the admin. Card: the response carries `checkout_url`, Stripe's hosted Checkout for the
+    total; the webhook records the payment (Slice B2).
 
     Order of checks: the bot traps; a repeat of an earlier checkout returns that order (before
     Turnstile, so a double click never needs a second token); the per-address attempt limit;
@@ -361,6 +377,8 @@ async def place_order(
         )
     if not turnstile.checkout_protected(settings):
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, ORDERING_UNAVAILABLE)
+    if body.payment_choice == "card" and gateway is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, _INVALID["payment_choice"])
 
     document = body.order_document()
     fingerprint = _hash(json.dumps(document, sort_keys=True, separators=(",", ":")))
@@ -381,7 +399,9 @@ async def place_order(
             status.HTTP_409_CONFLICT, "This checkout was already used for a different order."
         )
     if previous["status"] == "replayed":
-        return await _order_response(pool, tenant_id, previous["public_token"], response, 200)
+        return await _placed(
+            request, pool, gateway, tenant_id, previous["public_token"], response, 200
+        )
     if not allowed:
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, TOO_MANY)
 
@@ -418,7 +438,9 @@ async def place_order(
     outcome = result["status"]
     if outcome in ("created", "replayed"):
         code = 201 if outcome == "created" else 200
-        return await _order_response(pool, tenant_id, result["public_token"], response, code)
+        return await _placed(
+            request, pool, gateway, tenant_id, result["public_token"], response, code
+        )
     if outcome == "conflict":
         raise HTTPException(
             status.HTTP_409_CONFLICT, "This checkout was already used for a different order."
@@ -453,6 +475,73 @@ async def _order_response(
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Internal server error")
     response.status_code = code
     return order
+
+
+async def _placed(
+    request: Request,
+    pool: AsyncConnectionPool,
+    gateway: StripeGateway | None,
+    tenant_id: str,
+    token: str,
+    response: Response,
+    code: int,
+) -> OrderOut:
+    """The placed order; for a card order still owing, with its Checkout link (a double
+    submit gets the same open session back)."""
+    order = await _order_response(pool, tenant_id, token, response, code)
+    if (
+        order.payment_choice == "card"
+        and order.balance_cents > 0
+        and order.status
+        not in (
+            "cancelled",
+            "refunded",
+        )
+    ):
+        started = await start_card_payment(
+            pool, gateway, tenant_id, order.public_token, request.headers.get("origin", "")
+        )
+        order.checkout_url = started.checkout_url
+    return order
+
+
+_PAY_REFUSED = {
+    "not_found": (status.HTTP_404_NOT_FOUND, "Order not found"),
+    "paid": (status.HTTP_409_CONFLICT, "This order is already paid."),
+    "closed": (status.HTTP_409_CONFLICT, "This order can't be paid any more."),
+    "card_off": (status.HTTP_409_CONFLICT, "Card payments aren't available for this order."),
+    "too_small": (
+        status.HTTP_409_CONFLICT,
+        "The rest is below the smallest card payment. Please pay it with the shop.",
+    ),
+    "stripe": (
+        status.HTTP_502_BAD_GATEWAY,
+        "The card payment couldn't start. Please try again in a minute.",
+    ),
+}
+
+
+@router.post("/orders/{public_token}/pay", response_model=PayNowOut)
+async def pay_now(
+    public_token: UUID,
+    request: Request,
+    response: Response,
+    tenant_id: Tenant,
+    pool: Pool,
+    gateway: Gateway,
+) -> PayNowOut:
+    """Pay the order's balance by card: Stripe's hosted Checkout (an open session for the same
+    balance is reused). 10 per address per hour."""
+    _limit(rate_limit.public_pay, request)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    started = await start_card_payment(
+        pool, gateway, tenant_id, public_token, request.headers.get("origin", "")
+    )
+    if started.checkout_url is None:
+        code, detail = _PAY_REFUSED[started.refused or "stripe"]
+        raise HTTPException(code, detail)
+    return PayNowOut(checkout_url=started.checkout_url)
 
 
 @router.get("/orders/{public_token}", response_model=OrderOut)

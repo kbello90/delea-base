@@ -667,8 +667,8 @@ function StockShortNotice({ invoice, canSettle }: { invoice: Invoice; canSettle:
   );
 }
 
-const CHOICE_LABEL = { bank_transfer: "Bank transfer", pay_on_pickup: "Pay on pickup" } as const;
-const CHOICE_METHOD = { bank_transfer: "bank_transfer", pay_on_pickup: "cash" } as const;
+const CHOICE_LABEL = { bank_transfer: "Bank transfer", pay_on_pickup: "Pay on pickup", card: "Card (online)" } as const;
+const CHOICE_METHOD = { bank_transfer: "bank_transfer", pay_on_pickup: "cash", card: "card" } as const;
 
 /** The shopper and where it goes (owner and staff only; the API never sends it to the CPA). */
 function ShopperCard({ invoice }: { invoice: Invoice }) {

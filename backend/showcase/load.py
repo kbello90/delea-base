@@ -64,6 +64,9 @@ class ShowcaseConfig:
     # The local storefront host (`pnpm --filter @delea/storefront dev`); None on a hosted
     # target, whose storefront domain is added by hand (infra/scripts/storefront-domain.md).
     storefront_domain: str | None = SHOWCASE_STOREFRONT_DOMAIN
+    # A TEST connected account in the platform's Stripe sandbox (SHOWCASE_STRIPE_ACCOUNT_ID,
+    # optional): the showcase takes test cards with it. Demo shops can't run onboarding.
+    stripe_account_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -464,6 +467,14 @@ async def load_showcase(config: ShowcaseConfig, expected_hook=None) -> LoadRepor
                 images = await _insert_catalog(conn, config, entries, processed, history, uploaded)
                 await _insert_sales(conn, tid, history)
                 await _backdate(conn, tid, history)
+                if config.stripe_account_id:
+                    # Charges stay off until Stripe confirms them: the owner's Settings ›
+                    # Payments reads the account, or an account.updated event arrives.
+                    await conn.execute(
+                        "insert into public.payment_accounts (tenant_id, external_account_id) "
+                        "values (%s, %s)",
+                        (tid, config.stripe_account_id),
+                    )
                 await integrity.run_all(conn, tid, expected)
         except BaseException:
             if uploaded:

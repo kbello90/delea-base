@@ -146,6 +146,18 @@ def test_the_emails_are_configurable() -> None:
     assert config.members[0] == ("me@shop.test", "owner")
 
 
+def test_the_stripe_test_account_is_optional_and_checked() -> None:
+    assert build_config(ENV, _settings(), allow_remote=False).stripe_account_id is None
+    env = {**ENV, "SHOWCASE_STRIPE_ACCOUNT_ID": "acct_1TestShowcase"}
+    assert build_config(env, _settings(), allow_remote=False).stripe_account_id == (
+        "acct_1TestShowcase"
+    )
+    with pytest.raises(ConfigRefused, match="acct_"):
+        build_config(
+            {**ENV, "SHOWCASE_STRIPE_ACCOUNT_ID": "sk_test_oops"}, _settings(), allow_remote=False
+        )
+
+
 def test_a_remote_storage_url_is_refused_without_the_flag() -> None:
     with pytest.raises(ConfigRefused, match="--allow-remote"):
         build_config(ENV, _settings(supabase_url="https://abcd.supabase.co"), allow_remote=False)

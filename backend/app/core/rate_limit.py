@@ -52,3 +52,5 @@ public_reads = SlidingWindowLimiter(limit=120, window_seconds=60)
 # Postgres (storefront_count_attempt, storefront_place_order), so they hold across instances.
 public_quotes = SlidingWindowLimiter(limit=60, window_seconds=60)
 public_tracking = SlidingWindowLimiter(limit=30, window_seconds=60)
+# Pay now on the tracking page: each one may start a Stripe Checkout Session.
+public_pay = SlidingWindowLimiter(limit=10, window_seconds=3600)

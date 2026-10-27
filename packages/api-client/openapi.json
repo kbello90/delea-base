@@ -2234,7 +2234,7 @@
           "invoices"
         ],
         "summary": "Record Payment",
-        "description": "Record a payment taken in person or by transfer: a deposit, or the rest. When it brings\nthe balance to zero the invoice becomes paid (in production if production had started)\nand stock goes down. If stock is short the payment is still kept and the invoice stays a\nquote with `stock_short` true; complete it with POST /settle after restocking.",
+        "description": "Record a payment taken in person or by transfer: a deposit, or the rest. When it brings\nthe balance to zero the invoice becomes paid (in production if production had started)\nand stock goes down. If stock is short the payment is still kept and the invoice stays a\nquote with `stock_short` true; complete it with POST /settle after restocking. An open card\nCheckout Session for the order is expired at Stripe first (409 if it can't be).",
         "operationId": "record_payment_api_v1_invoices__invoice_id__payments_post",
         "security": [
           {
@@ -4079,7 +4079,7 @@
           "public"
         ],
         "summary": "Place Order",
-        "description": "Place an order (unpaid: the owner confirms the payment in the admin).\n\nOrder of checks: the bot traps; a repeat of an earlier checkout returns that order (before\nTurnstile, so a double click never needs a second token); the per-address attempt limit;\nTurnstile; then the database prices, checks and writes the order in one transaction.",
+        "description": "Place an order. Bank transfer and pay on pickup: unpaid, the owner confirms the payment\nin the admin. Card: the response carries `checkout_url`, Stripe's hosted Checkout for the\ntotal; the webhook records the payment (Slice B2).\n\nOrder of checks: the bot traps; a repeat of an earlier checkout returns that order (before\nTurnstile, so a double click never needs a second token); the per-address attempt limit;\nTurnstile; then the database prices, checks and writes the order in one transaction.",
         "operationId": "place_order_api_v1_public_orders_post",
         "requestBody": {
           "content": {
@@ -4108,6 +4108,50 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/OrderOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/orders/{public_token}/pay": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Pay Now",
+        "description": "Pay the order's balance by card: Stripe's hosted Checkout (an open session for the same\nbalance is reused). 10 per address per hour.",
+        "operationId": "pay_now_api_v1_public_orders__public_token__pay_post",
+        "parameters": [
+          {
+            "name": "public_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Public Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayNowOut"
                 }
               }
             }
@@ -4220,6 +4264,31 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/stripe/webhook": {
+      "post": {
+        "tags": [
+          "stripe_webhooks"
+        ],
+        "summary": "Stripe Webhook",
+        "operationId": "stripe_webhook_api_v1_stripe_webhook_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "type": "object",
+                  "title": "Response Stripe Webhook Api V1 Stripe Webhook Post"
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -6197,7 +6266,8 @@
                 "type": "string",
                 "enum": [
                   "bank_transfer",
-                  "pay_on_pickup"
+                  "pay_on_pickup",
+                  "card"
                 ]
               },
               {
@@ -7175,7 +7245,8 @@
             "type": "string",
             "enum": [
               "bank_transfer",
-              "pay_on_pickup"
+              "pay_on_pickup",
+              "card"
             ],
             "title": "Payment Choice"
           },
@@ -7261,6 +7332,17 @@
           "balance_cents": {
             "type": "integer",
             "title": "Balance Cents"
+          },
+          "checkout_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkout Url"
           }
         },
         "type": "object",
@@ -7316,7 +7398,8 @@
             "type": "string",
             "enum": [
               "bank_transfer",
-              "pay_on_pickup"
+              "pay_on_pickup",
+              "card"
             ],
             "title": "Payment Choice"
           },
@@ -7459,6 +7542,19 @@
           "email"
         ],
         "title": "PasswordResetRequest"
+      },
+      "PayNowOut": {
+        "properties": {
+          "checkout_url": {
+            "type": "string",
+            "title": "Checkout Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "checkout_url"
+        ],
+        "title": "PayNowOut"
       },
       "PaymentAccountOut": {
         "properties": {
@@ -8686,7 +8782,8 @@
               "type": "string",
               "enum": [
                 "bank_transfer",
-                "pay_on_pickup"
+                "pay_on_pickup",
+                "card"
               ]
             },
             "type": "array",

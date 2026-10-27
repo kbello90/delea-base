@@ -201,7 +201,8 @@ class InvoiceOut(BaseModel):
     payment_method: PaymentMethod | None
     shipping_cents: int
     fulfillment: Literal["ship", "pickup"] | None  # storefront orders
-    payment_choice: Literal["bank_transfer", "pay_on_pickup"] | None  # what the shopper chose
+    # What the shopper chose; card since Slice B2.
+    payment_choice: Literal["bank_transfer", "pay_on_pickup", "card"] | None
     order_ref: str | None  # the shopper's reference (W-…), storefront orders
     paid_at: datetime | None
     refunded_at: datetime | None

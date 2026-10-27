@@ -503,7 +503,8 @@ export interface paths {
          * @description Record a payment taken in person or by transfer: a deposit, or the rest. When it brings
          *     the balance to zero the invoice becomes paid (in production if production had started)
          *     and stock goes down. If stock is short the payment is still kept and the invoice stays a
-         *     quote with `stock_short` true; complete it with POST /settle after restocking.
+         *     quote with `stock_short` true; complete it with POST /settle after restocking. An open card
+         *     Checkout Session for the order is expired at Stripe first (409 if it can't be).
          */
         post: operations["record_payment_api_v1_invoices__invoice_id__payments_post"];
         delete?: never;
@@ -1021,13 +1022,36 @@ export interface paths {
         put?: never;
         /**
          * Place Order
-         * @description Place an order (unpaid: the owner confirms the payment in the admin).
+         * @description Place an order. Bank transfer and pay on pickup: unpaid, the owner confirms the payment
+         *     in the admin. Card: the response carries `checkout_url`, Stripe's hosted Checkout for the
+         *     total; the webhook records the payment (Slice B2).
          *
          *     Order of checks: the bot traps; a repeat of an earlier checkout returns that order (before
          *     Turnstile, so a double click never needs a second token); the per-address attempt limit;
          *     Turnstile; then the database prices, checks and writes the order in one transaction.
          */
         post: operations["place_order_api_v1_public_orders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/orders/{public_token}/pay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pay Now
+         * @description Pay the order's balance by card: Stripe's hosted Checkout (an open session for the same
+         *     balance is reused). 10 per address per hour.
+         */
+        post: operations["pay_now_api_v1_public_orders__public_token__pay_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1088,6 +1112,23 @@ export interface paths {
         put?: never;
         /** Onboarding Link */
         post: operations["onboarding_link_api_v1_settings_payments_stripe_onboarding_link_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stripe/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stripe Webhook */
+        post: operations["stripe_webhook_api_v1_stripe_webhook_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1686,7 +1727,7 @@ export interface components {
             /** Fulfillment */
             fulfillment: ("ship" | "pickup") | null;
             /** Payment Choice */
-            payment_choice: ("bank_transfer" | "pay_on_pickup") | null;
+            payment_choice: ("bank_transfer" | "pay_on_pickup" | "card") | null;
             /** Order Ref */
             order_ref: string | null;
             /** Paid At */
@@ -2028,7 +2069,7 @@ export interface components {
              * Payment Choice
              * @enum {string}
              */
-            payment_choice: "bank_transfer" | "pay_on_pickup";
+            payment_choice: "bank_transfer" | "pay_on_pickup" | "card";
             /** Lines */
             lines: components["schemas"]["TrackedLineOut"][];
             /** Subtotal Cents */
@@ -2055,6 +2096,8 @@ export interface components {
             amount_paid_cents: number;
             /** Balance Cents */
             balance_cents: number;
+            /** Checkout Url */
+            checkout_url?: string | null;
         };
         /** OrderRequest */
         OrderRequest: {
@@ -2074,7 +2117,7 @@ export interface components {
              * Payment Choice
              * @enum {string}
              */
-            payment_choice: "bank_transfer" | "pay_on_pickup";
+            payment_choice: "bank_transfer" | "pay_on_pickup" | "card";
             /** Expected Total Cents */
             expected_total_cents: number;
             contact: components["schemas"]["ContactIn"];
@@ -2114,6 +2157,11 @@ export interface components {
         PasswordResetRequest: {
             /** Email */
             email: string;
+        };
+        /** PayNowOut */
+        PayNowOut: {
+            /** Checkout Url */
+            checkout_url: string;
         };
         /**
          * PaymentAccountOut
@@ -2515,7 +2563,7 @@ export interface components {
             shipping: components["schemas"]["ShippingOption"] | null;
             pickup: components["schemas"]["PickupOption"] | null;
             /** Payment Choices */
-            payment_choices: ("bank_transfer" | "pay_on_pickup")[];
+            payment_choices: ("bank_transfer" | "pay_on_pickup" | "card")[];
             /** Tax Rate Bps */
             tax_rate_bps: number;
             /** Tax Shipping */
@@ -5178,6 +5226,37 @@ export interface operations {
             };
         };
     };
+    pay_now_api_v1_public_orders__public_token__pay_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                public_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayNowOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     track_order_api_v1_public_orders__public_token__get: {
         parameters: {
             query?: never;
@@ -5245,6 +5324,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OnboardingLinkOut"];
+                };
+            };
+        };
+    };
+    stripe_webhook_api_v1_stripe_webhook_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
                 };
             };
         };

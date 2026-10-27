@@ -83,7 +83,9 @@ class PublicStoreOut(BaseModel):
     checkout_enabled: bool  # orders can be placed: a way to receive, a way to pay, protected
     shipping: ShippingOption | None  # None: the shop doesn't ship
     pickup: PickupOption | None  # None: no local pickup
-    payment_choices: list[Literal["bank_transfer", "pay_on_pickup"]]  # pay_on_pickup: pickup only
+    # pay_on_pickup: pickup only. card (Slice B2): Stripe-hosted Checkout, when the shop's
+    # Stripe account can take charges and this server has Stripe set up.
+    payment_choices: list[Literal["bank_transfer", "pay_on_pickup", "card"]]
     tax_rate_bps: int  # the shop's single rate (TRD §6.11, accepted limitation)
     tax_shipping: bool
 
@@ -135,7 +137,7 @@ class Answer(BaseModel):
 
 
 Fulfillment = Literal["ship", "pickup"]
-PaymentChoice = Literal["bank_transfer", "pay_on_pickup"]
+PaymentChoice = Literal["bank_transfer", "pay_on_pickup", "card"]
 AnswerText = Annotated[str, Field(max_length=200)]
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 Line = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
@@ -313,3 +315,10 @@ class OrderOut(BaseModel):
     pickup_note: str | None
     amount_paid_cents: int  # received so far (a deposit, or everything)
     balance_cents: int  # still due; 0 once paid in full or cancelled
+    # Placing a card order: Stripe's hosted Checkout for the balance. None when Stripe couldn't
+    # be reached (the tracking page then offers Pay now) and on every other read.
+    checkout_url: str | None = None
+
+
+class PayNowOut(BaseModel):
+    checkout_url: str  # Stripe-hosted Checkout for the order's balance

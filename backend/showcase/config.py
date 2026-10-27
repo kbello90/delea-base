@@ -8,8 +8,11 @@
   falls back to the API's DATABASE_URL there) and SHOWCASE_PASSWORD is required.
 - Locally: the database defaults to DATABASE_URL and the password to the local dev password.
 - SHOWCASE_OWNER_EMAIL / SHOWCASE_STAFF_EMAIL / SHOWCASE_CPA_EMAIL: the member logins.
+- SHOWCASE_STRIPE_ACCOUNT_ID (optional): the acct_... id of a TEST connected account in the
+  platform's Stripe sandbox, so the showcase can take test cards (demo shops can't onboard).
 """
 
+import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -91,6 +94,10 @@ def build_config(
     if len({email.lower() for email, _ in members}) != len(members):
         raise ConfigRefused("the owner, staff and cpa emails must be different")
 
+    stripe_account = env.get("SHOWCASE_STRIPE_ACCOUNT_ID", "").strip() or None
+    if stripe_account and not re.fullmatch(r"acct_[A-Za-z0-9]{1,64}", stripe_account):
+        raise ConfigRefused("SHOWCASE_STRIPE_ACCOUNT_ID must look like acct_...")
+
     now = now or datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
     return ShowcaseConfig(
         database_url=database_url,
@@ -101,4 +108,5 @@ def build_config(
         password=password,
         now=now,
         storefront_domain=SHOWCASE_STOREFRONT_DOMAIN if local else None,
+        stripe_account_id=stripe_account,
     )

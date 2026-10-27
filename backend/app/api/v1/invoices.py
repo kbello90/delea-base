@@ -61,6 +61,7 @@ from app.models.invoice import (
     PreviewLineOut,
     StockShortage,
 )
+from app.services.card_checkout import CardSessionOpen, close_open_card_sessions
 from app.services.currency import fetch_currency
 from app.services.invoices import customer_display_name, due_date_for
 from app.services.pricing import (
@@ -71,10 +72,30 @@ from app.services.pricing import (
     ProductPrice,
     price_quote,
 )
+from app.services.stripe_service import StripeGateway, gateway_dependency
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
+
+Gateway = Annotated[StripeGateway | None, Depends(gateway_dependency)]
+Pool = Annotated[AsyncConnectionPool, Depends(get_pool)]
+
+CARD_SESSION_OPEN = (
+    "A card payment is open for this order and couldn't be closed. Try again in a minute."
+)
+
+
+async def _close_card_sessions(
+    pool: AsyncConnectionPool, gateway: StripeGateway | None, claims: TokenClaims, invoice_id: UUID
+) -> None:
+    """Before money is recorded by hand: the order's open card Checkout Sessions are expired
+    at Stripe, so the customer can't also pay by card (Slice B2)."""
+    try:
+        await close_open_card_sessions(pool, gateway, claims.tenant_id, invoice_id)
+    except CardSessionOpen as exc:
+        raise ConflictError(CARD_SESSION_OPEN) from exc
+
 
 ReadRoles = Depends(require_role("owner", "staff", "cpa"))
 Writers = Depends(require_role("owner", "staff"))
@@ -706,7 +727,12 @@ def _refuse_if_closed(row: dict[str, Any]) -> None:
 
 @router.post("/{invoice_id}/status", response_model=InvoiceOut, dependencies=[Writers])
 async def change_status(
-    invoice_id: UUID, body: InvoiceStatusChange, claims: CurrentClaims, conn: DbConn
+    invoice_id: UUID,
+    body: InvoiceStatusChange,
+    claims: CurrentClaims,
+    conn: DbConn,
+    pool: Pool,
+    gateway: Gateway,
 ) -> InvoiceOut:
     """Move the status forward (skips allowed). Leaving quote is the payment, so it needs a
     payment method and records a payment for whatever is still due; any other move refuses
@@ -728,6 +754,7 @@ async def change_status(
     paying = row["order_status"] == OrderStatus.quote and body.status != OrderStatus.quote
     _check_payment_method(paying=paying, payment_method=body.payment_method)
     if paying:
+        await _close_card_sessions(pool, gateway, claims, invoice_id)
         await _take_balance(conn, claims, invoice_id, body.payment_method)
     await conn.execute(
         "update public.invoices set order_status = %s::public.order_status, "
@@ -917,12 +944,19 @@ async def _lock_quote_for_payment(
     dependencies=[Writers],
 )
 async def record_payment(
-    invoice_id: UUID, body: PaymentCreate, claims: CurrentClaims, conn: DbConn
+    invoice_id: UUID,
+    body: PaymentCreate,
+    claims: CurrentClaims,
+    conn: DbConn,
+    pool: Pool,
+    gateway: Gateway,
 ) -> InvoiceOut:
     """Record a payment taken in person or by transfer: a deposit, or the rest. When it brings
     the balance to zero the invoice becomes paid (in production if production had started)
     and stock goes down. If stock is short the payment is still kept and the invoice stays a
-    quote with `stock_short` true; complete it with POST /settle after restocking."""
+    quote with `stock_short` true; complete it with POST /settle after restocking. An open card
+    Checkout Session for the order is expired at Stripe first (409 if it can't be)."""
+    await _close_card_sessions(pool, gateway, claims, invoice_id)
     row = await _lock_quote_for_payment(conn, claims, invoice_id)
     if row["balance_cents"] <= 0:
         raise ConflictError("Nothing is due on this invoice.")
