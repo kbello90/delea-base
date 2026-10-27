@@ -62,3 +62,14 @@
   align-items: center;
   gap: 0.5rem;
 }
+
+/* Slice B2: card payments */
+.payments-card .tag + .tag {
+  margin-left: 0.5rem;
+}
+.payments-card__facts {
+  margin: 0.5rem 0 1rem;
+}
+.payments-card__facts dd {
+  overflow-wrap: anywhere;
+}

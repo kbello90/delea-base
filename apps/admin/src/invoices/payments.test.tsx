@@ -184,6 +184,21 @@ describe("an invoice's payments", () => {
     await screen.findByRole("heading", { name: "Payments" });
     expect(screen.queryByRole("button", { name: "Refund" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Void/ })).not.toBeInTheDocument();
+    expect(await screen.findByText("Payment · Card (online)")).toBeInTheDocument();
+    expect(screen.getByText(/refunded in your Stripe Dashboard/)).toBeInTheDocument();
+  });
+
+  it("an overpaid order says by how much", async () => {
+    const over = paidInvoice({
+      quote_number: "QTE-2026-061",
+      items: [line],
+      amount_paid_cents: 11800,
+      balance_cents: -1000,
+      payments: [makePayment({ amount_cents: 10800, method: "bank_transfer" }), makePayment({ provider: "stripe", method: "card", amount_cents: 1000 })],
+    });
+    setup(`/invoices/${over.id}`, { invoices: [over] });
+    expect(await screen.findByText("Overpaid by $10.00. Refund the difference in Stripe or by hand.")).toBeInTheDocument();
+    expect(paidAndDue().getByText("Overpaid").nextSibling).toHaveTextContent("$10.00");
   });
 
   it("the list shows a deposit's state and what is due", async () => {

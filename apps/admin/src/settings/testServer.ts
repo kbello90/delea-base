@@ -1,6 +1,6 @@
 import type { Schemas } from "@delea/api-client";
 import { vi } from "vitest";
-import { COMPANY_RESPONSE, DEFAULT_BRAND_RESPONSE, STOREFRONT_RESPONSE, jsonResponse } from "../test/harness";
+import { COMPANY_RESPONSE, DEFAULT_BRAND_RESPONSE, PAYMENTS_RESPONSE, STOREFRONT_RESPONSE, jsonResponse } from "../test/harness";
 
 export { FakeXhr } from "../products/testServer";
 
@@ -24,7 +24,8 @@ export function settingsServer({
   company = COMPANY_RESPONSE,
   brand = DEFAULT_BRAND_RESPONSE,
   storefront = STOREFRONT_RESPONSE,
-}: { company?: Company; brand?: Brand; storefront?: Storefront } = {}) {
+  payments = PAYMENTS_RESPONSE,
+}: { company?: Company; brand?: Brand; storefront?: Storefront; payments?: Schemas["PaymentSettingsOut"] } = {}) {
   let companyRow = structuredClone(company);
   let brandRow = structuredClone(brand);
   let storefrontRow = structuredClone(storefront);
@@ -55,6 +56,11 @@ export function settingsServer({
     }
     if (!owner) return jsonResponse(403, { detail: "Insufficient role" });
     if (path === "/api/v1/settings/company" && method === "GET") return jsonResponse(200, companyRow);
+    if (path === "/api/v1/settings/payments" && method === "GET") return jsonResponse(200, payments);
+    if (path === "/api/v1/settings/payments/stripe/onboarding-link" && method === "POST") {
+      if (!payments.stripe_configured) return jsonResponse(503, { detail: "Card payments aren't set up on this server yet." });
+      return jsonResponse(200, { url: "https://connect.stripe.com/setup/s/acct_test_onboarding" });
+    }
     if (path === "/api/v1/settings/company" && method === "PATCH") {
       const b = body as Record<string, unknown>;
       const refused = ["currency", "next_quote_number", "next_invoice_number", "stripe_account_id", "tenant_id"].find((k) => k in b);

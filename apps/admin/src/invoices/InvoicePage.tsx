@@ -564,7 +564,8 @@ function PaymentsSection({ invoice, actions, money }: { invoice: Invoice; action
                   <tr key={p.id} className={voided ? "payment-row--void" : undefined}>
                     <td data-label="Received">{formatDateTime(p.received_at)}</td>
                     <td data-label="Payment">
-                      {KIND_LABEL[p.kind]} · {methodLabel(p.method)} {voided && <span className="tag">Voided</span>}
+                      {KIND_LABEL[p.kind]} · {p.provider === "stripe" ? "Card (online)" : methodLabel(p.method)}{" "}
+                      {voided && <span className="tag">Voided</span>}
                       {p.status === "pending" && <span className="tag">Pending</span>}
                     </td>
                     <td data-label="Amount" className="num">
@@ -596,6 +597,14 @@ function PaymentsSection({ invoice, actions, money }: { invoice: Invoice; action
         </div>
       )}
 
+      {payments.some((p) => p.provider === "stripe" && p.kind === "payment" && p.status === "succeeded") && (
+        <p className="muted payments-stripe-note">Card payments taken online are refunded in your Stripe Dashboard; the refund shows here once Stripe reports it.</p>
+      )}
+      {invoice.balance_cents < 0 && (
+        <p className="notice" role="status">
+          Overpaid by {money(-invoice.balance_cents)}. Refund the difference in Stripe or by hand.
+        </p>
+      )}
       {(actions.record || actions.startProduction) && !recording && (
         <div className="invoice-actions payments-actions">
           {actions.record && (

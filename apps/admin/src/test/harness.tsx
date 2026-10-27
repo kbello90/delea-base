@@ -103,6 +103,14 @@ export const DEFAULT_BRAND_RESPONSE: Schemas["BrandConfigOut"] = {
   updated_at: "2026-10-20T00:00:00Z",
 };
 
+/** Card payments (Slice B2): Stripe set up on the server, no account connected yet. */
+export const PAYMENTS_RESPONSE: Schemas["PaymentSettingsOut"] = {
+  stripe_configured: true,
+  is_demo: false,
+  account: null,
+  card_payments: false,
+};
+
 export const STOREFRONT_RESPONSE: Schemas["StorefrontSettingsOut"] = {
   storefront_enabled: false,
   contact_email: null,
@@ -182,6 +190,7 @@ const DEFAULT_RESPONSES: Record<string, unknown> = {
   "/api/v1/settings/brand": DEFAULT_BRAND_RESPONSE,
   "/api/v1/settings/company": COMPANY_RESPONSE,
   "/api/v1/settings/storefront": STOREFRONT_RESPONSE,
+  "/api/v1/settings/payments": PAYMENTS_RESPONSE,
   "/api/v1/settings/currency": { currency: "USD" },
   "/api/v1/dashboard/summary": SUMMARY_RESPONSE,
   "/api/v1/dashboard/monthly": MONTHLY_RESPONSE,

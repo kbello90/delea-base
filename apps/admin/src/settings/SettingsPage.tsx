@@ -12,6 +12,10 @@ import { isAllowedLogoUrl } from "../theme/brand";
 import {
   CORNER_STYLES,
   FONT_PRESETS,
+  isStripeOnboarding,
+  leave,
+  usePaymentSettings,
+  useStripeOnboarding,
   LANGUAGES,
   LOGO_TYPES,
   MARK_STYLES,
@@ -29,6 +33,7 @@ import {
   type FontPreset,
   type Language,
   type MarkStyle,
+  type PaymentSettings,
   type StorefrontSettings,
 } from "./api";
 import {
@@ -470,10 +475,73 @@ function StorefrontCard({ settings }: { settings: StorefrontSettings }) {
   );
 }
 
+/** Card payments (Slice B2): the shop's own Stripe account, set up on Stripe's pages. */
+function PaymentsCard({ settings }: { settings: PaymentSettings }) {
+  const onboarding = useStripeOnboarding();
+  const account = settings.account;
+  const connect = () =>
+    onboarding.mutate(undefined, {
+      onSuccess: ({ url }) => {
+        if (isStripeOnboarding(url)) leave.to(url);
+      },
+    });
+
+  let status: { tag: string; ok: boolean; text: string };
+  if (settings.card_payments) {
+    status = { tag: "Card payments on", ok: true, text: "Shoppers can pay by card at checkout. The money goes to your Stripe account; Stripe's fees are paid there." };
+  } else if (account?.disconnected_at) {
+    status = { tag: "Disconnected", ok: false, text: "This Stripe account was disconnected. Connect again to take cards." };
+  } else if (account) {
+    status = { tag: "Setup not finished", ok: false, text: "Stripe still needs some details before cards can be taken. Continue where you left off." };
+  } else {
+    status = { tag: "Not connected", ok: false, text: "Connect a Stripe account to let shoppers pay by card. You sign up on Stripe's own pages; DELEA never sees your bank or card details." };
+  }
+
+  return (
+    <section className="settings-card payments-card" aria-labelledby="payments-heading">
+      <h2 id="payments-heading">Card payments</h2>
+      <p>
+        <span className={status.ok ? "tag tag--ok" : "tag tag--warn"}>{status.tag}</span>
+        {settings.stripe_configured && <span className="tag">Stripe test mode</span>}
+      </p>
+      <p className="muted">{status.text}</p>
+      {account && (
+        <dl className="facts payments-card__facts">
+          <div>
+            <dt>Stripe account</dt>
+            <dd>{account.account_id}</dd>
+          </div>
+          <div>
+            <dt>Details sent to Stripe</dt>
+            <dd>{account.details_submitted ? "Yes" : "Not yet"}</dd>
+          </div>
+        </dl>
+      )}
+      {!settings.stripe_configured ? (
+        <p className="muted">Card payments aren&apos;t set up on this server yet.</p>
+      ) : settings.is_demo ? (
+        <p className="muted">This demo shop uses the showcase&apos;s Stripe test account.</p>
+      ) : (
+        !settings.card_payments && (
+          <Button type="button" onClick={connect} disabled={onboarding.isPending}>
+            {onboarding.isPending ? "Opening Stripe…" : account && !account.disconnected_at ? "Continue Stripe setup" : "Connect Stripe"}
+          </Button>
+        )
+      )}
+      {onboarding.isError && (
+        <p className="form-error" role="alert">
+          {onboarding.error instanceof ApiError ? onboarding.error.message : "Something went wrong. Please try again."}
+        </p>
+      )}
+    </section>
+  );
+}
+
 export function SettingsPage() {
   const company = useCompanySettings();
   const brand = useBrandSettings();
   const storefront = useStorefrontSettings();
+  const payments = usePaymentSettings();
 
   return (
     <>
@@ -487,6 +555,9 @@ export function SettingsPage() {
       {storefront.isPending && <Loading label="Loading storefront…" />}
       {storefront.isError && <ErrorState title="Storefront settings couldn't be loaded" error={storefront.error} onRetry={() => void storefront.refetch()} />}
       {storefront.data && <StorefrontCard key={storefront.data.updated_at} settings={storefront.data} />}
+      {payments.isPending && <Loading label="Loading card payments…" />}
+      {payments.isError && <ErrorState title="Card payments couldn't be loaded" error={payments.error} onRetry={() => void payments.refetch()} />}
+      {payments.data && <PaymentsCard settings={payments.data} />}
       <section className="settings-card settings-note" aria-labelledby="team-heading">
         <h2 id="team-heading">Team</h2>
         <p className="muted">Invite staff and your accountant (CPA), and change or remove their access.</p>

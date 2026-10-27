@@ -14,6 +14,7 @@ export type StorefrontUpdate = Schemas["StorefrontSettingsUpdate"];
 export type FontPreset = Schemas["FontPreset"];
 export type CornerStyle = Schemas["CornerStyle"];
 export type MarkStyle = Schemas["MarkStyle"];
+export type PaymentSettings = Schemas["PaymentSettingsOut"];
 
 export const FONT_PRESETS: { value: FontPreset; label: string }[] = [
   { value: "classic", label: "Classic (Fraunces and Archivo)" },
@@ -107,3 +108,23 @@ export function useRemoveLogo() {
     onSuccess: (brand) => client.setQueryData(brandQueryKey, brand),
   });
 }
+
+const paymentsKey = ["settings", "payments"] as const;
+
+/** The shop's Stripe account. Reading it after onboarding asks Stripe for its latest state. */
+export function usePaymentSettings() {
+  const api = useApi();
+  return useQuery({ queryKey: paymentsKey, queryFn: () => unwrap(api.GET("/api/v1/settings/payments")) });
+}
+
+/** A Stripe-hosted onboarding link (the account is made on the first call). */
+export function useStripeOnboarding() {
+  const api = useApi();
+  return useMutation({ mutationFn: () => unwrap(api.POST("/api/v1/settings/payments/stripe/onboarding-link")) });
+}
+
+/** Only Stripe's own onboarding pages are followed. */
+export const isStripeOnboarding = (url: string) => url.startsWith("https://connect.stripe.com/");
+
+/** Leaving for Stripe's page. A seam for tests (jsdom can't navigate away). */
+export const leave = { to: (url: string) => window.location.assign(url) };
