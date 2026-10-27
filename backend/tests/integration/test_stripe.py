@@ -430,6 +430,47 @@ def test_a_card_payment_is_recorded_once(client: TestClient, shop, db, fake) -> 
     assert refund.status_code == 409 and "Refund it in Stripe" in refund.json()["detail"]
 
 
+def test_cancel_waits_for_the_stripe_refund(client: TestClient, shop, db, fake) -> None:
+    owner = shop["tenant"].headers("owner")
+    token = place(client, shop)["public_token"]
+    paid = session_completed(db, shop, token)
+    deliver(client, paid)
+    inv = invoice(db, token)
+    refused = client.post(f"{INVOICES}/{inv['id']}/cancel", headers=owner)
+    assert (refused.status_code, refused.json()["detail"]) == (
+        409,
+        "Refund this payment in Stripe first.",
+    )
+    part = event(
+        "refund.created",
+        {
+            "id": "re_it_part",
+            "object": "refund",
+            "amount": 1000,
+            "currency": "usd",
+            "payment_intent": paid["data"]["object"]["payment_intent"],
+            "status": "succeeded",
+        },
+        shop["account"],
+    )
+    deliver(client, part)  # part refunded: still blocked
+    assert client.post(f"{INVOICES}/{inv['id']}/cancel", headers=owner).status_code == 409
+
+    # A card deposit on an open quote, refunded in Stripe: then cancel works as before.
+    quote_id = invoice(db, place(client, shop)["public_token"])["id"]
+    insert = (
+        "insert into public.payments (tenant_id, invoice_id, kind, provider, method, "
+        "amount_cents, currency, external_id) values (%s, %s, %s, 'stripe', 'card', 500, "
+        "'USD', %s)"
+    )
+    db.execute(insert, (shop["tenant"].id, quote_id, "payment", f"pi_it_{uuid.uuid4().hex[:12]}"))
+    blocked = client.post(f"{INVOICES}/{quote_id}/cancel", headers=owner)
+    assert blocked.json()["detail"] == "Refund this payment in Stripe first."
+    db.execute(insert, (shop["tenant"].id, quote_id, "refund", f"re_it_{uuid.uuid4().hex[:12]}"))
+    done = client.post(f"{INVOICES}/{quote_id}/cancel", headers=owner)
+    assert done.status_code == 200 and done.json()["cancelled_at"] is not None
+
+
 def test_events_that_dont_match_change_nothing(client: TestClient, shop, db, fake) -> None:
     token = place(client, shop)["public_token"]
     for wrong in (

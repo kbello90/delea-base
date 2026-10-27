@@ -35,7 +35,7 @@ import {
 } from "./api";
 import { Totals } from "./Cart";
 import { formatDateTime, formatDay } from "./format";
-import { invoiceActions, paymentActions, type InvoiceActions, type PaymentActions } from "./invoiceActions";
+import { cardNetCents, invoiceActions, paymentActions, type InvoiceActions, type PaymentActions } from "./invoiceActions";
 import { StatusTags } from "./InvoicesPage";
 import "./invoices.css";
 
@@ -225,6 +225,9 @@ function StatusActions({ invoice, actions, money }: { invoice: Invoice; actions:
           <button type="button" className="btn-text btn-text--danger" onClick={() => open({ kind: "cancel" })}>
             Cancel invoice
           </button>
+        )}
+        {cardNetCents(invoice) > 0 && !invoice.cancelled_at && !invoice.refunded_at && (
+          <span className="muted">To cancel: Refund this payment in Stripe first.</span>
         )}
         {actions.deleteQuote && (
           <button type="button" className="btn-text btn-text--danger" onClick={() => open({ kind: "delete" })}>

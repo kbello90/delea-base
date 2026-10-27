@@ -188,6 +188,28 @@ describe("an invoice's payments", () => {
     expect(screen.getByText(/refunded in your Stripe Dashboard/)).toBeInTheDocument();
   });
 
+  it("card money held: no Cancel, the reason instead; once refunded in Stripe, Cancel is back", async () => {
+    const card = paidInvoice({ quote_number: "QTE-2026-062", items: [line], payments: [makePayment({ provider: "stripe", method: "card", amount_cents: 10800 })] });
+    const { unmount } = setup(`/invoices/${card.id}`, { invoices: [card] });
+    expect(await screen.findByText("To cancel: Refund this payment in Stripe first.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel invoice" })).not.toBeInTheDocument();
+    unmount();
+
+    const partly = { ...card, payments: [...card.payments!, makePayment({ provider: "stripe", kind: "refund", method: "card", amount_cents: 1000 })] };
+    const second = setup(`/invoices/${card.id}`, { invoices: [partly] });
+    expect(await screen.findByText("To cancel: Refund this payment in Stripe first.")).toBeInTheDocument();
+    second.unmount();
+
+    const quoteRefunded = depositQuote(0, {
+      quote_number: "QTE-2026-063",
+      items: [line],
+      payments: [makePayment({ provider: "stripe", method: "card", amount_cents: 500 }), makePayment({ provider: "stripe", kind: "refund", method: "card", amount_cents: 500 })],
+    });
+    setup(`/invoices/${quoteRefunded.id}`, { invoices: [{ ...quoteRefunded, amount_paid_cents: 0, balance_cents: quoteRefunded.total_cents }] });
+    expect(await screen.findByRole("button", { name: "Cancel invoice" })).toBeInTheDocument();
+    expect(screen.queryByText(/Refund this payment in Stripe first/)).not.toBeInTheDocument();
+  });
+
   it("an overpaid order says by how much", async () => {
     const over = paidInvoice({
       quote_number: "QTE-2026-061",

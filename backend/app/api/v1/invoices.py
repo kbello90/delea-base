@@ -821,7 +821,11 @@ async def _lock_for_owner_action(
             "payment_method::text as payment_method, production_started_at, "
             "public.invoice_amount_paid(id) as amount_paid_cents, "
             "exists (select 1 from public.payments p where p.invoice_id = i.id "
-            "        and p.provider = 'stripe' and p.status = 'succeeded') as has_card_payment "
+            "        and p.provider = 'stripe' and p.status = 'succeeded') as has_card_payment, "
+            "(select coalesce(sum(case when p.kind = 'payment' then p.amount_cents "
+            "        else -p.amount_cents end), 0) from public.payments p "
+            " where p.invoice_id = i.id and p.provider = 'stripe' and p.status = 'succeeded') "
+            "  as card_net_cents "
             "from public.invoices i where id = %s and tenant_id = %s for update",
             (invoice_id, claims.tenant_id),
         )
@@ -892,6 +896,8 @@ async def cancel_invoice(invoice_id: UUID, claims: CurrentClaims, conn: DbConn) 
         raise ConflictError("this invoice is already cancelled")
     if row["refunded_at"] is not None:
         raise ConflictError("A refunded invoice can't be cancelled.")
+    if row["card_net_cents"] > 0:
+        raise ConflictError(CARD_CANCEL_REFUSED)  # the database refuses it too
     if row["order_status"] == OrderStatus.quote and row["amount_paid_cents"] > 0:
         raise ConflictError(DEPOSIT_HELD)  # the database refuses it too
     await conn.execute(
@@ -902,6 +908,9 @@ async def cancel_invoice(invoice_id: UUID, claims: CurrentClaims, conn: DbConn) 
 
 
 DEPOSIT_HELD = "This quote holds a deposit. Refund it before cancelling."
+# Card money taken online is in the shop's Stripe account: it is refunded there first; the
+# refund webhook records it, then cancel works as before.
+CARD_CANCEL_REFUSED = "Refund this payment in Stripe first."
 
 
 # ---------------------------------------------------------------------------

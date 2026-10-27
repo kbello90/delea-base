@@ -50,6 +50,7 @@ export function invoiceActions(invoice: InvoiceState, role: AppRole | undefined)
   const held = (invoice.amount_paid_cents ?? 0) > 0;
   const hasPayments = (invoice.payments?.length ?? 0) > 0;
   const card = invoice.payments?.some((p) => p.provider === "stripe" && p.status === "succeeded") ?? false;
+  const cardHeld = cardNetCents(invoice) > 0;
   return {
     markPaid: quote && !closed && !invoice.stock_short,
     forward: quote || closed ? [] : STATUSES.slice(position + 1).map((s) => s.value),
@@ -58,9 +59,17 @@ export function invoiceActions(invoice: InvoiceState, role: AppRole | undefined)
     editDueDate: quote,
     correctPaymentMethod: owner && !quote,
     refund: owner && (invoice.paid_at !== null || held) && !closed && !card,
-    cancel: owner && !closed && !(quote && held),
+    cancel: owner && !closed && !(quote && held) && !cardHeld,
     deleteQuote: owner && quote && !website && !hasPayments,
   };
+}
+
+/** Card money taken online still held (payments minus refunds through Stripe). While it is
+ * above zero the invoice can't be cancelled: it is refunded in Stripe first. */
+export function cardNetCents(invoice: Partial<Pick<Invoice, "payments">>): number {
+  return (invoice.payments ?? [])
+    .filter((p) => p.provider === "stripe" && p.status === "succeeded")
+    .reduce((sum, p) => sum + (p.kind === "payment" ? p.amount_cents : -p.amount_cents), 0);
 }
 
 /** Deposits and payments (Slice B1). Mirrors the API, which enforces. */

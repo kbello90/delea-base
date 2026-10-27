@@ -298,6 +298,33 @@ select is(pg_temp.refund_event('evt_r2_failed', 'failed', 're_2', (select id fro
 select is(public.invoice_amount_paid('e5000000-0000-0000-0000-000000000001'), 580::bigint, 'and then counts for nothing');
 
 -- ---------------------------------------------------------------------------
+-- 5b. Cancel waits for the Stripe refund (any invoice with net card payments)
+-- ---------------------------------------------------------------------------
+select pg_temp.order_('e5000000-0000-0000-0000-000000000005');
+select pg_temp.start('e5000000-0000-0000-0000-000000000005', 'cs_test_Cancel');
+select pg_temp.session_event('evt_paid_cancel', 'completed', (select id from public.payments where external_ref = 'cs_test_Cancel'));
+select pg_temp.set_claims('11111111-1111-1111-1111-111111111111', 'owner');
+select throws_ok($q$select pg_temp.as_role('authenticated', $$update public.invoices set cancelled_at = now() where id = 'e5000000-0000-0000-0000-000000000005' returning 'x'$$)$q$,
+                 'P0001', 'Refund this payment in Stripe first.', 'a paid card invoice can''t be cancelled');
+select set_config('request.jwt.claims', '', true);
+select throws_ok($q$update public.invoices set cancelled_at = now() where id = 'e5000000-0000-0000-0000-000000000005'$q$,
+                 'P0001', 'Refund this payment in Stripe first.', 'not even by the service');
+select pg_temp.refund_event('evt_r_cancel', 'created', 're_cancel', (select id from public.payments where external_ref = 'cs_test_Cancel'), 1080, 'succeeded');
+-- Refunded in full: the invoice is refunded, which is final; a part-refunded one is shown below.
+select isnt((select refunded_at from public.invoices where id = 'e5000000-0000-0000-0000-000000000005'), null::timestamptz,
+            'the Stripe refund was recorded');
+-- A card deposit on a quote: blocked, then cancellable once refunded.
+select pg_temp.order_('e5000000-0000-0000-0000-000000000006');
+insert into public.payments (tenant_id, invoice_id, kind, provider, method, status, amount_cents, currency, external_id)
+values ('11111111-1111-1111-1111-111111111111', 'e5000000-0000-0000-0000-000000000006', 'payment', 'stripe', 'card', 'succeeded', 500, 'USD', 'pi_test_deposit6');
+select throws_ok($q$update public.invoices set cancelled_at = now() where id = 'e5000000-0000-0000-0000-000000000006'$q$,
+                 'P0001', 'Refund this payment in Stripe first.', 'a card deposit gets the Stripe message first');
+insert into public.payments (tenant_id, invoice_id, kind, provider, method, status, amount_cents, currency, external_id)
+values ('11111111-1111-1111-1111-111111111111', 'e5000000-0000-0000-0000-000000000006', 'refund', 'stripe', 'card', 'succeeded', 500, 'USD', 're_test_deposit6');
+select lives_ok($q$update public.invoices set cancelled_at = now() where id = 'e5000000-0000-0000-0000-000000000006'$q$,
+                'once the refund is recorded, cancel works as before');
+
+-- ---------------------------------------------------------------------------
 -- 6. Accounts and other events
 -- ---------------------------------------------------------------------------
 select is(pg_temp.writer($q$select public.stripe_apply_account('evt_acct_unknown', 'account.updated', 'acct_Nobody', false, true, true, false)$q$),

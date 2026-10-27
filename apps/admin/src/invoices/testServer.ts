@@ -456,6 +456,10 @@ export function invoiceServer({
     if (action === "/cancel") {
       if (invoice.cancelled_at) return jsonResponse(409, { detail: "this invoice is already cancelled" });
       if (invoice.refunded_at) return jsonResponse(409, { detail: "A refunded invoice can't be cancelled." });
+      const cardNet = (invoice.payments ?? [])
+        .filter((p) => p.provider === "stripe" && p.status === "succeeded")
+        .reduce((sum, p) => sum + (p.kind === "payment" ? p.amount_cents : -p.amount_cents), 0);
+      if (cardNet > 0) return jsonResponse(409, { detail: "Refund this payment in Stripe first." });
       if (invoice.order_status === "quote" && invoice.amount_paid_cents > 0) {
         return jsonResponse(409, { detail: "This quote holds a deposit. Refund it before cancelling." });
       }
