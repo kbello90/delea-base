@@ -1066,6 +1066,26 @@ fieldset legend {
   white-space: pre-line;
   font-size: 1.02rem;
 }
+.order__paynow {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+.order__paynow .button {
+  justify-self: start;
+}
+@media (max-width: 600px) {
+  .order__paynow .button {
+    justify-self: stretch;
+  }
+}
+.order__confirming {
+  margin-top: 16px;
+  padding: 14px 18px;
+  border-radius: var(--card-radius);
+  background: var(--surface-2);
+  border: 1px solid var(--brand-gold);
+}
 .order .summary__lines > li {
   border-bottom: 1px solid var(--border);
 }

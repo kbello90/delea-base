@@ -20,6 +20,10 @@ export const OPEN_STORE: Schemas["PublicStoreOut"] = {
   tax_shipping: false,
 };
 
+/** The same shop, also taking cards through Stripe (Slice B2). */
+export const CARD_STORE: Schemas["PublicStoreOut"] = { ...OPEN_STORE, payment_choices: ["bank_transfer", "pay_on_pickup", "card"] };
+export const CHECKOUT_URL = "https://checkout.stripe.com/c/pay/cs_test_fake_1";
+
 export const RING: Product = makeProduct({
   id: "a1000000-0000-0000-0000-000000000009",
   name: "Halo Ring",
@@ -106,8 +110,18 @@ export function orderFrom(body: Record<string, unknown>, quote: Quote): Order {
  * A fake API with checkout: quotes priced by priceCart, orders answered by `onOrder` (default:
  * created), tracking for the last placed order. `orders` records every order body sent.
  */
-export function checkoutServer({ store = OPEN_STORE, onOrder }: { store?: Schemas["PublicStoreOut"]; onOrder?: (body: Record<string, unknown>, n: number) => Response | undefined | Promise<Response | undefined> } = {}) {
+export function checkoutServer({
+  store = OPEN_STORE,
+  onOrder,
+  onPay,
+}: {
+  store?: Schemas["PublicStoreOut"];
+  onOrder?: (body: Record<string, unknown>, n: number) => Response | undefined | Promise<Response | undefined>;
+  /** POST /orders/{token}/pay (default: Stripe's Checkout link). */
+  onPay?: (n: number) => Response;
+} = {}) {
   const orders: Record<string, unknown>[] = [];
+  let pays = 0;
   const quotes: { items: CartItem[]; fulfillment: string | null }[] = [];
   let placed: Order | null = null;
 
@@ -124,10 +138,15 @@ export function checkoutServer({ store = OPEN_STORE, onOrder }: { store?: Schema
       if (custom) return custom;
       const quote = priceCart(body.items as CartItem[], body.fulfillment as string);
       placed = orderFrom(body, quote);
-      return json(201, placed);
+      // A card order comes back with Stripe's hosted Checkout (Slice B2).
+      return json(201, body.payment_choice === "card" ? { ...placed, checkout_url: CHECKOUT_URL } : placed);
+    },
+    [`/api/v1/public/orders/${TOKEN}/pay`]: () => {
+      pays += 1;
+      return onPay ? onPay(pays) : json(200, { checkout_url: CHECKOUT_URL });
     },
     [`/api/v1/public/orders/${TOKEN}`]: () => (placed ? json(200, placed) : json(404, { detail: "Order not found" })),
   };
   const fetch = fakeApi({ store, products: CATALOG, routes });
-  return { fetch, orders, quotes, setPlaced: (order: Order) => (placed = order) };
+  return { fetch, orders, quotes, pays: () => pays, setPlaced: (order: Order) => (placed = order) };
 }

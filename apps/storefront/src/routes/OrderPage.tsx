@@ -1,7 +1,8 @@
-import { useEffect } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { ApiError } from "@delea/api-client";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { Answers } from "../components/PersonalizationFields";
-import { isNotFound, isRateLimited, useOrder, type Order } from "../lib/api";
+import { isNotFound, isRateLimited, isStripeCheckout, leave, useOrder, usePayNow, type Order } from "../lib/api";
 import { useBag } from "../lib/bagContext";
 import { formatMoney } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
@@ -39,12 +40,58 @@ function useNoReferrer() {
   }, []);
 }
 
+/** How long to keep asking after Stripe sends the shopper back: its webhook usually lands in seconds. */
+const CONFIRM_POLL_MS = 3_000;
+const CONFIRM_POLLS = 20;
+
+/** Stripe's hosted Checkout for the balance. */
+function PayNow({ token, label }: { token: string; label: string }) {
+  const pay = usePayNow(token);
+  const error = pay.error instanceof ApiError ? pay.error.message : pay.error ? "Check your connection and try again." : null;
+  return (
+    <div className="order__paynow">
+      <button
+        type="button"
+        className="button"
+        disabled={pay.isPending}
+        onClick={() =>
+          pay.mutate(undefined, {
+            onSuccess: (out) => {
+              if (isStripeCheckout(out.checkout_url)) leave.to(out.checkout_url);
+            },
+          })
+        }
+      >
+        {pay.isPending ? "Opening the secure payment page…" : label}
+      </button>
+      <p className="field-hint">You pay on Stripe&apos;s secure page; your card details never reach the shop.</p>
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function OrderPage() {
   const { token } = useParams();
   const store = useShop();
   const location = useLocation();
   const placed = (location.state as { placed?: Order } | null)?.placed;
-  const order = useOrder(token, placed?.public_token === token ? placed : undefined);
+  // Back from Stripe (?paid=1): the webhook records the payment within seconds; keep asking.
+  const [params] = useSearchParams();
+  const returned = params.get("paid") === "1";
+  const [polls, setPolls] = useState(0);
+  const order = useOrder(
+    token,
+    placed?.public_token === token ? placed : undefined,
+    returned && polls < CONFIRM_POLLS ? CONFIRM_POLL_MS : false,
+  );
+  const fetchedAt = order.dataUpdatedAt;
+  useEffect(() => {
+    if (returned && fetchedAt) setPolls((n) => n + 1);
+  }, [returned, fetchedAt]);
   const bag = useBag();
   // Just placed: the bag's pieces are now this order.
   const clearBag = bag.clear;
@@ -87,6 +134,11 @@ export function OrderPage() {
   const justPlaced = Boolean(placed);
   // Part paid: a deposit is in, the rest is still due.
   const partPaid = o.amount_paid_cents > 0 && o.balance_cents > 0;
+  const open = o.balance_cents > 0 && o.status !== "cancelled" && o.status !== "refunded";
+  // Back from Stripe and not recorded yet: say so instead of asking to pay again.
+  const confirming = returned && open && polls < CONFIRM_POLLS;
+  const card = store.payment_choices.includes("card") && open && o.balance_cents >= MIN_CARD_CENTS && !confirming;
+  const payLabel = `Pay ${money(o.balance_cents)} by card`;
   return (
     <article className="section order" aria-labelledby="order-title">
       {justPlaced ? (
@@ -114,11 +166,32 @@ export function OrderPage() {
         </span>
       </div>
 
-      {o.payment_instructions && o.status === "awaiting_payment" && (
+      {confirming && (
+        <p className="order__confirming" role="status">
+          Thank you. Your card payment is being confirmed; this page updates by itself.
+        </p>
+      )}
+
+      {o.payment_choice === "card" && o.status === "awaiting_payment" && !confirming && (
+        <section className="order__pay" aria-labelledby="pay-title">
+          <h2 id="pay-title">Pay by card</h2>
+          {card ? (
+            <>
+              <p>Your order is placed. It is confirmed once the payment goes through.</p>
+              <PayNow token={o.public_token} label={payLabel} />
+            </>
+          ) : (
+            <p>Card payments aren&apos;t available right now. Please contact the shop to pay.</p>
+          )}
+        </section>
+      )}
+
+      {o.payment_instructions && o.status === "awaiting_payment" && o.payment_choice !== "card" && (
         <section className="order__pay" aria-labelledby="pay-title">
           <h2 id="pay-title">{o.payment_choice === "bank_transfer" ? "How to pay" : "Paying when you pick up"}</h2>
           <p className="order__instructions">{o.payment_instructions}</p>
           <p className="field-hint">Use your order number {o.order_ref} as the reference.</p>
+          {card && <PayNow token={o.public_token} label={`Or pay ${money(o.balance_cents)} by card now`} />}
         </section>
       )}
 
@@ -131,12 +204,15 @@ export function OrderPage() {
           {o.balance_cents < MIN_CARD_CENTS ? (
             <p className="order__instructions">Pay the rest with the shop: {money(o.balance_cents)}.</p>
           ) : (
-            o.payment_instructions && (
-              <>
-                <p className="order__instructions">{o.payment_instructions}</p>
-                <p className="field-hint">Use your order number {o.order_ref} as the reference.</p>
-              </>
-            )
+            <>
+              {o.payment_instructions && o.payment_choice !== "card" && (
+                <>
+                  <p className="order__instructions">{o.payment_instructions}</p>
+                  <p className="field-hint">Use your order number {o.order_ref} as the reference.</p>
+                </>
+              )}
+              {card && <PayNow token={o.public_token} label={`Pay the rest, ${money(o.balance_cents)}, by card`} />}
+            </>
           )}
         </section>
       )}

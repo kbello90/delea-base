@@ -1,5 +1,5 @@
 import { ApiError, unwrap, type Schemas } from "@delea/api-client";
-import { QueryClient, useQuery } from "@tanstack/react-query";
+import { QueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { useApi } from "./apiClient";
 
 export type Store = Schemas["PublicStoreOut"];
@@ -62,7 +62,7 @@ export type QuoteLine = Schemas["QuoteLineOut"];
 export type Order = Schemas["OrderOut"];
 export type OrderRequest = Schemas["OrderRequest"];
 export type Fulfillment = "ship" | "pickup";
-export type PaymentChoice = "bank_transfer" | "pay_on_pickup";
+export type PaymentChoice = "bank_transfer" | "pay_on_pickup" | "card";
 export type CartItem = { product_id: string; qty: number; personalization: Record<string, string> };
 
 /** The server's price for this cart (nothing is written). Re-asked whenever the cart changes. */
@@ -76,16 +76,34 @@ export function useQuote(items: CartItem[], fulfillment: Fulfillment | null) {
   });
 }
 
-export function useOrder(token: string | undefined, initial?: Order) {
+export function useOrder(token: string | undefined, initial?: Order, refetchInterval: number | false = false) {
   const api = useApi();
   return useQuery({
     queryKey: ["order", token],
     enabled: Boolean(token),
     initialData: initial,
     staleTime: initial ? 30_000 : 0,
+    refetchInterval,
     queryFn: () => unwrap(api.GET("/api/v1/public/orders/{public_token}", { params: { path: { public_token: token! } } })),
   });
 }
+
+/** Stripe's hosted Checkout for an order's balance (Slice B2). */
+export function usePayNow(token: string) {
+  const api = useApi();
+  return useMutation({
+    mutationFn: () =>
+      unwrap(api.POST("/api/v1/public/orders/{public_token}/pay", { params: { path: { public_token: token } } })),
+  });
+}
+
+/** Only Stripe's own Checkout pages are followed: the shopper leaves the shop for nothing else. */
+export function isStripeCheckout(url: string | null | undefined): url is string {
+  return typeof url === "string" && url.startsWith("https://checkout.stripe.com/");
+}
+
+/** Leaving for Stripe's page. A seam for tests (jsdom can't navigate away). */
+export const leave = { to: (url: string) => window.location.assign(url) };
 
 /** What a refused order says, read from the whole error body (ApiError.body). */
 export function refusal(error: unknown): { reason?: string; quote?: Quote } {

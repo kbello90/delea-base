@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { Answers } from "../components/PersonalizationFields";
 import { TurnstileWidget } from "../components/Turnstile";
-import { refusal, useQuote, type Fulfillment, type Order, type PaymentChoice, type Quote, type Store } from "../lib/api";
+import { isStripeCheckout, leave, refusal, useQuote, type Fulfillment, type Order, type PaymentChoice, type Quote, type Store } from "../lib/api";
 import { useApi } from "../lib/apiClient";
 import { cartItems } from "../lib/bag";
 import { useBag } from "../lib/bagContext";
@@ -51,6 +51,7 @@ function formErrors(form: Form, fulfillment: Fulfillment | null, payment: Paymen
 const PAYMENT_LABELS: Record<PaymentChoice, { title: string; text: string }> = {
   bank_transfer: { title: "Bank transfer", text: "We send the details; your order is held until the payment arrives." },
   pay_on_pickup: { title: "Pay when you pick up", text: "Cash or card at the studio." },
+  card: { title: "Card", text: "Pay on Stripe's secure page next. Your card details never reach us." },
 };
 
 export function CheckoutPage() {
@@ -111,7 +112,16 @@ function CheckoutForm({ store, loadedAt }: { store: Store; loadedAt: number }) {
   const place = useMutation({
     mutationFn: (body: Record<string, unknown>) => unwrap(api.POST("/api/v1/public/orders", { body: body as never })) as Promise<Order>,
     // The confirmation empties the bag: emptying it here would send this page to the bag first.
-    onSuccess: (order) => navigate(`/orders/${order.public_token}`, { replace: true, state: { placed: order } }),
+    onSuccess: (order) => {
+      if (isStripeCheckout(order.checkout_url)) {
+        // On to Stripe: the order is placed, so the bag is done. Coming back (paid or not)
+        // lands on the order's own page, which offers Pay now while it is unpaid.
+        bag.clear();
+        leave.to(order.checkout_url);
+        return;
+      }
+      navigate(`/orders/${order.public_token}`, { replace: true, state: { placed: order } });
+    },
     onSettled: () => {
       submitting.current = false;
     },
@@ -315,7 +325,11 @@ function CheckoutForm({ store, loadedAt }: { store: Store; loadedAt: number }) {
 
           <div className="pay-bar">
             <button type="submit" className="button button--primary button--block pay-bar__button" disabled={place.isPending || !shown || quote.isFetching} aria-busy={place.isPending}>
-              {place.isPending ? "Placing your order…" : shown ? `${newTotal ? "Confirm new total and place order" : "Place order"} · ${money(shown.total_cents)}` : "Place order"}
+              {place.isPending
+                ? "Placing your order…"
+                : shown
+                  ? `${newTotal ? "Confirm new total and place order" : payment === "card" ? "Continue to payment" : "Place order"} · ${money(shown.total_cents)}`
+                  : "Place order"}
             </button>
             <p className="pay-bar__note">You pay later, by the method you chose. Nothing is charged online.</p>
           </div>
