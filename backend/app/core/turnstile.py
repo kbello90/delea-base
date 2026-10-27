@@ -8,7 +8,9 @@ without Cloudflare.
 
 A token is accepted only when Cloudflare says it is valid, was issued for this shop's
 hostname (so a token from another site can't be replayed here) and for the checkout action.
-The hostname is not checked in local and test, where Cloudflare's test keys report their own.
+The hostname is not checked in local and test. An answer from Cloudflare's test keys
+(metadata.result_with_testing_key) is accepted in local and test only, and refused anywhere
+else, so test keys can never protect a real shop.
 """
 
 import logging
@@ -63,6 +65,12 @@ async def verify(
 
     if not isinstance(result, dict) or result.get("success") is not True:
         return False
+    metadata = result.get("metadata")
+    testing_key = isinstance(metadata, dict) and metadata.get("result_with_testing_key") is True
+    if testing_key:
+        # Cloudflare's test keys (always pass, no action, hostname example.com): accepted in
+        # local and test only, never anywhere else.
+        return settings.is_dev_environment
     if result.get("action") != ACTION:
         return False
     if not settings.is_dev_environment and result.get("hostname") != hostname:

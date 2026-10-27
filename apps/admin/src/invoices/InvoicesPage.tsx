@@ -67,10 +67,14 @@ function useFilterParams() {
   return { filters, set, clear, active };
 }
 
-export function StatusTags({ invoice }: { invoice: Pick<Invoice, "order_status" | "refunded_at" | "cancelled_at"> }) {
+export function StatusTags({ invoice }: { invoice: Pick<Invoice, "order_status" | "refunded_at" | "cancelled_at"> & Partial<Pick<Invoice, "source">> }) {
+  // An unpaid website order isn't a quote to the owner: it's an order waiting for its payment.
+  const awaiting = invoice.source === "storefront" && invoice.order_status === "quote" && !invoice.cancelled_at;
   return (
     <>
-      <span className={invoice.order_status === "quote" ? "tag" : "tag tag--ok"}>{statusLabel(invoice.order_status)}</span>
+      <span className={awaiting ? "tag tag--warn" : invoice.order_status === "quote" ? "tag" : "tag tag--ok"}>
+        {awaiting ? "Awaiting payment" : statusLabel(invoice.order_status)}
+      </span>
       {invoice.refunded_at && <span className="tag tag--warn">Refunded</span>}
       {invoice.cancelled_at && <span className="tag tag--warn">Cancelled</span>}
     </>

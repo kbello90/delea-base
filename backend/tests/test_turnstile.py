@@ -93,3 +93,27 @@ def test_development_with_a_key_still_checks_but_not_the_hostname() -> None:
     # Cloudflare's test keys report their own hostname.
     assert _verify(_settings("local"), {**GOOD, "hostname": "example.com"}) is True
     assert _verify(_settings("local"), {**GOOD, "success": False}) is False
+
+
+TESTING_KEY = {
+    "success": True,
+    "hostname": "example.com",
+    "metadata": {"result_with_testing_key": True},
+}
+
+
+@pytest.mark.parametrize("environment", ["local", "test"])
+def test_cloudflare_test_keys_pass_in_development(environment: str) -> None:
+    assert _verify(_settings(environment), TESTING_KEY) is True
+
+
+@pytest.mark.parametrize("environment", ["production", "staging"])
+def test_cloudflare_test_keys_never_pass_anywhere_else(environment: str) -> None:
+    assert _verify(_settings(environment), TESTING_KEY) is False
+    assert (
+        _verify(
+            _settings(environment),
+            {**TESTING_KEY, "action": "checkout", "hostname": "shop.example.com"},
+        )
+        is False
+    )

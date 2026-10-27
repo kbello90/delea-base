@@ -176,16 +176,16 @@ export function Totals({
         <dt>Subtotal</dt>
         <dd>{formatMoney(totals.subtotal_cents, currency)}</dd>
       </div>
-      <div>
-        <dt>Tax ({bpsToPercent(totals.tax_rate_bps)}%)</dt>
-        <dd>{formatMoney(totals.tax_cents, currency)}</dd>
-      </div>
       {totals.shipping_cents ? (
         <div>
           <dt>Shipping</dt>
           <dd>{formatMoney(totals.shipping_cents, currency)}</dd>
         </div>
       ) : null}
+      <div>
+        <dt>Tax ({bpsToPercent(totals.tax_rate_bps)}%)</dt>
+        <dd>{formatMoney(totals.tax_cents, currency)}</dd>
+      </div>
       <div className="totals__total">
         <dt>{label}</dt>
         <dd>{formatMoney(totals.total_cents, currency)}</dd>

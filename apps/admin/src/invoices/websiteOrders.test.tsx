@@ -62,6 +62,7 @@ describe("website orders in the invoices list", () => {
     const row = (await screen.findByRole("link", { name: "QTE-2026-050" })).closest("tr")!;
     expect(within(row).getByText("Website")).toBeInTheDocument();
     expect(within(row).getByText("W-7K3P9QAB")).toBeInTheDocument();
+    expect(within(row).getByText("Awaiting payment")).toBeInTheDocument();
     const admin = screen.getByRole("link", { name: "QTE-2026-049" }).closest("tr")!;
     expect(within(admin).getByText("Admin")).toBeInTheDocument();
   });

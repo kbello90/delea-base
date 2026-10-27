@@ -51,6 +51,20 @@ pnpm test         # Vitest (admin, storefront, api-client)
 pnpm typecheck
 ```
 
+### End-to-end run (local only)
+
+One Playwright test (`e2e/tests/checkout.spec.ts`) walks the whole website order: browse,
+personalize a ring, check out, the confirmation, the tracking page, then the order in the
+admin with its badge, and confirms the payment. It needs the local stack and `backend/.env`;
+it starts its own API (8001), storefront (5175) and admin (5176), creates a throwaway demo
+shop and deletes it afterwards, and uses Cloudflare's published Turnstile test keys (which the
+API accepts in `local`/`test` only). It drives the installed Microsoft Edge, so nothing is
+downloaded. It is not part of CI.
+
+```sh
+pnpm --filter @delea/e2e e2e       # screenshots in e2e/screenshots/ (gitignored)
+```
+
 ### The storefront locally
 
 The storefront finds its shop from the address it is opened on (the browser's `Origin`), so open

@@ -38,3 +38,9 @@ Thumbs.db
 showcase/*
 !showcase/products.yaml
 !showcase/README.md
+
+# End-to-end run (local only)
+e2e/.shop.json
+e2e/test-results/
+e2e/screenshots/
+e2e/playwright-report/
