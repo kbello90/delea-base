@@ -377,7 +377,7 @@ All accepted as recommended on 2026-10-20.
 
 Smaller choices I made that you can veto: separate `quote_number` and `invoice_number` series (a quote gets `QTE-…` at creation and an `INV-…` number when paid, matching the demo's two number formats); `reorder_list` as a small table so the `add_to_reorder_list` automation has somewhere to write; and one SKU per metal rather than a variant model.
 
-## 9. As built (supabase/migrations; last updated with migration 20261028000800)
+## 9. As built (supabase/migrations; last updated with migration 20261029000200)
 
 The migrations in `supabase/migrations/` are now the source of truth. Where the SQL in §3–§7 differs from them, the migrations win, and the differences are:
 
@@ -452,6 +452,11 @@ The migrations in `supabase/migrations/` are now the source of truth. Where the 
   - **`invoices.payment_choice`** also accepts `card`; `storefront.store` adds `card_enabled`; `storefront_place_order` accepts card only when the shop's account can take charges.
   - **Cancel guard (migration 20261028000800):** `invoices_24_card_cancel_guard` refuses a cancel while the invoice's net Stripe payments are above 0 ("Refund this payment in Stripe first."), every caller.
   - **Roles and functions:** `storefront_writer` also executes `storefront_card_payment_start`, `_attach` and `_failed`. `payments_writer` (nologin, no table grants; K4) executes `stripe_apply_session`, `stripe_apply_refund`, `stripe_apply_account`, `stripe_record_event`, `stripe_link_account` and `stripe_close_session`, each SECURITY DEFINER with `search_path = ''`, EXECUTE revoked from `public`, `anon`, `authenticated` and `service_role`.
+- **Email (migrations 20261029000100 and 20261029000200, Slice D1).**
+  - **Triggers:** `automation_trigger` adds `production_started` (emitted when `production_started_at` is set) and `deposit_received` (a succeeded payment that leaves a balance).
+  - **`email_settings`**: per shop, the three owner alerts on or off, the sender name, the reply-to address (`reply_to_email` + `reply_to_confirmed_at`, set only by `email_confirm_reply_to`; a pending address and the SHA-256 of its one-time token while waiting). Owner reads and changes the switches and name; a signed-in user's write to the reply-to columns is refused.
+  - **`email_messages`** (the outbox; unique per shop and `source_key`; owner reads), **`email_suppressions`** (bounced or complained addresses, every shop) and **`email_provider_events`** (each provider event once): no app writes.
+  - **`email_worker`** (nologin, no table grants) executes `email_enqueue`, `email_claim_events`, `email_mark_events_processed`, `email_balance_due`, `email_claim_messages`, `email_mark_sent`, `email_mark_failed`, `email_record_provider_event` and `email_confirm_reply_to`; `authenticated` executes `email_request_reply_to` (owner only, checked inside).
 - **Local ports.** `supabase/config.toml` uses 553xx instead of the CLI defaults (543xx), because Windows reserves 54269–54368. The local API is on 55321, the database on 55322, and Studio on 55323.
 - **Seed.** Tenant A "DELEA Demo" uses 800 bps (8%) tax to match the demo; tenant B "Aurora Gems" is a small second tenant for isolation tests.
 

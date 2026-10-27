@@ -117,6 +117,34 @@ stripe listen --forward-connect-to localhost:8000/api/v1/stripe/webhook
 6. *Expiry.* Start a card checkout and leave it; after it expires (1 hour), the admin shows
    that payment as Expired and the order page offers Pay now again.
 
+### Email (Slice D)
+
+Locally nothing is needed: emails go to the Supabase stack's mail catcher, at
+`http://127.0.0.1:55324` (Mailpit). Run the worker next to the API:
+
+```sh
+cd backend
+.venv/bin/python -m app.worker          # keeps running; --once for a single pass
+```
+
+**Your setup for real sending (Resend; you enter the key in `backend/.env` yourself):**
+
+1. In Resend: **Domains → Add domain** `mail.deleajewelry.com`. Resend shows the DNS records
+   (an MX and a TXT for the return path on `send.mail…`, and a DKIM TXT).
+2. In Cloudflare (deleajewelry.com → DNS): add each record exactly as shown. Set them to
+   **DNS only** (grey cloud), not proxied. Back in Resend, press **Verify**.
+3. In Cloudflare, add DMARC: a TXT record named `_dmarc.mail` with
+   `v=DMARC1; p=none; rua=mailto:<a mailbox you read>` (start at `p=none` and tighten later).
+4. Resend → **API Keys → Create**: permission **Sending access**, domain
+   `mail.deleajewelry.com`. Put it in `backend/.env` as `RESEND_API_KEY`. That switches
+   `EMAIL_PROVIDER=auto` to Resend; set `EMAIL_PROVIDER=mailpit` to keep testing locally.
+5. Later, once hosted: Resend → **Webhooks** → the API's `/api/v1/email/webhook` with
+   `email.bounced` and `email.complained`; its signing secret goes into the hosting
+   environment as `RESEND_WEBHOOK_SECRET`.
+
+Resend's free plan sends at most 100 emails a day (3,000 a month); move to Pro ($20 a month)
+before the first real shop.
+
 ### The storefront locally
 
 The storefront finds its shop from the address it is opened on (the browser's `Origin`), so open
