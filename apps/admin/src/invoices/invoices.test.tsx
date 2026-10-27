@@ -408,7 +408,8 @@ describe("new quote", () => {
       due_date: null,
       pay_now: false,
     });
-    expect(await screen.findByText("Walk-in")).toBeInTheDocument();
+    // The saved quote's page; the form's own "Walk-in" label could match while the route switches.
+    expect(await screen.findByText("Walk-in", { selector: ".facts .tag" })).toBeInTheDocument();
   });
 
   it("drafts are listed with a Draft tag", async () => {
