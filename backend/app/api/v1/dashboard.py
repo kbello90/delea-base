@@ -42,6 +42,9 @@ class DashboardSummary(BaseModel):
     year_start: datetime
     mtd: PeriodSummary
     ytd: PeriodSummary
+    # Money received on open quotes: customer deposits, held until the invoice is paid in full.
+    deposits_held_cents: int
+    deposits_held_count: int
     low_stock_products: int
     low_stock_materials: int
     invoice_counts: InvoiceCounts

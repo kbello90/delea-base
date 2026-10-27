@@ -135,14 +135,16 @@ begin
     new.voided_by := null;
   end if;
 
-  if new.status = 'succeeded' and inv.cancelled_at is not null then
+  -- App users don't take money on closed invoices. The service may: it records history (the
+  -- ledger backfill) and money a card checkout really took (Slice B2).
+  if v_role is not null and inv.cancelled_at is not null then
     raise exception 'This invoice is cancelled, so it can''t take payments or refunds.';
   end if;
 
   v_paid := public.invoice_amount_paid(new.invoice_id);
   if new.kind = 'payment' then
     if new.status = 'succeeded' and new.provider = 'manual' then
-      if inv.refunded_at is not null then
+      if v_role is not null and inv.refunded_at is not null then
         raise exception 'This invoice is refunded, so it can''t take payments.';
       end if;
       if v_role is not null and inv.order_status <> 'quote' then

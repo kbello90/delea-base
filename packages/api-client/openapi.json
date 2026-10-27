@@ -5452,6 +5452,14 @@
           "ytd": {
             "$ref": "#/components/schemas/PeriodSummary"
           },
+          "deposits_held_cents": {
+            "type": "integer",
+            "title": "Deposits Held Cents"
+          },
+          "deposits_held_count": {
+            "type": "integer",
+            "title": "Deposits Held Count"
+          },
           "low_stock_products": {
             "type": "integer",
             "title": "Low Stock Products"
@@ -5472,6 +5480,8 @@
           "year_start",
           "mtd",
           "ytd",
+          "deposits_held_cents",
+          "deposits_held_count",
           "low_stock_products",
           "low_stock_materials",
           "invoice_counts"
@@ -7084,6 +7094,7 @@
             "type": "string",
             "enum": [
               "awaiting_payment",
+              "deposit_paid",
               "paid",
               "in_production",
               "shipped",
@@ -7183,6 +7194,14 @@
               }
             ],
             "title": "Pickup Note"
+          },
+          "amount_paid_cents": {
+            "type": "integer",
+            "title": "Amount Paid Cents"
+          },
+          "balance_cents": {
+            "type": "integer",
+            "title": "Balance Cents"
           }
         },
         "type": "object",
@@ -7203,7 +7222,9 @@
           "ship_city",
           "ship_state",
           "payment_instructions",
-          "pickup_note"
+          "pickup_note",
+          "amount_paid_cents",
+          "balance_cents"
         ],
         "title": "OrderOut",
         "description": "The order as the shopper sees it: right after placing it, and on the tracking page."

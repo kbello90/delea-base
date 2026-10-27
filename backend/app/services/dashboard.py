@@ -3,9 +3,18 @@
 Approved formulas (all money in integer cents; periods are UTC calendar month / year to date,
 since tenants have no timezone setting yet):
 
-- revenue:     sum(subtotal_cents) of invoices paid in the period (paid_at), excluding refunded
-               and cancelled invoices. Tax is not revenue.
-- tax_reserve: sum(tax_cents) of the same invoices.
+- revenue:     net of refunds. sum(subtotal_cents) of invoices paid in the period (paid_at),
+               excluding cancelled invoices, minus the revenue share of every refund given in
+               the period (received_at), in whatever month the invoice was paid. A refund's
+               share is its amount x subtotal / total, rounded half away from zero, so a full
+               refund removes exactly the subtotal. Only refunds of paid invoices count, given
+               on or after they were paid: returning a deposit is not a sale undone. Tax is not
+               revenue. A refund doesn't restock.
+- tax_reserve: sum(tax_cents) of the same invoices, minus the tax share of the same refunds
+               (amount x tax / total).
+- deposits held: money received on open quotes (not cancelled): customer deposits, a
+               liability until the invoice is paid in full. Not revenue. Current, not per
+               period.
 - expenses:    sum(amount_cents) of all expenses dated in the period, up to today;
                deductible_expenses counts only is_tax_deductible ones.
 - net_profit:  revenue - expenses (pre income tax; tax collected excluded from both).
@@ -21,6 +30,22 @@ from typing import Any
 
 from psycopg import AsyncConnection
 from psycopg.rows import dict_row
+
+# Each refund of a paid invoice, given on or after it was paid, with its revenue and tax shares.
+REFUND_SHARES = """
+    select p.received_at,
+           round(p.amount_cents::numeric * i.subtotal_cents / i.total_cents)::bigint as revenue,
+           round(p.amount_cents::numeric * i.tax_cents / i.total_cents)::bigint as tax
+    from public.payments p
+    join public.invoices i on i.id = p.invoice_id and i.tenant_id = p.tenant_id
+    where p.tenant_id = %(tenant_id)s
+      and p.kind = 'refund'
+      and p.status = 'succeeded'
+      and i.paid_at is not null
+      and p.received_at >= i.paid_at
+      and i.cancelled_at is null
+      and i.total_cents > 0
+"""
 
 SUMMARY_SQL = """
 with bounds as (
@@ -41,8 +66,28 @@ sales as (
   left join public.invoices i
     on i.tenant_id = %(tenant_id)s
    and i.paid_at >= b.year_start
-   and i.refunded_at is null
    and i.cancelled_at is null
+),
+refunds as (
+  select
+    coalesce(sum(r.revenue) filter (where r.received_at >= b.month_start), 0) as mtd_revenue,
+    coalesce(sum(r.revenue), 0) as ytd_revenue,
+    coalesce(sum(r.tax) filter (where r.received_at >= b.month_start), 0) as mtd_tax,
+    coalesce(sum(r.tax), 0) as ytd_tax
+  from bounds b
+  left join ({REFUND_SHARES}) r
+    on r.received_at >= b.year_start
+),
+deposits as (
+  select coalesce(sum(d.held), 0) as held_cents, count(*) as held_count
+  from (
+    select public.invoice_amount_paid(i.id) as held
+    from public.invoices i
+    where i.tenant_id = %(tenant_id)s
+      and i.order_status = 'quote'
+      and i.cancelled_at is null
+  ) d
+  where d.held > 0
 ),
 spend as (
   select
@@ -77,7 +122,8 @@ counts as (
   where tenant_id = %(tenant_id)s
 )
 select
-  s.mtd_revenue, s.ytd_revenue, s.mtd_tax, s.ytd_tax,
+  s.mtd_revenue - r.mtd_revenue as mtd_revenue, s.ytd_revenue - r.ytd_revenue as ytd_revenue,
+  s.mtd_tax - r.mtd_tax as mtd_tax, s.ytd_tax - r.ytd_tax as ytd_tax,
   x.mtd_expenses, x.ytd_expenses, x.mtd_deductible, x.ytd_deductible,
   (select count(*) from public.products p
     where p.tenant_id = %(tenant_id)s and p.stock_qty < p.low_stock_threshold)
@@ -86,9 +132,10 @@ select
     where m.tenant_id = %(tenant_id)s and m.qty_on_hand < m.reorder_threshold)
     as low_stock_materials,
   c.quote, c.paid, c.in_production, c.shipped, c.delivered, c.refunded, c.cancelled,
+  d.held_cents, d.held_count,
   b.month_start, b.year_start
-from sales s, spend x, counts c, bounds b
-"""
+from sales s, refunds r, spend x, counts c, deposits d, bounds b
+""".replace("{REFUND_SHARES}", REFUND_SHARES)
 
 
 def _period(revenue: int, tax: int, expenses: int, deductible: int) -> dict[str, int]:
@@ -113,6 +160,8 @@ async def fetch_summary(conn: AsyncConnection, tenant_id: str) -> dict[str, Any]
         "year_start": r["year_start"],
         "mtd": _period(r["mtd_revenue"], r["mtd_tax"], r["mtd_expenses"], r["mtd_deductible"]),
         "ytd": _period(r["ytd_revenue"], r["ytd_tax"], r["ytd_expenses"], r["ytd_deductible"]),
+        "deposits_held_cents": r["held_cents"],
+        "deposits_held_count": r["held_count"],
         "low_stock_products": r["low_stock_products"],
         "low_stock_materials": r["low_stock_materials"],
         "invoice_counts": {
@@ -152,8 +201,12 @@ select
     where i.tenant_id = %(tenant_id)s
       and i.paid_at >= m.month_start at time zone 'UTC'
       and i.paid_at < m.month_end at time zone 'UTC'
-      and i.refunded_at is null
       and i.cancelled_at is null
+  ), 0)::bigint - coalesce((
+    select sum(r.revenue)
+    from ({REFUND_SHARES}) r
+    where r.received_at >= m.month_start at time zone 'UTC'
+      and r.received_at < m.month_end at time zone 'UTC'
   ), 0)::bigint as revenue_cents,
   coalesce((
     select sum(e.amount_cents)
@@ -165,7 +218,7 @@ select
   ), 0)::bigint as expenses_cents
 from months m
 order by m.month_start
-"""
+""".replace("{REFUND_SHARES}", REFUND_SHARES)
 
 
 async def fetch_monthly(conn: AsyncConnection, tenant_id: str) -> dict[str, Any]:

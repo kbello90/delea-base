@@ -268,8 +268,17 @@ class OrderRequest(BaseModel):
         )
 
 
+# deposit_paid: part paid, still owing (Slice B1). in_production also covers an order whose
+# production started on a deposit, before the rest is paid.
 ShopperStatus = Literal[
-    "awaiting_payment", "paid", "in_production", "shipped", "delivered", "cancelled", "refunded"
+    "awaiting_payment",
+    "deposit_paid",
+    "paid",
+    "in_production",
+    "shipped",
+    "delivered",
+    "cancelled",
+    "refunded",
 ]
 
 
@@ -302,3 +311,5 @@ class OrderOut(BaseModel):
     ship_state: str | None
     payment_instructions: str | None  # while unpaid
     pickup_note: str | None
+    amount_paid_cents: int  # received so far (a deposit, or everything)
+    balance_cents: int  # still due; 0 once paid in full or cancelled

@@ -142,6 +142,8 @@ export const SUMMARY_RESPONSE: Schemas["DashboardSummary"] = {
     deductible_expenses_cents: 400000,
     net_profit_cents: 777800,
   },
+  deposits_held_cents: 0,
+  deposits_held_count: 0,
   low_stock_products: 1,
   low_stock_materials: 2,
   invoice_counts: { quote: 1, paid: 1, in_production: 0, shipped: 3, delivered: 4, refunded: 5, cancelled: 6 },

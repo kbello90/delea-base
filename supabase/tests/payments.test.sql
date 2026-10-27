@@ -315,6 +315,9 @@ select is(pg_temp.run($q$update public.invoices set cancelled_at = now() where i
           'with nothing held, the quote can be cancelled');
 select throws_ok(format('select pg_temp.run(%L)', pg_temp.pay('e3000000-0000-0000-0000-000000000005', 1)),
                  'P0001', null, 'a cancelled invoice takes no payments');
+select pg_temp.no_claims();
+select lives_ok(pg_temp.pay('e3000000-0000-0000-0000-000000000005', 1),
+                'the service may still record money on it (history, or a card payment that really happened)');
 
 -- ---------------------------------------------------------------------------
 -- 7. The service's rows (Slice B2 writes these): forward only, unique Stripe ids

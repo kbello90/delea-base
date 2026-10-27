@@ -216,6 +216,64 @@ async def test_monthly_formulas(settings: Settings) -> None:
     assert deltas == [(0, 0), (0, 0), (0, 0), (0, 0), (20000, 4000), (10000, 3000)]
 
 
+@pytest.mark.anyio
+async def test_refunds_come_off_revenue_in_their_month_and_deposits_are_held(
+    settings: Settings,
+) -> None:
+    """R1: a refund comes off revenue (and tax) in the month it is given, pro rata to the
+    invoice's subtotal and tax; the month the invoice was paid keeps its sale. Money on open
+    quotes is held for the customer, not revenue, and returning it isn't a refund of a sale."""
+    owner = TokenClaims(sub=str(uuid.uuid4()), tenant_id=TENANT_A, app_role="owner")
+    async with await psycopg.AsyncConnection.connect(
+        settings.database_url, autocommit=True
+    ) as aconn:
+        async with aconn.transaction(force_rollback=True):
+            await aconn.execute("alter table public.invoices disable trigger invoices_30_numbering")
+            await apply_user_scope(aconn, owner)
+            before = await fetch_summary(aconn, TENANT_A)
+            months_before = await fetch_monthly(aconn, TENANT_A)
+            last_month = before["month_start"] - timedelta(days=1)
+
+            await aconn.execute("reset role")
+            await aconn.execute("select set_config('request.jwt.claims', '', true)")
+            rows = _Rows(aconn)
+            # Paid last month: 200.00 + 16.00 tax. Half of it (108.00) refunded today.
+            sold = await rows.invoice(TENANT_A, 20000, 1600, "shipped", last_month)
+            await rows.payment(TENANT_A, sold, 10800, None, kind="refund")
+            # A partial refund of 0.01 on a 3-cent sale paid today: shares round half away.
+            tiny = await rows.invoice(TENANT_A, 2, 1, "paid", None)
+            await aconn.execute("update public.invoices set paid_at = now() where id = %s", (tiny,))
+            await rows.payment(TENANT_A, tiny, 3, None)
+            await rows.payment(TENANT_A, tiny, 2, None, kind="refund")
+            # Deposits: 30.00 held on one quote, 20.00 on another, 15.00 given back on a third.
+            for held in (3000, 2000):
+                q = await rows.invoice(TENANT_A, 10000, 800, "quote")
+                await rows.payment(TENANT_A, q, held, None)
+            returned = await rows.invoice(TENANT_A, 10000, 800, "quote")
+            await rows.payment(TENANT_A, returned, 1500, None)
+            await rows.payment(TENANT_A, returned, 1500, None, kind="refund")
+
+            await apply_user_scope(aconn, owner)
+            after = await fetch_summary(aconn, TENANT_A)
+            months_after = await fetch_monthly(aconn, TENANT_A)
+
+    same_year = last_month.year == before["month_start"].year
+    mtd = {k: after["mtd"][k] - before["mtd"][k] for k in ("revenue_cents", "tax_reserve_cents")}
+    # -100.00 / -8.00 for the half refund; +0.02 - round(2 x 2/3 = 1.33) = +0.01 revenue and
+    # +0.01 - round(2 x 1/3 = 0.67) = 0.00 tax for the tiny one.
+    assert mtd == {"revenue_cents": -10000 + 1, "tax_reserve_cents": -800 + 0}
+    ytd_revenue = after["ytd"]["revenue_cents"] - before["ytd"]["revenue_cents"]
+    assert ytd_revenue == (20000 if same_year else 0) - 10000 + 1
+    trend = [
+        a["revenue_cents"] - b["revenue_cents"]
+        for a, b in zip(months_after["months"], months_before["months"], strict=True)
+    ]
+    assert trend[-2:] == [20000, -10000 + 1]  # the sale stays in its month
+
+    assert after["deposits_held_cents"] - before["deposits_held_cents"] == 5000
+    assert after["deposits_held_count"] - before["deposits_held_count"] == 2
+
+
 class _Rows:
     """Inserts the test rows on the test's own connection (inside its rolled-back transaction)."""
 
@@ -224,14 +282,15 @@ class _Rows:
 
     async def invoice(
         self, tenant, subtotal, tax, status, paid_at=None, refunded=False, cancelled=False
-    ) -> None:
-        await self.conn.execute(
+    ) -> str:
+        cur = await self.conn.execute(
             """
             insert into public.invoices
               (tenant_id, customer_name, order_status, subtotal_cents, tax_cents, total_cents,
                paid_at, refunded_at, cancelled_at)
             values (%s, %s, %s, %s, %s, %s, %s,
                     case when %s then now() end, case when %s then now() end)
+            returning id
             """,
             (
                 tenant,
@@ -244,6 +303,20 @@ class _Rows:
                 refunded,
                 cancelled,
             ),
+        )
+        (invoice_id,) = await cur.fetchone()
+        # The ledger behind it (Slice B1): paid in full, and a refund of it all when refunded.
+        if paid_at is not None and not cancelled:
+            await self.payment(tenant, invoice_id, subtotal + tax, paid_at)
+            if refunded:
+                await self.payment(tenant, invoice_id, subtotal + tax, None, kind="refund")
+        return invoice_id
+
+    async def payment(self, tenant, invoice_id, cents, received_at, kind="payment") -> None:
+        await self.conn.execute(
+            "insert into public.payments (tenant_id, invoice_id, kind, method, amount_cents, "
+            "currency, received_at) values (%s, %s, %s, 'cash', %s, 'USD', coalesce(%s, now()))",
+            (tenant, invoice_id, kind, cents, received_at),
         )
 
     async def expense(self, tenant, day, amount, deductible=True) -> None:

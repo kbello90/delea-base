@@ -664,6 +664,35 @@ def test_tracking_shows_one_order_in_its_own_shop(client: TestClient, shop: Shop
     assert client.get(url, headers={"Origin": shop.origin}).json()["status"] == "refunded"
 
 
+def test_tracking_shows_a_deposit_and_the_balance(client: TestClient, shop: Shop, db) -> None:
+    token = post(client, shop, "/orders", order_body(shop)).json()["public_token"]
+    url = f"/api/v1/public/orders/{token}"
+
+    def tracked() -> dict:
+        return client.get(url, headers={"Origin": shop.origin}).json()
+
+    unpaid = tracked()
+    assert (unpaid["amount_paid_cents"], unpaid["balance_cents"]) == (0, unpaid["total_cents"])
+    db.execute(
+        "insert into public.payments (tenant_id, invoice_id, kind, method, amount_cents, currency) "
+        "select tenant_id, id, 'payment', 'bank_transfer', 5000, 'USD' "
+        "from public.invoices where public_token = %s",
+        (token,),
+    )
+    deposit = tracked()
+    assert deposit["status"] == "deposit_paid"
+    assert (deposit["amount_paid_cents"], deposit["balance_cents"]) == (
+        5000,
+        unpaid["total_cents"] - 5000,
+    )
+    assert deposit["payment_instructions"] is not None  # the rest is still to pay
+    db.execute(
+        "update public.invoices set production_started_at = now() where public_token = %s",
+        (token,),
+    )
+    assert tracked()["status"] == "in_production"
+
+
 def test_tracking_is_limited_per_address(client: TestClient, shop: Shop, monkeypatch) -> None:
     monkeypatch.setattr(rate_limit.public_tracking, "limit", 2)
     url = f"/api/v1/public/orders/{uuid.uuid4()}"

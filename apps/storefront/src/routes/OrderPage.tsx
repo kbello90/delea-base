@@ -7,8 +7,12 @@ import { formatMoney } from "../lib/format";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { useShop } from "../lib/useShop";
 
+/** Stripe takes no card payment under 50 cents: a smaller balance is settled with the shop. */
+export const MIN_CARD_CENTS = 50;
+
 const STATUS: Record<Order["status"], { label: string; text: string }> = {
   awaiting_payment: { label: "Waiting for payment", text: "We'll start as soon as your payment arrives." },
+  deposit_paid: { label: "Deposit received", text: "Thank you, your deposit arrived." },
   paid: { label: "Paid", text: "Thank you, your payment arrived." },
   in_production: { label: "In production", text: "Your piece is being made." },
   shipped: { label: "On its way", text: "Your order has left the studio." },
@@ -81,6 +85,8 @@ export function OrderPage() {
   const money = (cents: number) => formatMoney(cents, store.currency);
   const status = STATUS[o.status];
   const justPlaced = Boolean(placed);
+  // Part paid: a deposit is in, the rest is still due.
+  const partPaid = o.amount_paid_cents > 0 && o.balance_cents > 0;
   return (
     <article className="section order" aria-labelledby="order-title">
       {justPlaced ? (
@@ -102,7 +108,10 @@ export function OrderPage() {
 
       <div className={`order__status order__status--${o.status}`} role="status">
         <strong>{status.label}</strong>
-        <span>{status.text}</span>
+        <span>
+          {status.text}
+          {partPaid && <> Balance due {money(o.balance_cents)}.</>}
+        </span>
       </div>
 
       {o.payment_instructions && o.status === "awaiting_payment" && (
@@ -110,6 +119,25 @@ export function OrderPage() {
           <h2 id="pay-title">{o.payment_choice === "bank_transfer" ? "How to pay" : "Paying when you pick up"}</h2>
           <p className="order__instructions">{o.payment_instructions}</p>
           <p className="field-hint">Use your order number {o.order_ref} as the reference.</p>
+        </section>
+      )}
+
+      {partPaid && (
+        <section className="order__pay" aria-labelledby="balance-title">
+          <h2 id="balance-title">Balance due</h2>
+          <p>
+            Paid so far {money(o.amount_paid_cents)} of {money(o.total_cents)}.
+          </p>
+          {o.balance_cents < MIN_CARD_CENTS ? (
+            <p className="order__instructions">Pay the rest with the shop: {money(o.balance_cents)}.</p>
+          ) : (
+            o.payment_instructions && (
+              <>
+                <p className="order__instructions">{o.payment_instructions}</p>
+                <p className="field-hint">Use your order number {o.order_ref} as the reference.</p>
+              </>
+            )
+          )}
         </section>
       )}
 
@@ -147,6 +175,18 @@ export function OrderPage() {
             <dt>Total</dt>
             <dd>{money(o.total_cents)}</dd>
           </div>
+          {partPaid && (
+            <>
+              <div>
+                <dt>Paid so far</dt>
+                <dd>{money(o.amount_paid_cents)}</dd>
+              </div>
+              <div className="totals__total">
+                <dt>Balance due</dt>
+                <dd>{money(o.balance_cents)}</dd>
+              </div>
+            </>
+          )}
         </dl>
       </section>
 

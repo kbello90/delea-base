@@ -1410,6 +1410,10 @@ export interface components {
             year_start: string;
             mtd: components["schemas"]["PeriodSummary"];
             ytd: components["schemas"]["PeriodSummary"];
+            /** Deposits Held Cents */
+            deposits_held_cents: number;
+            /** Deposits Held Count */
+            deposits_held_count: number;
             /** Low Stock Products */
             low_stock_products: number;
             /** Low Stock Materials */
@@ -1969,7 +1973,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "awaiting_payment" | "paid" | "in_production" | "shipped" | "delivered" | "cancelled" | "refunded";
+            status: "awaiting_payment" | "deposit_paid" | "paid" | "in_production" | "shipped" | "delivered" | "cancelled" | "refunded";
             /**
              * Fulfillment
              * @enum {string}
@@ -2002,6 +2006,10 @@ export interface components {
             payment_instructions: string | null;
             /** Pickup Note */
             pickup_note: string | null;
+            /** Amount Paid Cents */
+            amount_paid_cents: number;
+            /** Balance Cents */
+            balance_cents: number;
         };
         /** OrderRequest */
         OrderRequest: {

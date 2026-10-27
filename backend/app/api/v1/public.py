@@ -304,6 +304,15 @@ async def _tracked_order(pool: AsyncConnectionPool, tenant_id: str, token: UUID)
         shopper_status = "cancelled"
     elif order["refunded"]:
         shopper_status = "refunded"
+    elif order["order_status"] == "quote" and order["amount_paid_cents"] > 0:
+        # A deposit: work may already be under way; paid in full but still a quote means the
+        # shop is waiting on stock, which the shopper sees as paid.
+        if order["balance_cents"] <= 0:
+            shopper_status = "paid"
+        elif order["production_started"]:
+            shopper_status = "in_production"
+        else:
+            shopper_status = "deposit_paid"
     else:
         shopper_status = _STATUS[order["order_status"]]
     return OrderOut.model_validate(

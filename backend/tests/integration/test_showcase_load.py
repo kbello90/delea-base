@@ -284,11 +284,21 @@ def _independent_summary(db, tid: str) -> dict:
         "where tenant_id = %s",
         (tid,),
     ).fetchall()
-    counted = [i for i in invoices if i[3] and not i[4] and not i[5]]
+    # Net of refunds (R1): a sale counts in the month it was paid, unless cancelled; the
+    # showcase's refund (of everything) comes off in the month it was given.
+    counted = [i for i in invoices if i[3] and not i[5]]
+    refunded = [i for i in counted if i[4]]
+
+    def net(field: int, start: datetime, end: datetime | None = None) -> int:
+        def within(at: datetime) -> bool:
+            return at >= start and (end is None or at < end)
+
+        sold = sum(i[field] for i in counted if within(i[3]))
+        return sold - sum(i[field] for i in refunded if within(i[4]))
 
     def period(since: datetime, since_day: date) -> dict:
-        revenue = sum(i[1] for i in counted if i[3] >= since)
-        tax = sum(i[2] for i in counted if i[3] >= since)
+        revenue = net(1, since)
+        tax = net(2, since)
         spent = [e for e in expenses if since_day <= e[0] <= today]
         total = sum(e[1] for e in spent)
         return {
@@ -317,7 +327,7 @@ def _independent_summary(db, tid: str) -> dict:
         months.append(
             {
                 "month_start": start.date().isoformat(),
-                "revenue_cents": sum(i[1] for i in counted if start <= i[3] < end),
+                "revenue_cents": net(1, start, end),
                 "expenses_cents": sum(
                     e[1] for e in expenses if start.date() <= e[0] < end.date() and e[0] <= today
                 ),

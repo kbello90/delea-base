@@ -97,6 +97,8 @@ export function orderFrom(body: Record<string, unknown>, quote: Quote): Order {
     ship_state: shipTo?.state ?? null,
     payment_instructions: "Transfer to account 000 (example). Use your order number as the reference.",
     pickup_note: body.fulfillment === "pickup" ? "Studio, Tuesday to Saturday" : null,
+    amount_paid_cents: 0,
+    balance_cents: quote.total_cents,
   };
 }
 

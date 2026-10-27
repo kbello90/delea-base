@@ -181,6 +181,7 @@ _SEED_TABLES = (
     "customers",
     "invoices",
     "invoice_line_items",
+    "payments",
     "expenses",
     "automation_rules",
     "reorder_list",

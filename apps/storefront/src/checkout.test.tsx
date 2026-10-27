@@ -392,6 +392,50 @@ describe("tracking page", () => {
     expect(await screen.findByText("Paid")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "How to pay" })).not.toBeInTheDocument();
   });
+
+  const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+  it("a deposit shows what was paid, the balance and how to pay the rest", async () => {
+    const server = checkoutServer();
+    const balance = order.total_cents - 5000;
+    server.setPlaced({ ...order, status: "deposit_paid", amount_paid_cents: 5000, balance_cents: balance });
+    renderShop(`/orders/${TOKEN}`, server.fetch);
+    expect(await screen.findByText("Deposit received")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(`Thank you, your deposit arrived. Balance due ${usd(balance)}.`);
+    const due = screen.getByRole("region", { name: "Balance due" });
+    expect(due).toHaveTextContent(`Paid so far $50.00 of ${usd(order.total_cents)}.`);
+    expect(due).toHaveTextContent(/Transfer to account 000/);
+    expect(screen.queryByRole("heading", { name: "How to pay" })).not.toBeInTheDocument();
+    expect(screen.getByText("Paid so far").nextSibling).toHaveTextContent("$50.00");
+  });
+
+  it("in production on a deposit: the status says what is still due", async () => {
+    const server = checkoutServer();
+    const balance = order.total_cents - 5000;
+    server.setPlaced({ ...order, status: "in_production", amount_paid_cents: 5000, balance_cents: balance });
+    renderShop(`/orders/${TOKEN}`, server.fetch);
+    expect(await screen.findByText("In production")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(`Your piece is being made. Balance due ${usd(balance)}.`);
+  });
+
+  it("a balance under 50 cents is paid with the shop, with no Pay button", async () => {
+    const server = checkoutServer();
+    server.setPlaced({ ...order, status: "in_production", amount_paid_cents: order.total_cents - 30, balance_cents: 30 });
+    renderShop(`/orders/${TOKEN}`, server.fetch);
+    const due = await screen.findByRole("region", { name: "Balance due" });
+    expect(due).toHaveTextContent("Pay the rest with the shop: $0.30.");
+    expect(due).not.toHaveTextContent(/Transfer to account 000/);
+    expect(screen.queryByRole("button", { name: /pay/i })).not.toBeInTheDocument();
+  });
+
+  it("paid in full shows no balance", async () => {
+    const server = checkoutServer();
+    server.setPlaced({ ...order, status: "paid", payment_instructions: null, amount_paid_cents: order.total_cents, balance_cents: 0 });
+    renderShop(`/orders/${TOKEN}`, server.fetch);
+    expect(await screen.findByText("Paid")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Balance due" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Paid so far")).not.toBeInTheDocument();
+  });
 });
 
 describe("the shop without checkout", () => {
