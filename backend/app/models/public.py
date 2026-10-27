@@ -226,8 +226,8 @@ class ShipToIn(BaseModel):
     ]
 
 
-# Faster than this from opening the checkout form to submitting it is a bot.
-MIN_FILL_MILLISECONDS = 3000
+# Faster than this from loading the checkout page to placing the order is a bot.
+MIN_FILL_MILLISECONDS = 2000
 
 
 class OrderRequest(BaseModel):
@@ -246,7 +246,7 @@ class OrderRequest(BaseModel):
     ) = None
     turnstile_token: Annotated[str, Field(max_length=2048)] | None = None
     website: str | None = None  # a field people never see: anything in it is a bot
-    elapsed_ms: Annotated[int, Field(ge=0)]  # time spent on the checkout form
+    elapsed_ms: Annotated[int, Field(ge=0)]  # time since the checkout page loaded
 
     @model_validator(mode="after")
     def _consistent(self) -> "OrderRequest":

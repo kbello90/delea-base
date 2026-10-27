@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { addLine, cartItems, lineKey, loadBag, MAX_QTY } from "./lib/bag";
 import { nextAttempt, orderFingerprint } from "./lib/checkoutKey";
 import { checkoutServer, ENGRAVING_FIELD, OPEN_STORE, orderFrom, priceCart, RING, SIZE_FIELD, TOKEN } from "./test/checkoutServer";
@@ -148,11 +148,19 @@ describe("bag page", () => {
 // Checkout
 // ---------------------------------------------------------------------------
 describe("checkout", () => {
-  it("ordering off: a clear message instead of the form", async () => {
+  it("ordering off: a clear message instead of the form, and no order is ever sent", async () => {
     seedBag([{ productId: NECKLACE.id, qty: 1 }]);
-    renderShop("/checkout", checkoutServer({ store: { ...OPEN_STORE, checkout_enabled: false } }).fetch);
+    const user = userEvent.setup();
+    const server = checkoutServer({ store: { ...OPEN_STORE, checkout_enabled: false } });
+    renderShop("/checkout", server.fetch);
     expect(await screen.findByText("Ordering is temporarily unavailable. Please try again later.")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
+    expect(document.querySelector("form")).toBeNull();
+    expect(screen.queryAllByRole("textbox")).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: /place order/i })).not.toBeInTheDocument();
+    await user.keyboard("{Enter}");
+    await user.click(screen.getByRole("link", { name: "Back to your bag" }));
+    expect(await screen.findByRole("heading", { level: 1, name: /bag/i })).toBeInTheDocument();
+    expect(server.orders).toHaveLength(0);
   });
 
   it("checks the form before sending anything", async () => {
@@ -221,6 +229,43 @@ describe("checkout", () => {
     await waitFor(() => expect(placeButton()).toBeEnabled());
     await user.click(placeButton());
     expect(await screen.findByText(/We couldn't reach the shop/)).toBeInTheDocument();
+    await user.click(placeButton());
+    expect(await screen.findByRole("heading", { name: "Thank you, Sarah" })).toBeInTheDocument();
+    expect(server.orders).toHaveLength(2);
+    expect(server.orders[1].checkout_key).toBe(server.orders[0].checkout_key);
+  });
+
+  it("the fill time runs from when the checkout page loaded", async () => {
+    let now = 1_000_000;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      seedBag([{ productId: NECKLACE.id, qty: 1 }]);
+      const user = userEvent.setup();
+      const server = checkoutServer();
+      renderShop("/checkout", server.fetch);
+      await waitFor(() => expect(placeButton()).toBeEnabled());
+      now += 4_000; // reading the summary before typing anything
+      await fillContactAndAddress(user);
+      now += 1_000;
+      await user.click(placeButton());
+      await waitFor(() => expect(server.orders).toHaveLength(1));
+      expect(server.orders[0].elapsed_ms).toBe(5_000);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("placed too quickly: a friendly message, and placing it again reuses the checkout key", async () => {
+    seedBag([{ productId: NECKLACE.id, qty: 1 }]);
+    const user = userEvent.setup();
+    const server = checkoutServer({
+      onOrder: (_body, n) => (n === 1 ? json(422, { detail: "Your order didn't go through.", reason: "try_again" }) : undefined),
+    });
+    renderShop("/checkout", server.fetch);
+    await fillContactAndAddress(user);
+    await waitFor(() => expect(placeButton()).toBeEnabled());
+    await user.click(placeButton());
+    expect(await screen.findByRole("alert")).toHaveTextContent("Sorry, your order didn't go through. Please check your details and place it again.");
     await user.click(placeButton());
     expect(await screen.findByRole("heading", { name: "Thank you, Sarah" })).toBeInTheDocument();
     expect(server.orders).toHaveLength(2);

@@ -68,7 +68,7 @@ PAGES: dict[PageSlug, tuple[str, str]] = {
 STORE_NOT_FOUND = "Store not found"
 ORDERING_UNAVAILABLE = "Online ordering is unavailable right now. Please try again later."
 TOO_MANY = "Too many requests. Please wait a few minutes and try again."
-TRY_AGAIN = "Please try again."
+TRY_AGAIN = "Your order didn't go through. Please check your details and place it again."
 
 
 def storefront_tenant(request: Request) -> str:
@@ -343,7 +343,13 @@ async def place_order(
     settings = get_settings()
     response.headers["Cache-Control"] = "no-store"
     if body.website or body.elapsed_ms < MIN_FILL_MILLISECONDS:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, TRY_AGAIN)
+        # One answer for both traps, so a bot can't tell which caught it. Nothing is stored, so
+        # a person who was just quick places the order again with the same checkout key.
+        return JSONResponse(
+            {"detail": TRY_AGAIN, "reason": "try_again"},
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            headers={"Cache-Control": "no-store"},
+        )
     if not turnstile.checkout_protected(settings):
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, ORDERING_UNAVAILABLE)
 

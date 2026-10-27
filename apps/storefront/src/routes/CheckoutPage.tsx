@@ -56,6 +56,8 @@ const PAYMENT_LABELS: Record<PaymentChoice, { title: string; text: string }> = {
 export function CheckoutPage() {
   const store = useShop();
   const bag = useBag();
+  // The fill time the API checks runs from here, when the checkout page loaded.
+  const loadedAt = useRef(Date.now());
   useDocumentTitle(`Checkout · ${store.business_name}`);
   if (bag.lines.length === 0) return <Navigate to="/bag" replace />;
   if (!store.checkout_enabled) {
@@ -71,10 +73,10 @@ export function CheckoutPage() {
       </section>
     );
   }
-  return <CheckoutForm store={store} />;
+  return <CheckoutForm store={store} loadedAt={loadedAt.current} />;
 }
 
-function CheckoutForm({ store }: { store: Store }) {
+function CheckoutForm({ store, loadedAt }: { store: Store; loadedAt: number }) {
   const api = useApi();
   const bag = useBag();
   const navigate = useNavigate();
@@ -88,7 +90,6 @@ function CheckoutForm({ store }: { store: Store }) {
   const [form, setForm] = useState<Form>(EMPTY);
   const [errors, setErrors] = useState<ReturnType<typeof formErrors>>({});
   const [website, setWebsite] = useState(""); // the hidden field: people never fill it
-  const startedAt = useRef(Date.now());
   const attempt = useRef<Attempt | null>(null);
   // Set before the request and cleared when it settles: a second click in the same moment
   // (before the button re-renders as disabled) sends nothing.
@@ -171,7 +172,7 @@ function CheckoutForm({ store }: { store: Store }) {
       ...body,
       checkout_key: attempt.current.key,
       website,
-      elapsed_ms: Date.now() - startedAt.current,
+      elapsed_ms: Date.now() - loadedAt,
       ...(token ? { turnstile_token: token } : {}),
     });
   }

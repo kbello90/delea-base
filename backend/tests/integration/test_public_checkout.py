@@ -450,6 +450,23 @@ def test_bad_or_suspicious_orders_are_refused(
     assert count_orders(db, shop) == 0
 
 
+def test_a_quick_shopper_is_asked_to_try_again_and_can_with_the_same_key(
+    client: TestClient, shop: Shop, db
+) -> None:
+    body = order_body(shop, elapsed_ms=1999)  # just under two seconds since the page loaded
+    refused = post(client, shop, "/orders", body)
+    assert refused.status_code == 422
+    assert refused.json()["reason"] == "try_again"
+    assert "place it again" in refused.json()["detail"]
+    trapped = post(client, shop, "/orders", order_body(shop, website="http://spam.example"))
+    assert trapped.json() == refused.json()  # the same answer: a bot can't tell which trap
+    assert count_orders(db, shop) == 0
+
+    retried = post(client, shop, "/orders", {**body, "elapsed_ms": 2000})
+    assert retried.status_code == 201, retried.text
+    assert count_orders(db, shop) == 1
+
+
 def test_a_wholesale_email_still_buys_at_retail(client: TestClient, shop: Shop, db) -> None:
     db.execute(
         "insert into public.customers (tenant_id, customer_type, first_name, company_name, email, "

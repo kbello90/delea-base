@@ -9,6 +9,7 @@ export function problemMessage(problem: "unavailable" | "options"): string {
 }
 
 export const UNAVAILABLE_ORDERING = "Ordering is temporarily unavailable. Please try again later.";
+export const TRY_AGAIN_ORDER = "Sorry, your order didn't go through. Please check your details and place it again.";
 
 /** The message for a refused or failed order. */
 export function orderErrorMessage(error: unknown): string {
@@ -21,7 +22,8 @@ export function orderErrorMessage(error: unknown): string {
     case 409:
       return error.message;
     case 422:
-      return error.message;
+      // Placed faster than a person usually can: nothing was stored; placing it again works.
+      return (error.body as { reason?: unknown } | undefined)?.reason === "try_again" ? TRY_AGAIN_ORDER : error.message;
     case 429:
       return "Too many attempts from your connection. Please wait a few minutes, then try again.";
     case 503:
