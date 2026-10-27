@@ -235,3 +235,52 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- Slice B1: payments and deposits ---------- */
+.tag--deposit {
+  background: var(--brand-gold-soft);
+  color: var(--brand-deep);
+  box-shadow: inset 0 0 0 1px var(--brand-gold);
+  white-space: nowrap;
+}
+.balance-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem 1.5rem;
+  margin: 0 0 1rem;
+}
+.balance-summary dt {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.balance-summary dd {
+  margin: 0.15rem 0 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.payment-row--void td {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+.payment-row--void td:last-child {
+  text-decoration: none;
+}
+.record-payment {
+  margin-top: 1rem;
+  max-width: 34rem;
+  padding: 1rem 1.25rem 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.record-payment h3 {
+  font-size: 0.95rem;
+  margin: 0 0 0.75rem;
+}
+.record-payment .amount-input {
+  max-width: 12rem;
+}

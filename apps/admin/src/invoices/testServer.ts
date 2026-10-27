@@ -8,6 +8,7 @@ type Customer = Schemas["CustomerOut"];
 type Invoice = Schemas["InvoiceOut"];
 type Preview = Schemas["InvoicePreviewOut"];
 type Item = Schemas["LineItemIn"];
+type Payment = Schemas["PaymentOut"];
 
 export { makeCustomer };
 
@@ -79,6 +80,35 @@ export function makeInvoice(overrides: Partial<Invoice> = {}): Invoice {
   // The ledger follows the total unless the test says otherwise: a quote owes it all.
   if (overrides.balance_cents === undefined) invoice.balance_cents = invoice.total_cents - invoice.amount_paid_cents;
   return invoice;
+}
+
+export function makePayment(overrides: Partial<Payment> = {}): Payment {
+  return {
+    id: `pay00000-0000-0000-0000-${next()}`,
+    kind: "payment",
+    provider: "manual",
+    method: "cash",
+    status: "succeeded",
+    amount_cents: 3000,
+    currency: "USD",
+    received_at: "2026-10-21T10:00:00Z",
+    note: null,
+    refund_of: null,
+    voided_at: null,
+    ...overrides,
+  };
+}
+
+/** A quote holding a deposit: its payments and the ledger fields agree. */
+export function depositQuote(deposit: number, overrides: Partial<Invoice> = {}): Invoice {
+  const invoice = makeInvoice(overrides);
+  return {
+    ...invoice,
+    amount_paid_cents: deposit,
+    balance_cents: invoice.total_cents - deposit,
+    payments: [makePayment({ amount_cents: deposit, note: "Deposit" })],
+    ...overrides,
+  };
 }
 
 /** A paid invoice (number, paid_at, method) at the given status. */
@@ -196,9 +226,34 @@ export function invoiceServer({
     invoice.invoice_number = `INV-2026-${invoiceNumber}`;
     invoice.paid_at = "2026-10-22T16:00:00Z";
     // The backend records a payment for the balance before the move.
+    if (invoice.balance_cents > 0) {
+      invoice.payments = [...(invoice.payments ?? []), makePayment({ amount_cents: invoice.balance_cents, received_at: "2026-10-22T16:00:00Z" })];
+    }
     invoice.amount_paid_cents = invoice.total_cents;
     invoice.balance_cents = 0;
     return null;
+  }
+
+  /** The ledger fields from the payment rows, as the API computes them. */
+  function recount(invoice: Invoice) {
+    invoice.amount_paid_cents = (invoice.payments ?? [])
+      .filter((p) => p.status === "succeeded")
+      .reduce((sum, p) => sum + (p.kind === "payment" ? p.amount_cents : -p.amount_cents), 0);
+    invoice.balance_cents = invoice.total_cents - invoice.amount_paid_cents;
+    invoice.stock_short = false;
+  }
+
+  /** invoice_settle: paid in full makes a quote paid (in production once started), unless stock is short. */
+  function settle(invoice: Invoice) {
+    if (invoice.order_status !== "quote" || invoice.balance_cents > 0) return;
+    const methods = new Set((invoice.payments ?? []).filter((p) => p.kind === "payment" && p.status === "succeeded").map((p) => p.method));
+    if (pay(invoice)) {
+      invoice.stock_short = true;
+      return;
+    }
+    invoice.stock_short = false;
+    invoice.order_status = invoice.production_started_at ? "in_production" : "paid";
+    invoice.payment_method = methods.size === 1 ? [...methods][0] : "other";
   }
 
   function handle({ method, path, query, body }: Call, role: string | null): Response {
@@ -278,13 +333,56 @@ export function invoiceServer({
       return jsonResponse(201, invoice);
     }
 
-    const match = /^\/api\/v1\/invoices\/([^/]+)(\/[a-z/]+)?$/.exec(path);
+    const match = /^\/api\/v1\/invoices\/([^/]+)(\/[a-z0-9/-]+)?$/.exec(path);
     const invoice = match && invoiceMap.get(match[1]);
     if (!invoice) return jsonResponse(404, { detail: "Invoice not found" });
     const action = match[2] ?? "";
 
     if (action === "" && method === "GET") return jsonResponse(200, withItems(invoice, role));
+    if (action === "/payments" && method === "GET") return jsonResponse(200, invoice.payments ?? []);
     if (!writer) return jsonResponse(403, { detail: "Insufficient role" });
+
+    if (action === "/payments" && method === "POST") {
+      if (invoice.cancelled_at) return jsonResponse(409, { detail: "This invoice is cancelled, so it can't take payments." });
+      if (invoice.order_status !== "quote") return jsonResponse(409, { detail: "This invoice is already paid." });
+      const b = body as Schemas["PaymentCreate"];
+      if (b.amount_cents > invoice.balance_cents) {
+        return jsonResponse(422, { detail: `That is more than the ${(invoice.balance_cents / 100).toFixed(2)} still due.` });
+      }
+      invoice.payments = [
+        ...(invoice.payments ?? []),
+        makePayment({ amount_cents: b.amount_cents, method: b.method, note: b.note ?? null, received_at: "2026-10-22T15:00:00Z" }),
+      ];
+      recount(invoice);
+      settle(invoice);
+      return jsonResponse(201, invoice);
+    }
+    const voidMatch = /^\/payments\/([^/]+)\/void$/.exec(action);
+    if (voidMatch && method === "POST") {
+      if (role !== "owner") return jsonResponse(403, { detail: "Insufficient role" });
+      const target = invoice.payments?.find((p) => p.id === voidMatch[1]);
+      if (!target) return jsonResponse(404, { detail: "Payment not found" });
+      if (invoice.order_status !== "quote") {
+        return jsonResponse(409, { detail: "This invoice is paid, so its payments can't be voided. Refund it instead." });
+      }
+      Object.assign(target, { status: "voided", voided_at: "2026-10-22T15:30:00Z" });
+      recount(invoice);
+      return jsonResponse(200, invoice);
+    }
+    if (action === "/start-production" && method === "POST") {
+      if (invoice.amount_paid_cents <= 0) return jsonResponse(409, { detail: "Record a deposit before starting production." });
+      if (invoice.production_started_at) return jsonResponse(409, { detail: "Production has already started." });
+      invoice.production_started_at = "2026-10-22T15:45:00Z";
+      return jsonResponse(200, invoice);
+    }
+    if (action === "/settle" && method === "POST") {
+      settle(invoice);
+      if (invoice.stock_short) {
+        const refused = pay(invoice);
+        return refused ?? jsonResponse(409, { detail: "Not enough stock to complete this order." });
+      }
+      return jsonResponse(200, invoice);
+    }
 
     if (action === "/items/preview") {
       if (invoice.order_status !== "quote") return jsonResponse(409, { detail: "only quotes can be edited" });
@@ -336,15 +434,26 @@ export function invoiceServer({
     }
     if (role !== "owner") return jsonResponse(403, { detail: "Insufficient role" });
     if (action === "/refund") {
-      if (!invoice.paid_at) return jsonResponse(409, { detail: "only paid invoices can be refunded" });
+      const deposit = !invoice.paid_at && invoice.amount_paid_cents > 0;
+      if (!invoice.paid_at && !deposit) return jsonResponse(409, { detail: "only paid invoices can be refunded" });
       if (invoice.refunded_at) return jsonResponse(409, { detail: "this invoice is already refunded" });
       if (invoice.cancelled_at) return jsonResponse(409, { detail: "A cancelled invoice can't be refunded." });
-      invoice.refunded_at = "2026-10-22T17:00:00Z";
+      if (invoice.amount_paid_cents > 0) {
+        invoice.payments = [
+          ...(invoice.payments ?? []),
+          makePayment({ kind: "refund", amount_cents: invoice.amount_paid_cents, received_at: "2026-10-22T17:00:00Z" }),
+        ];
+        recount(invoice);
+      }
+      if (!deposit) invoice.refunded_at = "2026-10-22T17:00:00Z";
       return jsonResponse(200, invoice);
     }
     if (action === "/cancel") {
       if (invoice.cancelled_at) return jsonResponse(409, { detail: "this invoice is already cancelled" });
       if (invoice.refunded_at) return jsonResponse(409, { detail: "A refunded invoice can't be cancelled." });
+      if (invoice.order_status === "quote" && invoice.amount_paid_cents > 0) {
+        return jsonResponse(409, { detail: "This quote holds a deposit. Refund it before cancelling." });
+      }
       invoice.cancelled_at = "2026-10-22T17:00:00Z";
       return jsonResponse(200, invoice);
     }

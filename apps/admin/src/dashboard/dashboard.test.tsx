@@ -36,6 +36,23 @@ const zeroPeriod = {
   net_profit_cents: 0,
 };
 
+describe("deposits and refunds (Slice B1)", () => {
+  it("revenue says it is net of refunds; deposits held are shown apart, not as revenue", async () => {
+    await renderDashboard({
+      "/api/v1/dashboard/summary": () => jsonResponse(200, { ...SUMMARY_RESPONSE, deposits_held_cents: 125000, deposits_held_count: 3 }),
+    });
+    expect(metric("Revenue").getByText("Net of refunds. Paid invoices, before tax")).toBeInTheDocument();
+    expect(metric("Customer deposits held").getByText("$1,250.00")).toBeInTheDocument();
+    expect(metric("Customer deposits held").getByText("On 3 open quotes. Not revenue until paid in full")).toBeInTheDocument();
+  });
+
+  it("no deposits", async () => {
+    await renderDashboard();
+    expect(metric("Customer deposits held").getByText("$0.00")).toBeInTheDocument();
+    expect(metric("Customer deposits held").getByText("No deposits on open quotes")).toBeInTheDocument();
+  });
+});
+
 describe("dashboard figures", () => {
   it("shows month-to-date figures from the API by default", async () => {
     await renderDashboard();

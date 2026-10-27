@@ -22,6 +22,7 @@ import {
 } from "./api";
 import { CustomerPicker } from "./CustomerPicker";
 import { formatDate } from "./format";
+import { depositLabel } from "./invoiceActions";
 import "./invoices.css";
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -67,9 +68,36 @@ function useFilterParams() {
   return { filters, set, clear, active };
 }
 
-export function StatusTags({ invoice }: { invoice: Pick<Invoice, "order_status" | "refunded_at" | "cancelled_at"> & Partial<Pick<Invoice, "source">> }) {
+type TaggedInvoice = Pick<Invoice, "order_status" | "refunded_at" | "cancelled_at"> &
+  Partial<Pick<Invoice, "source" | "amount_paid_cents" | "balance_cents" | "production_started_at" | "stock_short">>;
+
+export function StatusTags({ invoice }: { invoice: TaggedInvoice }) {
+  const currency = useCurrency();
+  // A quote holding money is a deposit (Slice B1): what it is and what is still due.
+  const deposit =
+    currency.status === "success"
+      ? depositLabel(
+          {
+            order_status: invoice.order_status,
+            cancelled_at: invoice.cancelled_at,
+            amount_paid_cents: invoice.amount_paid_cents ?? 0,
+            balance_cents: invoice.balance_cents ?? 0,
+            production_started_at: invoice.production_started_at ?? null,
+            stock_short: invoice.stock_short ?? false,
+          },
+          (cents) => formatMoney(cents, currency.currency),
+        )
+      : null;
   // An unpaid website order isn't a quote to the owner: it's an order waiting for its payment.
   const awaiting = invoice.source === "storefront" && invoice.order_status === "quote" && !invoice.cancelled_at;
+  if (deposit) {
+    return (
+      <>
+        <span className="tag tag--deposit">{deposit}</span>
+        {invoice.cancelled_at && <span className="tag tag--warn">Cancelled</span>}
+      </>
+    );
+  }
   return (
     <>
       <span className={awaiting ? "tag tag--warn" : invoice.order_status === "quote" ? "tag" : "tag tag--ok"}>

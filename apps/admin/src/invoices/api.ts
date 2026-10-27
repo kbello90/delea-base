@@ -10,6 +10,8 @@ export type InvoicePreview = Schemas["InvoicePreviewOut"];
 export type LineItemIn = Schemas["LineItemIn"];
 export type OrderStatus = Schemas["OrderStatus"];
 export type PaymentMethod = Schemas["PaymentMethod"];
+export type Payment = Schemas["PaymentOut"];
+export type PaymentCreate = Schemas["PaymentCreate"];
 
 export const PAGE_SIZE = 25;
 
@@ -253,5 +255,50 @@ export function useDeleteInvoice() {
       void client.invalidateQueries({ queryKey: keys.all, refetchType: "active" });
       void client.invalidateQueries({ queryKey: ["customers"], refetchType: "active" });
     },
+  });
+}
+
+/** A deposit or the rest of the balance; at zero the invoice becomes paid (Slice B1). */
+export function useRecordPayment(id: string) {
+  const api = useApi();
+  const done = useInvalidate();
+  return useMutation({
+    mutationFn: (body: PaymentCreate) =>
+      unwrap(api.POST("/api/v1/invoices/{invoice_id}/payments", { params: { path: { invoice_id: id } }, body })),
+    onSuccess: (invoice) => done(invoice),
+  });
+}
+
+export function useVoidPayment(id: string) {
+  const api = useApi();
+  const done = useInvalidate();
+  return useMutation({
+    mutationFn: (paymentId: string) =>
+      unwrap(
+        api.POST("/api/v1/invoices/{invoice_id}/payments/{payment_id}/void", {
+          params: { path: { invoice_id: id, payment_id: paymentId } },
+        }),
+      ),
+    onSuccess: (invoice) => done(invoice),
+  });
+}
+
+export function useStartProduction(id: string) {
+  const api = useApi();
+  const done = useInvalidate();
+  return useMutation({
+    mutationFn: () =>
+      unwrap(api.POST("/api/v1/invoices/{invoice_id}/start-production", { params: { path: { invoice_id: id } } })),
+    onSuccess: (invoice) => done(invoice),
+  });
+}
+
+/** Completes a quote paid in full that was short of stock. */
+export function useSettle(id: string) {
+  const api = useApi();
+  const done = useInvalidate();
+  return useMutation({
+    mutationFn: () => unwrap(api.POST("/api/v1/invoices/{invoice_id}/settle", { params: { path: { invoice_id: id } } })),
+    onSuccess: (invoice) => done(invoice),
   });
 }
