@@ -73,3 +73,27 @@
 .payments-card__facts dd {
   overflow-wrap: anywhere;
 }
+
+/* Slice D1: emails */
+.emails-card h3 {
+  font-size: 0.95rem;
+  margin: 1.25rem 0 0.5rem;
+}
+.emails-card__facts dd {
+  overflow-wrap: anywhere;
+}
+.emails-card__form {
+  margin-top: 0.5rem;
+  max-width: 36rem;
+}
+.emails-card__check {
+  align-items: flex-start;
+  margin: 0.5rem 0 0.75rem;
+}
+.emails-card__test {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-top: 1.25rem;
+}

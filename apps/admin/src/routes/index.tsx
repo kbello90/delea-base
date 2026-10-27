@@ -1,6 +1,7 @@
 import type { RouteObject } from "react-router-dom";
 import { RequireAuth } from "../auth/RequireAuth";
 import { ForgotPasswordPage } from "../auth/ForgotPasswordPage";
+import { ConfirmReplyToPage } from "../auth/ConfirmReplyToPage";
 import { AcceptInvitePage, ResetPasswordPage } from "../auth/SetPasswordPage";
 import { SignInPage } from "../auth/SignInPage";
 import { CustomerPage, NewCustomerPage } from "../customers/CustomerFormPage";
@@ -39,6 +40,8 @@ export const appRoutes: RouteObject[] = [
   { path: "/accept-invite", element: <AcceptInvitePage /> },
   { path: "/reset-password", element: <ResetPasswordPage /> },
   { path: "/forgot-password", element: <ForgotPasswordPage /> },
+  // Public: the link in a reply-to confirmation email (Slice D1).
+  { path: "/confirm-reply-to", element: <ConfirmReplyToPage /> },
   {
     element: <RequireAuth />,
     children: [

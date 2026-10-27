@@ -49,6 +49,8 @@ import {
   type Errors,
   type StorefrontFormValues,
 } from "./settingsForm";
+import { EmailsCard } from "./EmailsCard";
+import { useEmailSettings } from "./emailApi";
 import "./settings.css";
 
 const message = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong. Please try again.");
@@ -542,6 +544,7 @@ export function SettingsPage() {
   const brand = useBrandSettings();
   const storefront = useStorefrontSettings();
   const payments = usePaymentSettings();
+  const emails = useEmailSettings();
 
   return (
     <>
@@ -558,6 +561,9 @@ export function SettingsPage() {
       {payments.isPending && <Loading label="Loading card payments…" />}
       {payments.isError && <ErrorState title="Card payments couldn't be loaded" error={payments.error} onRetry={() => void payments.refetch()} />}
       {payments.data && <PaymentsCard settings={payments.data} />}
+      {emails.isPending && <Loading label="Loading emails…" />}
+      {emails.isError && <ErrorState title="Email settings couldn't be loaded" error={emails.error} onRetry={() => void emails.refetch()} />}
+      {emails.data && <EmailsCard settings={emails.data} />}
       <section className="settings-card settings-note" aria-labelledby="team-heading">
         <h2 id="team-heading">Team</h2>
         <p className="muted">Invite staff and your accountant (CPA), and change or remove their access.</p>

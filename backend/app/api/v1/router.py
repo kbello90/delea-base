@@ -7,6 +7,7 @@ from app.api.v1 import (
     automation,
     customers,
     dashboard,
+    emails,
     expense_receipts,
     expenses,
     invoices,
@@ -39,5 +40,7 @@ for module in (
     public,
     stripe_connect,
     stripe_webhooks,
+    emails,
 ):
     api_router.include_router(module.router)
+api_router.include_router(emails.public_router)

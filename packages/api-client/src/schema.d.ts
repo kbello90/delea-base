@@ -1135,6 +1135,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/emails": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Email Settings */
+        get: operations["email_settings_api_v1_settings_emails_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Email Settings
+         * @description The alerts on or off and the sender name (null: the business name). Only what is sent
+         *     changes; the column names below are fixed, never taken from the request.
+         */
+        patch: operations["update_email_settings_api_v1_settings_emails_patch"];
+        trace?: never;
+    };
+    "/api/v1/settings/emails/reply-to": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Reply To
+         * @description Emails a one-time confirmation link (24 hours) to the address. Until it is confirmed,
+         *     customers' emails carry no reply-to. A demo shop can only confirm its own owner's email.
+         */
+        post: operations["request_reply_to_api_v1_settings_emails_reply_to_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/emails/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Test
+         * @description A test to the signed-in owner's own sign-in email, and nowhere else (10 a day).
+         */
+        post: operations["send_test_api_v1_settings_emails_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/email/confirm-reply-to": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Reply To */
+        post: operations["confirm_reply_to_api_v1_email_confirm_reply_to_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/email/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Email Webhook
+         * @description Bounces and complaints suppress the address for every shop; each event once.
+         */
+        post: operations["email_webhook_api_v1_email_webhook_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1498,6 +1598,56 @@ export interface components {
             /** Low Stock Materials */
             low_stock_materials: number;
             invoice_counts: components["schemas"]["InvoiceCounts"];
+        };
+        /** EmailLogEntry */
+        EmailLogEntry: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Kind */
+            kind: string;
+            /** Template */
+            template: string;
+            /** Recipient */
+            recipient: string;
+            /** Subject */
+            subject: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "sending" | "sent" | "failed" | "suppressed";
+            /** Last Error */
+            last_error: string | null;
+        };
+        /** EmailSettingsOut */
+        EmailSettingsOut: {
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "resend" | "local" | "off";
+            /** From Address */
+            from_address: string;
+            /** Sender Name */
+            sender_name: string | null;
+            /** Reply To */
+            reply_to: string | null;
+            /** Reply To Pending */
+            reply_to_pending: string | null;
+            alerts: components["schemas"]["OwnerAlerts"];
+            /** Delayed */
+            delayed: boolean;
+            /** Recent */
+            recent: components["schemas"]["EmailLogEntry"][];
+        };
+        /** EmailSettingsUpdate */
+        EmailSettingsUpdate: {
+            alerts?: components["schemas"]["OwnerAlerts"] | null;
+            /** Sender Name */
+            sender_name?: string | null;
         };
         /**
          * ExpenseCategory
@@ -2137,6 +2287,15 @@ export interface components {
          * @enum {string}
          */
         OrderStatus: "quote" | "paid" | "in_production" | "shipped" | "delivered";
+        /** OwnerAlerts */
+        OwnerAlerts: {
+            /** New Order */
+            new_order: boolean;
+            /** Low Stock */
+            low_stock: boolean;
+            /** Balance Due */
+            balance_due: boolean;
+        };
         /** PageLink */
         PageLink: {
             slug: components["schemas"]["PageSlug"];
@@ -2664,6 +2823,21 @@ export interface components {
             upload_id: string;
             content_type: components["schemas"]["ImageType"];
         };
+        /** ReplyToConfirm */
+        ReplyToConfirm: {
+            /** Token */
+            token: string;
+        };
+        /** ReplyToConfirmed */
+        ReplyToConfirmed: {
+            /** Shop */
+            shop: string;
+        };
+        /** ReplyToRequest */
+        ReplyToRequest: {
+            /** Email */
+            email: string;
+        };
         /**
          * ShipToIn
          * @description A US address (v1 ships within the US only).
@@ -2777,6 +2951,16 @@ export interface components {
             pay_on_pickup_enabled?: boolean | null;
             /** Manual Payment Instructions */
             manual_payment_instructions?: string | null;
+        };
+        /** TestEmailOut */
+        TestEmailOut: {
+            /** Sent To */
+            sent_to: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "sending" | "sent" | "failed" | "suppressed";
         };
         /** TrackedLineOut */
         TrackedLineOut: {
@@ -5329,6 +5513,167 @@ export interface operations {
         };
     };
     stripe_webhook_api_v1_stripe_webhook_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+        };
+    };
+    email_settings_api_v1_settings_emails_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailSettingsOut"];
+                };
+            };
+        };
+    };
+    update_email_settings_api_v1_settings_emails_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailSettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_reply_to_api_v1_settings_emails_reply_to_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplyToRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailSettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_test_api_v1_settings_emails_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestEmailOut"];
+                };
+            };
+        };
+    };
+    confirm_reply_to_api_v1_email_confirm_reply_to_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplyToConfirm"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplyToConfirmed"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    email_webhook_api_v1_email_webhook_post: {
         parameters: {
             query?: never;
             header?: never;

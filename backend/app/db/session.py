@@ -167,6 +167,17 @@ async def payments_session(pool: AsyncConnectionPool) -> AsyncIterator[AsyncConn
 
 
 @asynccontextmanager
+async def email_session(pool: AsyncConnectionPool) -> AsyncIterator[AsyncConnection]:
+    """One transaction as `email_worker` (TRD §6.16): no table grants, the outbox functions
+    only (email_enqueue, email_claim_events, email_claim_messages, email_mark_sent, ...). Used
+    by the worker, the owner's test email and reply-to confirmation, and the provider webhook.
+    """
+    async with pool.connection() as conn, conn.transaction():
+        await conn.execute("set local role email_worker")
+        yield conn
+
+
+@asynccontextmanager
 async def service_session(pool: AsyncConnectionPool) -> AsyncIterator[AsyncConnection]:
     """One transaction with NO role switch: the connection's own role, RLS not applied.
 

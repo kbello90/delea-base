@@ -111,6 +111,18 @@ export const PAYMENTS_RESPONSE: Schemas["PaymentSettingsOut"] = {
   card_payments: false,
 };
 
+/** Email (Slice D1): the local mail catcher, nothing sent yet. */
+export const EMAILS_RESPONSE: Schemas["EmailSettingsOut"] = {
+  provider: "local",
+  from_address: "DELEA <notifications@mail.deleajewelry.com>",
+  sender_name: null,
+  reply_to: null,
+  reply_to_pending: null,
+  alerts: { new_order: true, low_stock: true, balance_due: true },
+  delayed: false,
+  recent: [],
+};
+
 export const STOREFRONT_RESPONSE: Schemas["StorefrontSettingsOut"] = {
   storefront_enabled: false,
   contact_email: null,
@@ -191,6 +203,7 @@ const DEFAULT_RESPONSES: Record<string, unknown> = {
   "/api/v1/settings/company": COMPANY_RESPONSE,
   "/api/v1/settings/storefront": STOREFRONT_RESPONSE,
   "/api/v1/settings/payments": PAYMENTS_RESPONSE,
+  "/api/v1/settings/emails": EMAILS_RESPONSE,
   "/api/v1/settings/currency": { currency: "USD" },
   "/api/v1/dashboard/summary": SUMMARY_RESPONSE,
   "/api/v1/dashboard/monthly": MONTHLY_RESPONSE,

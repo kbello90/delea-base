@@ -1,6 +1,6 @@
 import type { Schemas } from "@delea/api-client";
 import { vi } from "vitest";
-import { COMPANY_RESPONSE, DEFAULT_BRAND_RESPONSE, PAYMENTS_RESPONSE, STOREFRONT_RESPONSE, jsonResponse } from "../test/harness";
+import { COMPANY_RESPONSE, DEFAULT_BRAND_RESPONSE, EMAILS_RESPONSE, PAYMENTS_RESPONSE, STOREFRONT_RESPONSE, jsonResponse } from "../test/harness";
 
 export { FakeXhr } from "../products/testServer";
 
@@ -25,7 +25,15 @@ export function settingsServer({
   brand = DEFAULT_BRAND_RESPONSE,
   storefront = STOREFRONT_RESPONSE,
   payments = PAYMENTS_RESPONSE,
-}: { company?: Company; brand?: Brand; storefront?: Storefront; payments?: Schemas["PaymentSettingsOut"] } = {}) {
+  emails = EMAILS_RESPONSE,
+}: {
+  company?: Company;
+  brand?: Brand;
+  storefront?: Storefront;
+  payments?: Schemas["PaymentSettingsOut"];
+  emails?: Schemas["EmailSettingsOut"];
+} = {}) {
+  let emailsRow = structuredClone(emails);
   let companyRow = structuredClone(company);
   let brandRow = structuredClone(brand);
   let storefrontRow = structuredClone(storefront);
@@ -57,6 +65,16 @@ export function settingsServer({
     if (!owner) return jsonResponse(403, { detail: "Insufficient role" });
     if (path === "/api/v1/settings/company" && method === "GET") return jsonResponse(200, companyRow);
     if (path === "/api/v1/settings/payments" && method === "GET") return jsonResponse(200, payments);
+    if (path === "/api/v1/settings/emails" && method === "GET") return jsonResponse(200, emailsRow);
+    if (path === "/api/v1/settings/emails" && method === "PATCH") {
+      emailsRow = { ...emailsRow, ...(body as object) };
+      return jsonResponse(200, emailsRow);
+    }
+    if (path === "/api/v1/settings/emails/reply-to" && method === "POST") {
+      emailsRow = { ...emailsRow, reply_to_pending: (body as { email: string }).email };
+      return jsonResponse(200, emailsRow);
+    }
+    if (path === "/api/v1/settings/emails/test" && method === "POST") return jsonResponse(200, { sent_to: "owner@shop.com", status: "queued" });
     if (path === "/api/v1/settings/payments/stripe/onboarding-link" && method === "POST") {
       if (!payments.stripe_configured) return jsonResponse(503, { detail: "Card payments aren't set up on this server yet." });
       return jsonResponse(200, { url: "https://connect.stripe.com/setup/s/acct_test_onboarding" });

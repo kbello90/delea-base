@@ -54,3 +54,7 @@ public_quotes = SlidingWindowLimiter(limit=60, window_seconds=60)
 public_tracking = SlidingWindowLimiter(limit=30, window_seconds=60)
 # Pay now on the tracking page: each one may start a Stripe Checkout Session.
 public_pay = SlidingWindowLimiter(limit=10, window_seconds=3600)
+# Email (Slice D): asking for a reply-to confirmation, per shop; opening confirmation links,
+# per address.
+reply_to_requests = SlidingWindowLimiter(limit=5, window_seconds=3600)
+reply_to_confirmations = SlidingWindowLimiter(limit=30, window_seconds=60)

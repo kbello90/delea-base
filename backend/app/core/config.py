@@ -36,6 +36,15 @@ class Settings(BaseSettings):
     # Where Stripe-hosted onboarding sends the owner back: the admin app.
     admin_app_url: str = "http://localhost:5173"
 
+    # Email (Slice D, TRD §6.16). EMAIL_PROVIDER: "auto" (default) is Resend when RESEND_API_KEY
+    # is set, the local mail catcher (Mailpit, from the Supabase stack) in local/test, and off
+    # everywhere else. "mailpit" is refused outside local/test. Never commit a key.
+    email_provider: str = "auto"
+    email_from_domain: str = "mail.deleajewelry.com"
+    mailpit_url: str = "http://127.0.0.1:55324"
+    resend_api_key: str = ""
+    resend_webhook_secret: str = ""
+
     llm_api_key: str = ""
 
     # Cloudflare Turnstile for the storefront checkout (app/core/turnstile.py). Empty outside

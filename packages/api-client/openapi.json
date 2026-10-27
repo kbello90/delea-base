@@ -4290,6 +4290,218 @@
           }
         }
       }
+    },
+    "/api/v1/settings/emails": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Email Settings",
+        "operationId": "email_settings_api_v1_settings_emails_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailSettingsOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Update Email Settings",
+        "description": "The alerts on or off and the sender name (null: the business name). Only what is sent\nchanges; the column names below are fixed, never taken from the request.",
+        "operationId": "update_email_settings_api_v1_settings_emails_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailSettingsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/emails/reply-to": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Request Reply To",
+        "description": "Emails a one-time confirmation link (24 hours) to the address. Until it is confirmed,\ncustomers' emails carry no reply-to. A demo shop can only confirm its own owner's email.",
+        "operationId": "request_reply_to_api_v1_settings_emails_reply_to_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplyToRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailSettingsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/emails/test": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Send Test",
+        "description": "A test to the signed-in owner's own sign-in email, and nowhere else (10 a day).",
+        "operationId": "send_test_api_v1_settings_emails_test_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestEmailOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/email/confirm-reply-to": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Confirm Reply To",
+        "operationId": "confirm_reply_to_api_v1_email_confirm_reply_to_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplyToConfirm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplyToConfirmed"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/email/webhook": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Email Webhook",
+        "description": "Bounces and complaints suppress the address for every shop; each event once.",
+        "operationId": "email_webhook_api_v1_email_webhook_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "type": "object",
+                  "title": "Response Email Webhook Api V1 Email Webhook Post"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5597,6 +5809,171 @@
           "invoice_counts"
         ],
         "title": "DashboardSummary"
+      },
+      "EmailLogEntry": {
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "template": {
+            "type": "string",
+            "title": "Template"
+          },
+          "recipient": {
+            "type": "string",
+            "title": "Recipient"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "sending",
+              "sent",
+              "failed",
+              "suppressed"
+            ],
+            "title": "Status"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "created_at",
+          "kind",
+          "template",
+          "recipient",
+          "subject",
+          "status",
+          "last_error"
+        ],
+        "title": "EmailLogEntry"
+      },
+      "EmailSettingsOut": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "resend",
+              "local",
+              "off"
+            ],
+            "title": "Provider"
+          },
+          "from_address": {
+            "type": "string",
+            "title": "From Address"
+          },
+          "sender_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Name"
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To"
+          },
+          "reply_to_pending": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To Pending"
+          },
+          "alerts": {
+            "$ref": "#/components/schemas/OwnerAlerts"
+          },
+          "delayed": {
+            "type": "boolean",
+            "title": "Delayed"
+          },
+          "recent": {
+            "items": {
+              "$ref": "#/components/schemas/EmailLogEntry"
+            },
+            "type": "array",
+            "title": "Recent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "from_address",
+          "sender_name",
+          "reply_to",
+          "reply_to_pending",
+          "alerts",
+          "delayed",
+          "recent"
+        ],
+        "title": "EmailSettingsOut"
+      },
+      "EmailSettingsUpdate": {
+        "properties": {
+          "alerts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OwnerAlerts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sender_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60,
+                "minLength": 1,
+                "pattern": "^[^<>\"\\r\\n]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "EmailSettingsUpdate"
       },
       "ExpenseCategory": {
         "type": "string",
@@ -7488,6 +7865,29 @@
         "title": "OrderStatus",
         "description": "Matches the `order_status` enum; declaration order is the forward order."
       },
+      "OwnerAlerts": {
+        "properties": {
+          "new_order": {
+            "type": "boolean",
+            "title": "New Order"
+          },
+          "low_stock": {
+            "type": "boolean",
+            "title": "Low Stock"
+          },
+          "balance_due": {
+            "type": "boolean",
+            "title": "Balance Due"
+          }
+        },
+        "type": "object",
+        "required": [
+          "new_order",
+          "low_stock",
+          "balance_due"
+        ],
+        "title": "OwnerAlerts"
+      },
       "PageLink": {
         "properties": {
           "slug": {
@@ -9123,6 +9523,49 @@
         ],
         "title": "RegisterRequest"
       },
+      "ReplyToConfirm": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{20,100}$",
+            "title": "Token"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "ReplyToConfirm"
+      },
+      "ReplyToConfirmed": {
+        "properties": {
+          "shop": {
+            "type": "string",
+            "title": "Shop"
+          }
+        },
+        "type": "object",
+        "required": [
+          "shop"
+        ],
+        "title": "ReplyToConfirmed"
+      },
+      "ReplyToRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "title": "Email"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "ReplyToRequest"
+      },
       "ShipToIn": {
         "properties": {
           "line1": {
@@ -9559,6 +10002,31 @@
         "type": "object",
         "title": "StorefrontSettingsUpdate",
         "description": "PATCH /settings/storefront. Everything here is shown on the public storefront."
+      },
+      "TestEmailOut": {
+        "properties": {
+          "sent_to": {
+            "type": "string",
+            "title": "Sent To"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "sending",
+              "sent",
+              "failed",
+              "suppressed"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sent_to",
+          "status"
+        ],
+        "title": "TestEmailOut"
       },
       "TrackedLineOut": {
         "properties": {
