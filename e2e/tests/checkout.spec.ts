@@ -120,3 +120,80 @@ test("a shopper orders a personalized ring; the owner sees it in the admin", asy
   await expect(admin.getByLabel(/awaiting payment/)).toHaveCount(0);
   await desk.close();
 });
+
+/** Places an order of the necklace on a phone, the way a shopper does; returns its tracking URL and reference. */
+async function placeNecklaceOrder(page: Page, origin: string) {
+  await page.goto(origin);
+  await page.getByRole("link", { name: /Necklace/ }).first().click();
+  await page.getByRole("button", { name: "Add to bag" }).click();
+  await page.getByRole("link", { name: /^Bag, 1 item/ }).click();
+  await page.getByRole("button", { name: "Check out" }).click();
+  const opened = Date.now();
+  await page.getByLabel("First name").fill("Lena");
+  await page.getByLabel("Last name").fill("Ortiz");
+  await page.getByLabel("Email").fill("lena@example.com");
+  await page.getByLabel("Street address").fill("9 Elm St");
+  await page.getByLabel("City").fill("Bangor");
+  await page.getByLabel("State").selectOption("ME");
+  await page.getByLabel("ZIP code").fill("04401");
+  await turnstileToken(page);
+  await page.waitForTimeout(Math.max(0, 2_500 - (Date.now() - opened)));
+  await page.getByRole("button", { name: /^Place order/ }).click();
+  await expect(page.getByRole("heading", { name: "Thank you, Lena" })).toBeVisible();
+  const ref = (await page.locator(".order__ref").first().textContent())!.trim();
+  return { url: page.url(), ref };
+}
+
+test("a deposit: recorded in the admin, production started, the shopper sees what is due", async ({ browser }) => {
+  const s = shop();
+  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  const order = await placeNecklaceOrder(await phone.newPage(), s.origin);
+
+  // Tall enough for the whole invoice page: a full-page capture would paint the fixed
+  // sidebar in the middle of the page.
+  const desk = await browser.newContext({ viewport: { width: 1440, height: 1700 } });
+  const admin = await desk.newPage();
+  await admin.goto(`http://localhost:${PORTS.admin}/sign-in`);
+  await admin.getByLabel("Email").fill(s.owner_email);
+  await admin.getByLabel("Password").fill(s.owner_password);
+  await admin.getByRole("button", { name: "Sign in" }).click();
+  await admin.getByRole("link", { name: /^Invoices/ }).click();
+  await admin.getByRole("row", { name: new RegExp(order.ref) }).getByRole("link").first().click();
+  const payments = admin.getByRole("region", { name: "Payments" });
+  await expect(payments.getByText("No payments recorded yet.")).toBeVisible();
+
+  // The Record payment form, with a $50 bank-transfer deposit typed in.
+  await payments.getByRole("button", { name: "Record payment" }).click();
+  const form = admin.getByRole("form", { name: "Record a payment" });
+  await form.getByLabel("Amount received").fill("50");
+  await form.getByRole("radio", { name: "Bank transfer" }).check();
+  await form.getByLabel("Note (optional)").fill("Deposit by transfer");
+  await admin.screenshot({ path: shots("7-admin-record-payment") });
+  await form.getByRole("button", { name: "Record payment" }).click();
+  await expect(admin.getByText(/^\$50\.00 recorded\. \$[\d.,]+ still due\.$/)).toBeVisible();
+  await expect(admin.locator(".tag--deposit").first()).toHaveText(/^Deposit paid · \$[\d.,]+ due$/);
+  await admin.screenshot({ path: shots("8-admin-invoice-deposit") });
+
+  // Production starts on the deposit.
+  await payments.getByRole("button", { name: "Start production" }).click();
+  await admin.getByRole("dialog").getByRole("button", { name: "Start production" }).click();
+  await expect(admin.locator(".tag--deposit").first()).toHaveText(/^Deposit paid · In production · \$[\d.,]+ due$/);
+  await admin.screenshot({ path: shots("9-admin-deposit-in-production") });
+
+  // The dashboard holds it apart from revenue.
+  await admin.getByRole("link", { name: /^Dashboard/ }).click();
+  const held = admin.getByRole("group", { name: "Customer deposits held" });
+  await expect(held.getByText("$50.00")).toBeVisible();
+  await expect(held.getByText("On 1 open quote. Not revenue until paid in full")).toBeVisible();
+  await admin.screenshot({ path: shots("10-admin-dashboard-deposits") });
+
+  // The shopper's tracking page.
+  const tracking = await phone.newPage();
+  await tracking.goto(order.url);
+  await expect(tracking.getByRole("status").filter({ hasText: "In production" })).toContainText(/Your piece is being made\. Balance due \$[\d.,]+\./);
+  await expect(tracking.getByRole("region", { name: "Balance due" })).toContainText("Paid so far $50.00");
+  await capture(tracking, "11-tracking-deposit-phone");
+  await phone.close();
+  await desk.close();
+});
+

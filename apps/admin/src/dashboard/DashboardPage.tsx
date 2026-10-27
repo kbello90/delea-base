@@ -254,7 +254,7 @@ function Details({ summary }: { summary: Summary }) {
               </div>
             ))}
           </dl>
-          <p className="card__note">All time. Refunded and cancelled invoices are counted separately and never count as revenue.</p>
+          <p className="card__note">All time. Refunded and cancelled invoices are counted separately. Cancelled ones never count as revenue; a refund comes off revenue in the month it is given.</p>
         </div>
       </section>
     </div>

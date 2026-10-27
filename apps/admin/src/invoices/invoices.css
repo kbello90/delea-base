@@ -284,3 +284,10 @@
 .record-payment .amount-input {
   max-width: 12rem;
 }
+.payments-actions {
+  margin-top: 1rem;
+}
+.balance-summary dd.balance-summary__date {
+  font-size: 0.95rem;
+  font-weight: 500;
+}
