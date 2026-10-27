@@ -392,6 +392,12 @@ def test_signature_size_and_secret(client: TestClient, shop, db, fake, monkeypat
     assert client.post(WEBHOOK, content=body + b" ", headers=headers).status_code == 400
     big = b"x" * 1_000_001
     assert client.post(WEBHOOK, content=big, headers=headers).status_code == 413
+
+    def chunks():  # no Content-Length: the body itself is measured
+        for _ in range(11):
+            yield b"x" * 100_000
+
+    assert client.post(WEBHOOK, content=chunks(), headers=headers).status_code == 413
     monkeypatch.setattr(get_settings(), "stripe_webhook_secret", "")
     assert client.post(WEBHOOK, content=body, headers=headers).status_code == 503
     assert db.execute(

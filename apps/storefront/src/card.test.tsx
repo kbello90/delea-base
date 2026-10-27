@@ -138,6 +138,22 @@ describe("Pay now on the tracking page", () => {
     expect(screen.queryByRole("region", { name: "Pay by card" })).not.toBeInTheDocument();
   });
 
+  it("a card order under Stripe's minimum gets no Pay button", async () => {
+    const server = checkoutServer({ store: CARD_STORE });
+    server.setPlaced({ ...cardOrder, total_cents: 30, balance_cents: 30 });
+    renderShop(`/orders/${TOKEN}`, server.fetch);
+    await screen.findByRole("region", { name: "Pay by card" });
+    expect(screen.queryByRole("button", { name: /card/i })).not.toBeInTheDocument();
+  });
+
+  it("back from Stripe on a bank-transfer order: no second Pay button while it is confirmed", async () => {
+    const server = checkoutServer({ store: CARD_STORE });
+    server.setPlaced({ ...cardOrder, payment_choice: "bank_transfer" });
+    renderShop(`/orders/${TOKEN}?paid=1`, server.fetch);
+    expect(await screen.findByText(/Your card payment is being confirmed/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /by card/ })).not.toBeInTheDocument();
+  });
+
   it("no card for this shop: a card order says to contact the shop", async () => {
     const server = checkoutServer({ store: OPEN_STORE });
     server.setPlaced(cardOrder);
