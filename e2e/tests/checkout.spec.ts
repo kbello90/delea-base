@@ -54,6 +54,7 @@ test("a shopper orders a personalized ring; the owner sees it in the admin", asy
   await page.getByRole("link", { name: "Bag, 1 item" }).click();
   await expect(page.getByText("Ring size:")).toBeVisible();
   await page.getByRole("button", { name: "Check out" }).click();
+  const checkoutOpened = Date.now();
 
   await page.getByLabel("First name").fill("Sarah");
   await page.getByLabel("Last name").fill("Jenkins");
@@ -68,6 +69,8 @@ test("a shopper orders a personalized ring; the owner sees it in the admin", asy
   await expect(summary.getByText("$162.60")).toBeVisible(); // 145 + 6 shipping + 11.60 tax
   await capture(page, "2-checkout-phone");
 
+  // A person takes longer than the API's minimum fill time (3 s); a robot this fast is refused.
+  await page.waitForTimeout(Math.max(0, 3_500 - (Date.now() - checkoutOpened)));
   await page.getByRole("button", { name: /Place order · \$162\.60/ }).click();
   await expect(page.getByRole("heading", { name: "Thank you, Sarah" })).toBeVisible();
   const ref = (await page.locator(".order__ref").first().textContent())!.trim();
