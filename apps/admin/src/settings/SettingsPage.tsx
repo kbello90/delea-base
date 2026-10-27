@@ -443,7 +443,7 @@ function StorefrontCard({ settings }: { settings: StorefrontSettings }) {
       </fieldset>
       <fieldset>
         <legend>Payment</legend>
-        <p className="field-hint">Shoppers order now and pay you directly. You confirm each payment on the order. Card payments come later.</p>
+        <p className="field-hint">Shoppers order now and pay you directly. You confirm each payment on the order. Card payments are set up under Card payments below.</p>
         <label className="check">
           <input type="checkbox" checked={values.bankTransferEnabled} onChange={(e) => set("bankTransferEnabled", e.target.checked)} disabled={busy} />
           Bank transfer

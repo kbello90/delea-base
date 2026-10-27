@@ -49,6 +49,8 @@ describe("card at checkout", () => {
     await fillContactAndAddress(user);
     await user.click(screen.getByRole("radio", { name: /^Card/ }));
     expect(screen.getByText(/Your card details never reach us/)).toBeInTheDocument();
+    expect(screen.getByText("Next, you pay on Stripe's secure page. Your order is placed first.")).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing is charged online/)).not.toBeInTheDocument();
     const go = await screen.findByRole("button", { name: /^Continue to payment · \$/ });
     await user.click(go);
     await waitFor(() => expect(leaving).toHaveBeenCalledWith(CHECKOUT_URL));

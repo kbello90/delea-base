@@ -17,13 +17,20 @@ import { fileURLToPath } from "node:url";
 
 const repo = fileURLToPath(new URL("..", import.meta.url));
 // Absolute and quoted: the repository path may contain spaces.
-const python = `"${process.platform === "win32" ? join(repo, "backend", ".venv", "Scripts", "python.exe") : join(repo, "backend", ".venv", "bin", "python")}"`;
+export const PYTHON = process.platform === "win32" ? join(repo, "backend", ".venv", "Scripts", "python.exe") : join(repo, "backend", ".venv", "bin", "python");
+export const BACKEND = join(repo, "backend");
+const python = `"${PYTHON}"`;
 
 // Cloudflare's documented Turnstile test keys: always pass (https://developers.cloudflare.com/turnstile/troubleshooting/testing/).
 export const TURNSTILE_TEST_SITE_KEY = "1x00000000000000000000AA";
 const TURNSTILE_TEST_SECRET = "1x0000000000000000000000000000000AA";
 
 export const PORTS = { api: 8001, storefront: 5175, admin: 5176 };
+
+// Stripe in this run is the API's in-memory fake (STRIPE_GATEWAY=fake, refused outside
+// ENVIRONMENT=local), and the browser never reaches Stripe (the test intercepts its pages).
+// The webhook secret is made up for this run; it signs the "card paid" event the test sends.
+export const E2E_STRIPE_WEBHOOK_SECRET = "whsec_e2e_local_only_not_a_real_secret";
 
 export default defineConfig({
   testDir: "./tests",
@@ -51,6 +58,10 @@ export default defineConfig({
         ENVIRONMENT: "local",
         TURNSTILE_SECRET_KEY: TURNSTILE_TEST_SECRET,
         CORS_ORIGINS: `http://localhost:${PORTS.admin}`,
+        STRIPE_GATEWAY: "fake",
+        STRIPE_SECRET_KEY: "",
+        STRIPE_WEBHOOK_SECRET: E2E_STRIPE_WEBHOOK_SECRET,
+        ADMIN_APP_URL: `http://localhost:${PORTS.admin}`,
       },
     },
     {

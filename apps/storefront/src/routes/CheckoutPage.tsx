@@ -331,7 +331,11 @@ function CheckoutForm({ store, loadedAt }: { store: Store; loadedAt: number }) {
                   ? `${newTotal ? "Confirm new total and place order" : payment === "card" ? "Continue to payment" : "Place order"} · ${money(shown.total_cents)}`
                   : "Place order"}
             </button>
-            <p className="pay-bar__note">You pay later, by the method you chose. Nothing is charged online.</p>
+            <p className="pay-bar__note">
+              {payment === "card"
+                ? "Next, you pay on Stripe's secure page. Your order is placed first."
+                : "You pay later, by the method you chose. Nothing is charged online."}
+            </p>
           </div>
         </form>
       </div>

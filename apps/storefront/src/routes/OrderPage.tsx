@@ -52,7 +52,7 @@ function PayNow({ token, label }: { token: string; label: string }) {
     <div className="order__paynow">
       <button
         type="button"
-        className="button"
+        className="button button--primary"
         disabled={pay.isPending}
         onClick={() =>
           pay.mutate(undefined, {

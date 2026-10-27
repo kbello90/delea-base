@@ -2,22 +2,35 @@
 
     python backend/scripts/e2e_shop.py create --port 5175   # prints the shop as JSON
     python backend/scripts/e2e_shop.py delete <tenant id>
+    python backend/scripts/e2e_shop.py card-paid <tenant id> <W- ref> --api http://127.0.0.1:8001
 
 create provisions a demo tenant with an owner (a random password, printed once for this run),
 a storefront domain e2e-<run>.localhost:<port>, checkout switched on (ships for $6, free over
 $150, pickup, bank transfer and pay on pickup, payment instructions) and two products: a
 necklace and a ring whose size is a required question. delete removes the tenant (it is a
 demo tenant, so nothing else can be removed this way) and the owner's account.
-Never the seed tenants A and B.
+Never the seed tenants A and B. The shop is provisioned as a demo tenant and then made an
+ordinary one, so its owner can connect Stripe (the fake gateway; demo shops can't connect);
+delete makes it a demo tenant again first.
+
+card-paid is what Stripe would send when the shopper pays: a checkout.session.completed for
+the order's open card session, signed with the end-to-end run's own made-up webhook secret
+(E2E_STRIPE_WEBHOOK_SECRET), posted to the local API. Nothing reaches Stripe.
 """
 
 import argparse
 import asyncio
+import hashlib
+import hmac
 import json
+import os
 import secrets
 import sys
+import time
 import uuid
 from pathlib import Path
+
+import httpx
 
 BACKEND = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND))
@@ -97,6 +110,10 @@ async def create(port: int) -> dict:
             "(%s, %s, 2, 'Engraving', 'text', false, null, 10)",
             (tenant_id, ids["E2E-RING"], tenant_id, ids["E2E-RING"]),
         )
+        await conn.execute("update public.tenants set is_demo = false where id = %s", (tenant_id,))
+        # A fresh run on this machine: the checkout's per-address and per-email counters
+        # (hashes only) from earlier runs would refuse its orders. Local stack only.
+        await conn.execute("delete from public.public_rate_hits")
     return {
         "tenant_id": str(tenant_id),
         "origin": f"http://{domain}",
@@ -117,9 +134,60 @@ async def delete(tenant_id: str) -> None:
             "select user_id::text from public.tenant_members where tenant_id = %s", (tenant_id,)
         )
         users = [row[0] for row in await cur.fetchall()]
+        await conn.execute("update public.tenants set is_demo = true where id = %s", (tenant_id,))
         await delete_demo_tenant(conn, uuid.UUID(tenant_id))
     for user_id in users:
         await admin.delete_user(user_id)
+
+
+async def card_paid(tenant_id: str, order_ref: str, api: str) -> str:
+    settings = get_settings()
+    _refuse_remote(settings)
+    secret = os.environ["E2E_STRIPE_WEBHOOK_SECRET"]
+    async with await AsyncConnection.connect(settings.database_url, autocommit=True) as conn:
+        cur = await conn.execute(
+            "select p.id, p.external_ref, p.amount_cents, p.currency, a.external_account_id "
+            "from public.payments p join public.invoices i on i.id = p.invoice_id "
+            "join public.payment_accounts a on a.tenant_id = p.tenant_id "
+            "where i.tenant_id = %s and i.order_ref = %s and p.provider = 'stripe' "
+            "and p.status = 'pending' and p.external_ref is not null "
+            "order by p.created_at desc limit 1",
+            (tenant_id, order_ref),
+        )
+        row = await cur.fetchone()
+    if row is None:
+        sys.exit(f"no open card session for {order_ref}")
+    payment_id, session_id, cents, currency, account = row
+    body = json.dumps(
+        {
+            "id": f"evt_e2e_{uuid.uuid4().hex[:20]}",
+            "object": "event",
+            "type": "checkout.session.completed",
+            "account": account,
+            "livemode": False,
+            "data": {
+                "object": {
+                    "id": session_id,
+                    "object": "checkout.session",
+                    "payment_status": "paid",
+                    "amount_total": cents,
+                    "currency": currency.lower(),
+                    "payment_intent": f"pi_e2e_{uuid.uuid4().hex[:20]}",
+                    "metadata": {"tenant_id": tenant_id, "payment_id": str(payment_id)},
+                }
+            },
+        }
+    ).encode()
+    t = int(time.time())
+    sig = hmac.new(secret.encode(), f"{t}.".encode() + body, hashlib.sha256).hexdigest()
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{api}/api/v1/stripe/webhook",
+            content=body,
+            headers={"Stripe-Signature": f"t={t},v1={sig}", "Content-Type": "application/json"},
+        )
+    response.raise_for_status()
+    return session_id
 
 
 def main() -> int:
@@ -129,10 +197,16 @@ def main() -> int:
     make.add_argument("--port", type=int, default=5175)
     remove = sub.add_parser("delete")
     remove.add_argument("tenant_id")
+    paid = sub.add_parser("card-paid")
+    paid.add_argument("tenant_id")
+    paid.add_argument("order_ref")
+    paid.add_argument("--api", default="http://127.0.0.1:8001")
     args = parser.parse_args()
     with asyncio.Runner(loop_factory=asyncio.SelectorEventLoop) as runner:
         if args.command == "create":
             print(json.dumps(runner.run(create(args.port))))
+        elif args.command == "card-paid":
+            print(runner.run(card_paid(args.tenant_id, args.order_ref, args.api)))
         else:
             runner.run(delete(args.tenant_id))
     return 0

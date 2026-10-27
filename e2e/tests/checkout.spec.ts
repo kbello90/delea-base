@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { PORTS } from "../playwright.config";
+import { BACKEND, E2E_STRIPE_WEBHOOK_SECRET, PORTS, PYTHON } from "../playwright.config";
 
 interface Shop {
   tenant_id: string;
@@ -194,6 +195,98 @@ test("a deposit: recorded in the admin, production started, the shopper sees wha
   await expect(tracking.getByRole("region", { name: "Balance due" })).toContainText("Paid so far $50.00");
   await capture(tracking, "11-tracking-deposit-phone");
   await phone.close();
+  await desk.close();
+});
+
+/** Stripe's pages, stood in for: the browser never reaches Stripe in this run. */
+async function standInForStripe(context: import("@playwright/test").BrowserContext) {
+  await context.route(/^https:\/\/(connect|checkout)\.stripe\.com\//, (route) =>
+    route.fulfill({ contentType: "text/html", body: "<!doctype html><title>Stripe (stand-in)</title><h1>Stripe (stand-in)</h1>" }),
+  );
+}
+
+test("card: the owner connects Stripe, a shopper pays by card, the invoice is paid by card", async ({ browser }) => {
+  const s = shop();
+
+  // ---- The owner connects Stripe (the fake gateway counts onboarding as finished) ----
+  const desk = await browser.newContext({ viewport: { width: 1440, height: 1700 } });
+  await standInForStripe(desk);
+  const admin = await desk.newPage();
+  await admin.goto(`http://localhost:${PORTS.admin}/sign-in`);
+  await admin.getByLabel("Email").fill(s.owner_email);
+  await admin.getByLabel("Password").fill(s.owner_password);
+  await admin.getByRole("button", { name: "Sign in" }).click();
+  await admin.getByRole("link", { name: /^Settings/ }).click();
+  const cards = admin.getByRole("region", { name: "Card payments" });
+  await expect(cards.getByText("Not connected")).toBeVisible();
+  await cards.scrollIntoViewIfNeeded();
+  await admin.screenshot({ path: shots("12-admin-connect-stripe") });
+  await cards.getByRole("button", { name: "Connect Stripe" }).click();
+  await expect(admin).toHaveURL(/^https:\/\/connect\.stripe\.com\//);
+  await admin.goto(`http://localhost:${PORTS.admin}/settings?stripe=return`); // Stripe sends the owner back
+  await expect(admin.getByRole("region", { name: "Card payments" }).getByText("Card payments on")).toBeVisible();
+  await admin.getByRole("region", { name: "Card payments" }).scrollIntoViewIfNeeded();
+  await admin.screenshot({ path: shots("13-admin-stripe-connected") });
+
+  // ---- A shopper picks card at checkout ----
+  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  await standInForStripe(phone);
+  const page = await phone.newPage();
+  await page.goto(s.origin);
+  await page.getByRole("link", { name: /Necklace/ }).first().click();
+  await page.getByRole("button", { name: "Add to bag" }).click();
+  await page.getByRole("link", { name: /^Bag, 1 item/ }).click();
+  await page.getByRole("button", { name: "Check out" }).click();
+  const opened = Date.now();
+  await page.getByLabel("First name").fill("Maya");
+  await page.getByLabel("Last name").fill("Reyes");
+  await page.getByLabel("Email").fill("maya@example.com");
+  await page.getByLabel("Street address").fill("4 Pine St");
+  await page.getByLabel("City").fill("Augusta");
+  await page.getByLabel("State").selectOption("ME");
+  await page.getByLabel("ZIP code").fill("04330");
+  await page.getByRole("radio", { name: /^Card/ }).check();
+  await turnstileToken(page);
+  await capture(page, "14-checkout-card-phone");
+  await page.waitForTimeout(Math.max(0, 2_500 - (Date.now() - opened)));
+  // Read the placed order as it passes (the page leaves for Stripe at once).
+  let order: { public_token: string; order_ref: string; checkout_url: string } | undefined;
+  await page.route("**/api/v1/public/orders", async (route) => {
+    if (route.request().method() !== "POST") return route.continue(); // the CORS preflight
+    const response = await route.fetch();
+    order = (await response.json()) as typeof order;
+    await route.fulfill({ response });
+  });
+  await page.getByRole("button", { name: /^Continue to payment · \$/ }).click();
+  await expect.poll(() => order).toBeTruthy();
+  if (!order) throw new Error("no order");
+  expect(order.checkout_url).toMatch(/^https:\/\/checkout\.stripe\.com\//);
+  await expect(page).toHaveURL(/^https:\/\/checkout\.stripe\.com\//); // on to Stripe's page
+
+  // ---- The shopper comes back without paying: the order offers Pay now ----
+  const tracking = `${s.origin}/orders/${order.public_token}`;
+  await page.goto(tracking);
+  const payByCard = page.getByRole("region", { name: "Pay by card" });
+  await expect(payByCard.getByRole("button", { name: /^Pay \$[\d.,]+ by card$/ })).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("Transfer the total");
+  await capture(page, "15-tracking-pay-now-phone");
+
+  // ---- Stripe reports the payment (what `stripe trigger` / a real payment would send) ----
+  execFileSync(PYTHON, ["scripts/e2e_shop.py", "card-paid", s.tenant_id, order.order_ref, "--api", `http://127.0.0.1:${PORTS.api}`], {
+    cwd: BACKEND,
+    env: { ...process.env, E2E_STRIPE_WEBHOOK_SECRET },
+  });
+  await page.goto(`${tracking}?paid=1`);
+  await expect(page.getByRole("status").filter({ hasText: "Paid" })).toBeVisible();
+  await phone.close();
+
+  // ---- The owner sees an invoice paid by card ----
+  await admin.goto(`http://localhost:${PORTS.admin}/invoices`);
+  await admin.getByRole("row", { name: new RegExp(order.order_ref) }).getByRole("link").first().click();
+  await expect(admin.getByText("Payment · Card (online)")).toBeVisible();
+  await expect(admin.getByText(/refunded in your Stripe Dashboard/)).toBeVisible();
+  await expect(admin.getByRole("button", { name: "Refund" })).toHaveCount(0);
+  await admin.screenshot({ path: shots("16-admin-invoice-paid-by-card") });
   await desk.close();
 });
 

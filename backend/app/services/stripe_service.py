@@ -205,6 +205,9 @@ class FakeStripeGateway:
     sessions: dict[str, dict[str, Any]] = field(default_factory=dict)
     calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
     fail: set[str] = field(default_factory=set)
+    # The local end-to-end run: finishing Stripe's form is out of reach, so an onboarding link
+    # counts as finished onboarding.
+    auto_onboard: bool = False
     _by_key: dict[str, Any] = field(default_factory=dict)
 
     def _record(self, name: str, **data: Any) -> None:
@@ -223,6 +226,8 @@ class FakeStripeGateway:
 
     async def account_link(self, account_id: str, *, refresh_url: str, return_url: str) -> str:
         self._record("account_link", account_id=account_id, return_url=return_url)
+        if self.auto_onboard:
+            self.complete_onboarding(account_id)
         return f"https://connect.stripe.com/setup/fake/{account_id}"
 
     async def retrieve_account(self, account_id: str) -> AccountState:
@@ -260,7 +265,7 @@ def get_stripe_gateway(settings: Settings) -> StripeGateway | None:
     global _fake
     if settings.stripe_gateway.strip().lower() == "fake":
         if _fake is None:
-            _fake = FakeStripeGateway()
+            _fake = FakeStripeGateway(auto_onboard=True)
         return _fake
     key = settings.stripe_secret_key.strip()
     if not key:
