@@ -191,6 +191,23 @@ def test_deposit_then_production_then_the_rest(
     assert stock(db, p) == 2
 
 
+def test_mixed_methods_are_flagged_and_exported_as_mixed(
+    client: TestClient, users: dict[str, TestUser], db
+) -> None:
+    owner = users["owner_a"]
+    inv = quote(client, owner, db)
+    pay(client, owner, inv["id"], 800, "cash")
+    done = pay(client, owner, inv["id"], 10000, "card")
+    # Stored as 'other' (no schema change); flagged, and shown as "Mixed".
+    assert (done["payment_method"], done["mixed_methods"]) == ("other", True)
+    single = quote(client, owner, db)
+    assert pay(client, owner, single["id"], 10800, "card")["mixed_methods"] is False
+    csv_text = client.get(
+        f"{INVOICES}/export.csv", params={"q": done["invoice_number"]}, headers=owner.headers
+    ).text
+    assert ",mixed," in csv_text.splitlines()[1]
+
+
 def test_paid_in_full_without_production_is_paid(
     client: TestClient, users: dict[str, TestUser], db
 ) -> None:

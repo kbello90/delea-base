@@ -88,7 +88,9 @@ _COLUMNS = (
     "production_started_at, public.invoice_amount_paid(id) as amount_paid_cents, "
     "total_cents - public.invoice_amount_paid(id) as balance_cents, "
     "(order_status = 'quote' and cancelled_at is null and refunded_at is null and total_cents > 0 "
-    "and public.invoice_amount_paid(id) >= total_cents) as stock_short"
+    "and public.invoice_amount_paid(id) >= total_cents) as stock_short, "
+    "(select count(distinct p.method) > 1 from public.payments p where p.invoice_id = invoices.id "
+    "and p.kind = 'payment' and p.status = 'succeeded') as mixed_methods"
 )
 _LINE_COLUMNS = (
     "id, product_id, description, qty, unit_price_cents, line_total_cents, personalization"
@@ -408,7 +410,8 @@ _WHERE = """
             or order_ref ilike %(pattern)s)
        and (%(source)s::text is null or source = %(source)s)
        and (%(awaiting)s::boolean is not true
-            or (source = 'storefront' and order_status = 'quote' and cancelled_at is null))
+            or (source = 'storefront' and order_status = 'quote' and cancelled_at is null
+                and public.invoice_amount_paid(id) = 0))
 """
 
 
@@ -488,7 +491,10 @@ async def export_invoices_csv(
                 cur = conn.cursor()
                 async for r in cur.stream(
                     "select quote_number, invoice_number, order_status::text, customer_name, "
-                    "created_at, paid_at, payment_method::text, due_date, subtotal_cents, "
+                    "created_at, paid_at, case when (select count(distinct p.method) from "
+                    "public.payments p where p.invoice_id = invoices.id and p.kind = 'payment' "
+                    "and p.status = 'succeeded') > 1 then 'mixed' else payment_method::text end, "
+                    "due_date, subtotal_cents, "
                     "tax_rate_bps, tax_cents, total_cents, refunded_at, cancelled_at, source, "
                     f"shipping_cents from public.invoices {_WHERE} order by created_at, id",
                     _params(claims, filters),
@@ -517,10 +523,12 @@ async def export_invoices_csv(
 # Declared before /{invoice_id}. Owner and staff: they confirm payments; the CPA doesn't.
 @router.get("/counts", response_model=InvoiceCountsOut, dependencies=[Writers])
 async def invoice_counts(claims: CurrentClaims, conn: DbConn) -> InvoiceCountsOut:
-    """What the Invoices nav badge shows: storefront orders waiting for payment."""
+    """What the Invoices nav badge shows: storefront orders with nothing paid yet. An order
+    holding a deposit has its own tag and balance instead."""
     cur = await conn.execute(
         "select count(*) from public.invoices where tenant_id = %s and source = 'storefront' "
-        "and order_status = 'quote' and cancelled_at is null",
+        "and order_status = 'quote' and cancelled_at is null "
+        "and public.invoice_amount_paid(id) = 0",
         (claims.tenant_id,),
     )
     (awaiting,) = await cur.fetchone()

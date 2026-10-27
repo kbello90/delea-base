@@ -126,7 +126,7 @@ class OrderContactOut(BaseModel):
 
 
 class InvoiceCountsOut(BaseModel):
-    awaiting_payment_web: int  # storefront orders still waiting for payment (not cancelled)
+    awaiting_payment_web: int  # storefront orders with nothing paid yet (not cancelled)
 
 
 class PreviewLineOut(BaseModel):
@@ -215,6 +215,8 @@ class InvoiceOut(BaseModel):
     production_started_at: datetime | None
     # A quote paid in full that couldn't be completed: not enough stock (Slice B1, Rule 3).
     stock_short: bool
+    # Paid with more than one method: the stored payment_method is 'other', shown as "Mixed".
+    mixed_methods: bool
     # None when the caller can't read line items (cpa) or on list endpoints; never [] for that.
     items: list[InvoiceLineOut] | None = None
     contact: OrderContactOut | None = None  # storefront orders, owner and staff

@@ -33,6 +33,10 @@ export const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
 ];
 export const methodLabel = (m: PaymentMethod) => PAYMENT_METHODS.find((x) => x.value === m)?.label ?? m;
 
+/** An invoice's method: "Mixed" when its payments used more than one (stored as 'other'). */
+export const invoiceMethodLabel = (i: Pick<Invoice, "payment_method"> & Partial<Pick<Invoice, "mixed_methods">>) =>
+  i.mixed_methods ? "Mixed" : i.payment_method ? methodLabel(i.payment_method) : null;
+
 /** The number an invoice is known by: its invoice number once paid, else its quote number. */
 export const documentNumber = (i: Pick<Invoice, "invoice_number" | "quote_number">) =>
   i.invoice_number ?? i.quote_number ?? "Invoice";

@@ -1689,7 +1689,7 @@
           "invoices"
         ],
         "summary": "Invoice Counts",
-        "description": "What the Invoices nav badge shows: storefront orders waiting for payment.",
+        "description": "What the Invoices nav badge shows: storefront orders with nothing paid yet. An order\nholding a deposit has its own tag and balance instead.",
         "operationId": "invoice_counts_api_v1_invoices_counts_get",
         "responses": {
           "200": {
@@ -6246,6 +6246,10 @@
             "type": "boolean",
             "title": "Stock Short"
           },
+          "mixed_methods": {
+            "type": "boolean",
+            "title": "Mixed Methods"
+          },
           "items": {
             "anyOf": [
               {
@@ -6314,7 +6318,8 @@
           "amount_paid_cents",
           "balance_cents",
           "production_started_at",
-          "stock_short"
+          "stock_short",
+          "mixed_methods"
         ],
         "title": "InvoiceOut"
       },

@@ -135,6 +135,24 @@ def test_the_awaiting_payment_count_and_filter(client: TestClient, shop, db) -> 
     assert client.get(INVOICES, params={"source": "pos"}, headers=owner).status_code == 422
 
 
+def test_an_order_holding_a_deposit_is_not_awaiting_payment(client: TestClient, shop, db) -> None:
+    """The badge and the Awaiting payment filter count orders with nothing paid. A deposit
+    order shows its own tag and balance instead (B1 follow-up)."""
+    tenant: ThrowawayTenant = shop["tenant"]
+    owner = tenant.headers("owner")
+    waiting = place(client, shop)
+    deposit = place(client, shop)
+    recorded = client.post(
+        f"{INVOICES}/{_invoice_id(db, deposit['public_token'])}/payments",
+        json={"amount_cents": 1000, "method": "bank_transfer"},
+        headers=owner,
+    )
+    assert recorded.status_code == 201, recorded.text
+    assert client.get(f"{INVOICES}/counts", headers=owner).json() == {"awaiting_payment_web": 1}
+    listed = client.get(INVOICES, params={"awaiting_payment": "true"}, headers=owner).json()
+    assert [i["order_ref"] for i in listed] == [waiting["order_ref"]]
+
+
 def test_another_tenant_never_counts_or_sees_these_orders(client: TestClient, shop, users) -> None:
     place(client, shop)
     owner_a = users["owner_a"].headers

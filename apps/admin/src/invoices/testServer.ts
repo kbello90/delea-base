@@ -73,6 +73,7 @@ export function makeInvoice(overrides: Partial<Invoice> = {}): Invoice {
     balance_cents: 0,
     production_started_at: null,
     stock_short: false,
+    mixed_methods: false,
     items: [],
     payments: [],
     ...overrides,
@@ -254,7 +255,11 @@ export function invoiceServer({
     invoice.stock_short = false;
     invoice.order_status = invoice.production_started_at ? "in_production" : "paid";
     invoice.payment_method = methods.size === 1 ? [...methods][0] : "other";
+    invoice.mixed_methods = methods.size > 1;
   }
+
+  /** Website orders with nothing paid yet (a deposit order has its own tag instead). */
+  const awaitingPayment = (i: Invoice) => i.source === "storefront" && i.order_status === "quote" && !i.cancelled_at && i.amount_paid_cents === 0;
 
   function handle({ method, path, query, body }: Call, role: string | null): Response {
     if (path === "/api/v1/settings/currency") return jsonResponse(200, { currency: "USD" });
@@ -288,13 +293,13 @@ export function invoiceServer({
       const q = query.get("q")?.toLowerCase();
       if (q) rows = rows.filter((i) => [i.quote_number, i.invoice_number, i.order_ref].some((n) => n?.toLowerCase().includes(q)));
       if (query.get("source")) rows = rows.filter((i) => i.source === query.get("source"));
-      if (query.get("awaiting_payment") === "true") rows = rows.filter((i) => i.source === "storefront" && i.order_status === "quote" && !i.cancelled_at);
+      if (query.get("awaiting_payment") === "true") rows = rows.filter(awaitingPayment);
       const offset = Number(query.get("offset") ?? 0);
       return jsonResponse(200, rows.slice(offset, offset + Number(query.get("limit") ?? 50)).map((i) => ({ ...i, items: null })));
     }
     if (path === "/api/v1/invoices/counts") {
       if (!writer) return jsonResponse(403, { detail: "Insufficient role" });
-      const awaiting = [...invoiceMap.values()].filter((i) => i.source === "storefront" && i.order_status === "quote" && !i.cancelled_at);
+      const awaiting = [...invoiceMap.values()].filter(awaitingPayment);
       return jsonResponse(200, { awaiting_payment_web: awaiting.length });
     }
     if (path === "/api/v1/invoices/export.csv") {

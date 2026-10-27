@@ -14,6 +14,7 @@ import { centsToInput, parseMoneyInput } from "../lib/moneyInput";
 import { useCurrency } from "../lib/useCurrency";
 import {
   documentNumber,
+  invoiceMethodLabel,
   methodLabel,
   PAYMENT_METHODS,
   statusLabel,
@@ -353,7 +354,7 @@ function PaymentMethodEditor({ invoice }: { invoice: Invoice }) {
   const [editing, setEditing] = useState(false);
   const [method, setMethod] = useState<PaymentMethod | "">(invoice.payment_method ?? "");
   const update = useUpdateInvoice(invoice.id);
-  const shown = invoice.payment_method ? methodLabel(invoice.payment_method) : <span className="muted">Not recorded</span>;
+  const shown = invoiceMethodLabel(invoice) ?? <span className="muted">Not recorded</span>;
   if (!editing) {
     return (
       <>
@@ -827,10 +828,8 @@ function InvoiceView({
               <dd>
                 {actions.correctPaymentMethod ? (
                   <PaymentMethodEditor invoice={invoice} />
-                ) : invoice.payment_method ? (
-                  methodLabel(invoice.payment_method)
                 ) : (
-                  <span className="muted">Not recorded</span>
+                  (invoiceMethodLabel(invoice) ?? <span className="muted">Not recorded</span>)
                 )}
               </dd>
             </div>

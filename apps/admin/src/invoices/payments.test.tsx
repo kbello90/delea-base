@@ -96,6 +96,19 @@ describe("an invoice's payments", () => {
     expect(screen.queryByRole("button", { name: "Record payment" })).not.toBeInTheDocument();
   });
 
+  it("paid with two methods: the invoice's method reads Mixed, each payment keeps its own", async () => {
+    const q = depositQuote(3000, { quote_number: "QTE-2026-060", items: [line] });
+    const { user } = setup(`/invoices/${q.id}`, { invoices: [q] });
+    await user.click(await screen.findByRole("button", { name: "Record payment" }));
+    const form = within(screen.getByRole("form", { name: "Record a payment" }));
+    await user.click(form.getByRole("radio", { name: "Card" }));
+    await user.click(form.getByRole("button", { name: "Record payment" }));
+    expect(await screen.findByText(/is paid in full$/)).toBeInTheDocument();
+    expect(screen.getByText("Payment method").nextSibling).toHaveTextContent(/^Mixed/);
+    expect(screen.getByText("Payment · Cash")).toBeInTheDocument();
+    expect(screen.getByText("Payment · Card")).toBeInTheDocument();
+  });
+
   it("paid in full but short of stock: a banner, then Complete order once restocked", async () => {
     const short = makeProduct({ name: "Last Ring", sku: "DL-LAST", stock_qty: 0 });
     const q = makeInvoice({

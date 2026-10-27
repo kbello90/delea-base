@@ -313,7 +313,8 @@ export interface paths {
         };
         /**
          * Invoice Counts
-         * @description What the Invoices nav badge shows: storefront orders waiting for payment.
+         * @description What the Invoices nav badge shows: storefront orders with nothing paid yet. An order
+         *     holding a deposit has its own tag and balance instead.
          */
         get: operations["invoice_counts_api_v1_invoices_counts_get"];
         put?: never;
@@ -1675,6 +1676,8 @@ export interface components {
             production_started_at: string | null;
             /** Stock Short */
             stock_short: boolean;
+            /** Mixed Methods */
+            mixed_methods: boolean;
             /** Items */
             items?: components["schemas"]["InvoiceLineOut"][] | null;
             contact?: components["schemas"]["OrderContactOut"] | null;

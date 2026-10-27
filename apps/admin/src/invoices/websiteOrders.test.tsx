@@ -102,6 +102,15 @@ describe("the Invoices nav badge", () => {
     await screen.findByRole("link", { name: "QTE-2026-049" });
     expect(screen.queryByLabelText(/awaiting payment/)).not.toBeInTheDocument();
   });
+
+  it("doesn't count an order holding a deposit: it shows its own tag and balance", async () => {
+    const deposit = { ...webOrder, amount_paid_cents: 5000, balance_cents: webOrder.total_cents - 5000 };
+    setup("/invoices", "owner", [deposit, adminQuote]);
+    const row = within((await screen.findByRole("link", { name: "QTE-2026-050" })).closest("tr")!);
+    expect(await row.findByText("Deposit paid · $112.60 due")).toBeInTheDocument();
+    expect(row.queryByText("Awaiting payment")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/awaiting payment/)).not.toBeInTheDocument();
+  });
 });
 
 describe("a website order's page", () => {
