@@ -129,6 +129,15 @@ describe("Pay now on the tracking page", () => {
     expect(screen.queryByText(/being confirmed/)).not.toBeInTheDocument();
   });
 
+  it("a paid card order shows no Pay button", async () => {
+    const server = checkoutServer({ store: CARD_STORE });
+    server.setPlaced({ ...cardOrder, status: "paid", payment_instructions: null, amount_paid_cents: cardOrder.total_cents, balance_cents: 0 });
+    renderShop(`/orders/${TOKEN}`, server.fetch);
+    expect(await screen.findByText("Paid")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /card/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Pay by card" })).not.toBeInTheDocument();
+  });
+
   it("no card for this shop: a card order says to contact the shop", async () => {
     const server = checkoutServer({ store: OPEN_STORE });
     server.setPlaced(cardOrder);

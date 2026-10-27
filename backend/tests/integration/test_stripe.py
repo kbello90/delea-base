@@ -333,6 +333,25 @@ def test_stripe_down_at_checkout_keeps_the_order_and_pay_now_retries(
     assert pending(db, inv["id"])[3] == "pending"
 
 
+def test_pay_now_after_a_deposit_charges_the_balance(
+    client: TestClient, shop, db, fake: FakeStripeGateway
+) -> None:
+    placed = place(client, shop, choice="bank_transfer")
+    inv = invoice(db, placed["public_token"])
+    recorded = client.post(
+        f"{INVOICES}/{inv['id']}/payments",
+        json={"amount_cents": 5000, "method": "bank_transfer"},
+        headers=shop["tenant"].headers("owner"),
+    )
+    assert recorded.status_code == 201, recorded.text
+    paid = client.post(
+        f"/api/v1/public/orders/{placed['public_token']}/pay", headers={"Origin": shop["origin"]}
+    )
+    assert paid.status_code == 200, paid.text
+    request = [c[1]["request"] for c in fake.calls if c[0] == "create_checkout_session"][-1]
+    assert request.amount_cents == TOTAL - 5000  # the balance, never the total
+
+
 def test_pay_now_refusals(client: TestClient, shop, db, fake: FakeStripeGateway) -> None:
     origin = {"Origin": shop["origin"]}
     placed = place(client, shop, choice="bank_transfer")
