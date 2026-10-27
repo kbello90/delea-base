@@ -130,7 +130,8 @@ cd backend
 **Your setup for real sending (Resend; you enter the key in `backend/.env` yourself):**
 
 1. In Resend: **Domains → Add domain** `mail.deleajewelry.com`. Resend shows the DNS records
-   (an MX and a TXT for the return path on `send.mail…`, and a DKIM TXT).
+   to add (typically SPF and MX records for a sending subdomain, and a DKIM TXT record); copy
+   them exactly as Resend shows them.
 2. In Cloudflare (deleajewelry.com → DNS): add each record exactly as shown. Set them to
    **DNS only** (grey cloud), not proxied. Back in Resend, press **Verify**.
 3. In Cloudflare, add DMARC: a TXT record named `_dmarc.mail` with
