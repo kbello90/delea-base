@@ -107,8 +107,8 @@ select throws_ok(
   $q$insert into public.invoices (tenant_id, customer_name, fulfillment) values ('11111111-1111-1111-1111-111111111111', 'X', 'drone')$q$,
   '23514', null, 'an unknown fulfillment is refused');
 select throws_ok(
-  $q$insert into public.invoices (tenant_id, customer_name, payment_choice) values ('11111111-1111-1111-1111-111111111111', 'X', 'card')$q$,
-  '23514', null, 'card is not a payment choice until Slice B');
+  $q$insert into public.invoices (tenant_id, customer_name, payment_choice) values ('11111111-1111-1111-1111-111111111111', 'X', 'cheque')$q$,
+  '23514', null, 'an unknown payment choice is refused (card is one since Slice B2)');
 
 insert into public.invoices (id, tenant_id, customer_name, order_ref, checkout_key)
 values ('5c000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'X',

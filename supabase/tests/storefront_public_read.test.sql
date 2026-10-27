@@ -175,7 +175,8 @@ select is(
         'mark_style', 'hero_cta_label', 'hero_cta_url', 'currency', 'contact_email',
         'return_policy', 'privacy_policy', 'terms', 'custom_orders_info', 'has_made_to_order',
         'ship_enabled', 'ship_flat_cents', 'free_ship_over_cents', 'tax_shipping', 'pickup_enabled',
-        'pickup_note', 'bank_transfer_enabled', 'pay_on_pickup_enabled', 'default_tax_rate_bps'],
+        'pickup_note', 'bank_transfer_enabled', 'pay_on_pickup_enabled', 'default_tax_rate_bps',
+        'card_enabled'],
   'storefront.store exposes the brand, the currency, the pages and the checkout options only (no tax ID, Stripe, counters or payment instructions)'
 );
 
