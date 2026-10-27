@@ -377,7 +377,7 @@ All accepted as recommended on 2026-10-20.
 
 Smaller choices I made that you can veto: separate `quote_number` and `invoice_number` series (a quote gets `QTE-…` at creation and an `INV-…` number when paid, matching the demo's two number formats); `reorder_list` as a small table so the `add_to_reorder_list` automation has somewhere to write; and one SKU per metal rather than a variant model.
 
-## 9. As built (supabase/migrations; last updated with migration 20261028000700)
+## 9. As built (supabase/migrations; last updated with migration 20261028000800)
 
 The migrations in `supabase/migrations/` are now the source of truth. Where the SQL in §3–§7 differs from them, the migrations win, and the differences are:
 
@@ -450,6 +450,7 @@ The migrations in `supabase/migrations/` are now the source of truth. Where the 
   - **`stripe_events`** adds `event_type`, `account_id`, `livemode` and `outcome`; `tenant_id` stays nullable for events that match no shop.
   - **`payments`** adds `checkout_url` and `checkout_expires_at` (Stripe rows only, `https://`). The update guard lets the service attach a session to a pending row once and lets a Stripe refund fail after it succeeded.
   - **`invoices.payment_choice`** also accepts `card`; `storefront.store` adds `card_enabled`; `storefront_place_order` accepts card only when the shop's account can take charges.
+  - **Cancel guard (migration 20261028000800):** `invoices_24_card_cancel_guard` refuses a cancel while the invoice's net Stripe payments are above 0 ("Refund this payment in Stripe first."), every caller.
   - **Roles and functions:** `storefront_writer` also executes `storefront_card_payment_start`, `_attach` and `_failed`. `payments_writer` (nologin, no table grants; K4) executes `stripe_apply_session`, `stripe_apply_refund`, `stripe_apply_account`, `stripe_record_event`, `stripe_link_account` and `stripe_close_session`, each SECURITY DEFINER with `search_path = ''`, EXECUTE revoked from `public`, `anon`, `authenticated` and `service_role`.
 - **Local ports.** `supabase/config.toml` uses 553xx instead of the CLI defaults (543xx), because Windows reserves 54269–54368. The local API is on 55321, the database on 55322, and Studio on 55323.
 - **Seed.** Tenant A "DELEA Demo" uses 800 bps (8%) tax to match the demo; tenant B "Aurora Gems" is a small second tenant for isolation tests.
