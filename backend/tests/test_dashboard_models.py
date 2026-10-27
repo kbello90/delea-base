@@ -47,7 +47,9 @@ async def test_fetch_monthly_shape_and_params() -> None:
     assert cursor.executed is not None
     sql, params = cursor.executed
     assert params == {"tenant_id": "11111111-1111-1111-1111-111111111111", "back": 5}
-    assert "refunded_at is null" in sql and "cancelled_at is null" in sql
+    # Net of refunds (R1): refunds come off in their own month, cancelled invoices never count.
+    assert "kind = 'refund'" in sql and "cancelled_at is null" in sql
+    assert "refunded_at is null" not in sql
     assert MONTHS_IN_TREND == 6
 
     trend = MonthlyTrend.model_validate(result)

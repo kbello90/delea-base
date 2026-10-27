@@ -249,6 +249,13 @@ async def test_refunds_come_off_revenue_in_their_month_and_deposits_are_held(
             for held in (3000, 2000):
                 q = await rows.invoice(TENANT_A, 10000, 800, "quote")
                 await rows.payment(TENANT_A, q, held, None)
+            # Money on a cancelled quote (the service may record it: a card payment that
+            # landed after the cancel, Slice B2) is not a deposit held; it is owed back.
+            gone = await rows.invoice(TENANT_A, 10000, 800, "quote")
+            await aconn.execute(
+                "update public.invoices set cancelled_at = now() where id = %s", (gone,)
+            )
+            await rows.payment(TENANT_A, gone, 4000, None)
             returned = await rows.invoice(TENANT_A, 10000, 800, "quote")
             await rows.payment(TENANT_A, returned, 1500, None)
             await rows.payment(TENANT_A, returned, 1500, None, kind="refund")

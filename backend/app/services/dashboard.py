@@ -79,7 +79,7 @@ refunds as (
     on r.received_at >= b.year_start
 ),
 deposits as (
-  select coalesce(sum(d.held), 0) as held_cents, count(*) as held_count
+  select coalesce(sum(d.held), 0)::bigint as held_cents, count(*) as held_count
   from (
     select public.invoice_amount_paid(i.id) as held
     from public.invoices i
