@@ -1,3 +1,4 @@
+import { centsToInput, parseMoneyInput } from "../lib/moneyInput";
 import { formatPercent, parsePercent } from "../lib/percent";
 import {
   LOGO_MAX_BYTES,
@@ -47,7 +48,20 @@ export interface StorefrontFormValues {
   returnPolicy: string;
   privacyPolicy: string;
   terms: string;
+  // Checkout (Slice A2)
+  shipEnabled: boolean;
+  shipFlat: string; // money, as typed
+  freeShipOver: string; // money, empty: never free
+  taxShipping: boolean;
+  pickupEnabled: boolean;
+  pickupNote: string;
+  bankTransferEnabled: boolean;
+  payOnPickupEnabled: boolean;
+  paymentInstructions: string;
 }
+
+export const INSTRUCTIONS_MAX = 2000;
+export const PICKUP_NOTE_MAX = 500;
 
 export type Errors<T> = Partial<Record<keyof T, string>>;
 
@@ -160,6 +174,15 @@ export function toStorefrontValues(s: StorefrontSettings): StorefrontFormValues 
     returnPolicy: s.return_policy ?? "",
     privacyPolicy: s.privacy_policy ?? "",
     terms: s.terms ?? "",
+    shipEnabled: s.ship_enabled,
+    shipFlat: centsToInput(s.ship_flat_cents),
+    freeShipOver: s.free_ship_over_cents === null ? "" : centsToInput(s.free_ship_over_cents),
+    taxShipping: s.tax_shipping,
+    pickupEnabled: s.pickup_enabled,
+    pickupNote: s.pickup_note ?? "",
+    bankTransferEnabled: s.bank_transfer_enabled,
+    payOnPickupEnabled: s.pay_on_pickup_enabled,
+    paymentInstructions: s.manual_payment_instructions ?? "",
   };
 }
 
@@ -177,7 +200,19 @@ export function storefrontChanges(saved: StorefrontSettings, v: StorefrontFormVa
   for (const [key] of PAGE_FIELDS) {
     if (v[key].trim().length > PAGE_MAX) errors[key] = `Use at most ${PAGE_MAX.toLocaleString("en-US")} characters.`;
   }
-  if (Object.keys(errors).length > 0) return { errors };
+  const flat = parseMoneyInput(v.shipFlat);
+  if (!flat.ok) errors.shipFlat = flat.error;
+  let freeOver: number | null = null;
+  if (v.freeShipOver.trim()) {
+    const parsed = parseMoneyInput(v.freeShipOver);
+    if (!parsed.ok) errors.freeShipOver = parsed.error;
+    else freeOver = parsed.cents;
+  }
+  if (v.pickupNote.trim().length > PICKUP_NOTE_MAX) errors.pickupNote = `Use at most ${PICKUP_NOTE_MAX} characters.`;
+  if (v.paymentInstructions.trim().length > INSTRUCTIONS_MAX) errors.paymentInstructions = `Use at most ${INSTRUCTIONS_MAX.toLocaleString("en-US")} characters.`;
+  if (v.payOnPickupEnabled && !v.pickupEnabled) errors.payOnPickupEnabled = "Paying on pickup needs pickup: turn pickup on, or this off.";
+  if (v.bankTransferEnabled && !v.paymentInstructions.trim()) errors.paymentInstructions = "Tell shoppers how to pay by bank transfer (account and reference).";
+  if (Object.keys(errors).length > 0 || !flat.ok) return { errors };
 
   const body: StorefrontUpdate = {};
   if (v.storefrontEnabled !== saved.storefront_enabled) body.storefront_enabled = v.storefrontEnabled;
@@ -185,6 +220,15 @@ export function storefrontChanges(saved: StorefrontSettings, v: StorefrontFormVa
   for (const [key, column] of PAGE_FIELDS) {
     if (text(v[key]) !== saved[column]) body[column] = text(v[key]);
   }
+  if (v.shipEnabled !== saved.ship_enabled) body.ship_enabled = v.shipEnabled;
+  if (flat.cents !== saved.ship_flat_cents) body.ship_flat_cents = flat.cents;
+  if (freeOver !== saved.free_ship_over_cents) body.free_ship_over_cents = freeOver;
+  if (v.taxShipping !== saved.tax_shipping) body.tax_shipping = v.taxShipping;
+  if (v.pickupEnabled !== saved.pickup_enabled) body.pickup_enabled = v.pickupEnabled;
+  if (text(v.pickupNote) !== saved.pickup_note) body.pickup_note = text(v.pickupNote);
+  if (v.bankTransferEnabled !== saved.bank_transfer_enabled) body.bank_transfer_enabled = v.bankTransferEnabled;
+  if (v.payOnPickupEnabled !== saved.pay_on_pickup_enabled) body.pay_on_pickup_enabled = v.payOnPickupEnabled;
+  if (text(v.paymentInstructions) !== saved.manual_payment_instructions) body.manual_payment_instructions = text(v.paymentInstructions);
   return { body, errors };
 }
 

@@ -28,7 +28,7 @@ export const NO_ACTIONS: InvoiceActions = {
   deleteQuote: false,
 };
 
-type InvoiceState = Pick<Invoice, "order_status" | "paid_at" | "refunded_at" | "cancelled_at">;
+type InvoiceState = Pick<Invoice, "order_status" | "paid_at" | "refunded_at" | "cancelled_at"> & Partial<Pick<Invoice, "source">>;
 
 export const isClosed = (i: Pick<Invoice, "refunded_at" | "cancelled_at">) =>
   i.refunded_at !== null || i.cancelled_at !== null;
@@ -39,15 +39,18 @@ export function invoiceActions(invoice: InvoiceState, role: AppRole | undefined)
   const quote = invoice.order_status === "quote";
   const closed = isClosed(invoice);
   const position = STATUSES.findIndex((s) => s.value === invoice.order_status);
+  // A website order keeps the lines and total the shopper agreed to (the API refuses edits);
+  // one that won't be paid is cancelled, which keeps its record, rather than deleted.
+  const website = invoice.source === "storefront";
   return {
     markPaid: quote && !closed,
     forward: quote || closed ? [] : STATUSES.slice(position + 1).map((s) => s.value),
-    editLines: quote && !closed,
+    editLines: quote && !closed && !website,
     editNotes: true,
     editDueDate: quote,
     correctPaymentMethod: owner && !quote,
     refund: owner && invoice.paid_at !== null && !closed,
     cancel: owner && !closed,
-    deleteQuote: owner && quote,
+    deleteQuote: owner && quote && !website,
   };
 }

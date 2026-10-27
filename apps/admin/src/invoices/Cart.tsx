@@ -158,7 +158,7 @@ export function Totals({
   pending,
   label = "Total",
 }: {
-  totals: Pick<InvoicePreview, "subtotal_cents" | "tax_rate_bps" | "tax_cents" | "total_cents"> | undefined;
+  totals: (Pick<InvoicePreview, "subtotal_cents" | "tax_rate_bps" | "tax_cents" | "total_cents"> & { shipping_cents?: number }) | undefined;
   pending: boolean;
   label?: string;
 }) {
@@ -180,6 +180,12 @@ export function Totals({
         <dt>Tax ({bpsToPercent(totals.tax_rate_bps)}%)</dt>
         <dd>{formatMoney(totals.tax_cents, currency)}</dd>
       </div>
+      {totals.shipping_cents ? (
+        <div>
+          <dt>Shipping</dt>
+          <dd>{formatMoney(totals.shipping_cents, currency)}</dd>
+        </div>
+      ) : null}
       <div className="totals__total">
         <dt>{label}</dt>
         <dd>{formatMoney(totals.total_cents, currency)}</dd>

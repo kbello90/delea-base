@@ -15,7 +15,10 @@ import {
   useInvoiceList,
   type Invoice,
   type InvoiceFilters,
+  type InvoiceSource,
   type OrderStatus,
+  SOURCES,
+  useInvoiceCounts,
 } from "./api";
 import { CustomerPicker } from "./CustomerPicker";
 import { formatDate } from "./format";
@@ -36,6 +39,8 @@ function readFilters(params: URLSearchParams): InvoiceFilters {
     dateFrom: from && DAY.test(from) ? from : null,
     dateTo: to && DAY.test(to) ? to : null,
     q: params.get("q") ?? "",
+    source: SOURCES.some((s) => s.value === params.get("source")) ? (params.get("source") as InvoiceSource) : null,
+    awaiting: params.get("awaiting") === "1",
     page: Number.isFinite(page) && page > 0 ? page : 1,
   };
 }
@@ -56,7 +61,9 @@ function useFilterParams() {
       { replace: key === "q" },
     );
   const clear = () => setParams(new URLSearchParams());
-  const active = Boolean(filters.q || filters.status || filters.customerId || filters.dateFrom || filters.dateTo);
+  const active = Boolean(
+    filters.q || filters.status || filters.customerId || filters.dateFrom || filters.dateTo || filters.source || filters.awaiting,
+  );
   return { filters, set, clear, active };
 }
 
@@ -90,6 +97,16 @@ function InvoiceRow({ invoice, currency }: { invoice: Invoice; currency: string 
       <td data-label="Customer">
         {invoice.customer_id === null ? <span className="tag">Walk-in</span> : invoice.customer_name}
       </td>
+      <td data-label="Source">
+        {invoice.source === "storefront" ? (
+          <>
+            <span className="tag tag--web">Website</span>
+            {invoice.order_ref && <span className="muted customer-contact">{invoice.order_ref}</span>}
+          </>
+        ) : (
+          <span className="tag">Admin</span>
+        )}
+      </td>
       <td data-label="Created">{formatDate(invoice.created_at)}</td>
       <td data-label="Status">
         <StatusTags invoice={invoice} />
@@ -98,6 +115,30 @@ function InvoiceRow({ invoice, currency }: { invoice: Invoice; currency: string 
         {formatMoney(invoice.total_cents, currency)}
       </td>
     </tr>
+  );
+}
+
+/** The preview's "Awaiting payment" card: website orders the owner still has to confirm. */
+function AwaitingPaymentCard({ active, onShow }: { active: boolean; onShow: () => void }) {
+  const counts = useInvoiceCounts(true);
+  const n = counts.data?.awaiting_payment_web;
+  return (
+    <section className="metric-cards" aria-label="Website orders">
+      <div className="metric-card">
+        <span className="metric-card__label" id="awaiting-label">
+          Awaiting payment
+        </span>
+        <span className="metric-card__value" aria-labelledby="awaiting-label">
+          {n ?? "…"}
+        </span>
+        <span className="metric-card__hint">Website orders to confirm when the payment arrives</span>
+        {n !== undefined && n > 0 && !active && (
+          <button type="button" className="btn-text" onClick={onShow}>
+            Show them
+          </button>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -133,6 +174,7 @@ export function InvoicesPage() {
           </>
         }
       />
+      {writer && <AwaitingPaymentCard active={filters.awaiting} onShow={() => set("awaiting", "1")} />}
       {csv.isError && (
         <p className="form-error" role="alert">
           The CSV couldn't be downloaded: {csv.error.message}
@@ -140,7 +182,26 @@ export function InvoicesPage() {
       )}
 
       <form className="filters" role="search" aria-label="Filter invoices" onSubmit={(e) => e.preventDefault()}>
-        <SearchBox id="invoice-search" placeholder="QTE-… or INV-…" value={filters.q} onChange={(q) => set("q", q)} />
+        <SearchBox id="invoice-search" placeholder="QTE-…, INV-… or W-…" value={filters.q} onChange={(q) => set("q", q)} />
+        <div className="filter">
+          <label htmlFor="filter-source">Source</label>
+          <select id="filter-source" value={filters.source ?? ""} onChange={(e) => set("source", e.target.value)}>
+            <option value="">All</option>
+            {SOURCES.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        {filters.awaiting && (
+          <span className="tag tag--warn filter-chip">
+            Awaiting payment
+            <button type="button" className="btn-text" onClick={() => set("awaiting", null)} aria-label="Show all invoices, not only those awaiting payment">
+              ×
+            </button>
+          </span>
+        )}
         <div className="filter">
           <label htmlFor="filter-status">Status</label>
           <select id="filter-status" value={filters.status ?? ""} onChange={(e) => set("status", e.target.value)}>
@@ -209,6 +270,7 @@ export function InvoicesPage() {
                   <tr>
                     <th scope="col">Number</th>
                     <th scope="col">Customer</th>
+                    <th scope="col">Source</th>
                     <th scope="col">Created (UTC)</th>
                     <th scope="col">Status</th>
                     <th scope="col" className="num">

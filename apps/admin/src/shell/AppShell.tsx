@@ -1,9 +1,22 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/authContext";
+import { useInvoiceCounts } from "../invoices/api";
 import { ROLE_LABEL, routesFor } from "../routes/routeTable";
 import { useBrand } from "../theme/useBrand";
 import { UserMenu } from "./UserMenu";
+
+/** Website orders waiting for payment, on the Invoices menu item (owner and staff). */
+function AwaitingBadge() {
+  const counts = useInvoiceCounts(true);
+  const n = counts.data?.awaiting_payment_web ?? 0;
+  if (n === 0) return null;
+  return (
+    <span className="nav-badge" aria-label={`${n} website ${n === 1 ? "order" : "orders"} awaiting payment`}>
+      {n}
+    </span>
+  );
+}
 
 /** Sidebar + topbar layout (from docs/delea-demo.html). Rendered only for signed-in members. */
 export function AppShell() {
@@ -49,6 +62,7 @@ export function AppShell() {
                     {route.glyph}
                   </span>
                   {route.label}
+                  {route.path === "/invoices" && (role === "owner" || role === "staff") && <AwaitingBadge />}
                 </NavLink>
               </li>
             ))}

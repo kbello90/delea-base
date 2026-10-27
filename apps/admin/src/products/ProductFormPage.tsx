@@ -14,6 +14,7 @@ import { useCurrency } from "../lib/useCurrency";
 import { METALS, metalLabel, useCreateProduct, useProduct, useUpdateProduct, type Product } from "./api";
 import { DeleteProductDialog } from "./DeleteProductDialog";
 import { ImageManager } from "./ImageManager";
+import { PersonalizationEditor, PersonalizationList } from "./PersonalizationEditor";
 import {
   changedFields,
   EMPTY_FORM,
@@ -213,6 +214,14 @@ function EditProduct({ product }: { product: Product }) {
           <ImageManager product={product} />
         </div>
       </section>
+      <section className="card" aria-labelledby="personalization-title">
+        <div className="card__head">
+          <h2 id="personalization-title">Personalization</h2>
+        </div>
+        <div className="card__body">
+          <PersonalizationEditor key={product.updated_at + product.personalization.map((f) => f.id).join()} product={product} />
+        </div>
+      </section>
       <section className="card" aria-labelledby="details-title">
         <div className="card__head">
           <h2 id="details-title">Details</h2>
@@ -296,6 +305,8 @@ function ViewProduct({ product }: { product: Product }) {
           </>
         )}
       </dl>
+      <h2>Personalization</h2>
+      <PersonalizationList product={product} />
       <Link to="/products" className="btn-text">
         Back to products
       </Link>

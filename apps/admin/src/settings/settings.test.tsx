@@ -244,3 +244,58 @@ describe("storefront", () => {
     expect(server.last("PATCH", "/api/v1/settings/storefront")).toBeUndefined();
   });
 });
+
+describe("storefront checkout options", () => {
+  const card = () => within(screen.getByRole("form", { name: "Storefront" }));
+
+  it("saves shipping, pickup, payments and instructions (money as integer cents)", async () => {
+    const { server, user } = setup();
+    await screen.findByRole("form", { name: "Storefront" });
+    await user.click(card().getByRole("checkbox", { name: "Ship orders (US addresses)" }));
+    await user.clear(card().getByLabelText("Flat shipping rate"));
+    await user.type(card().getByLabelText("Flat shipping rate"), "6");
+    await user.type(card().getByLabelText("Free shipping over (optional)"), "150");
+    await user.click(card().getByRole("checkbox", { name: "Charge tax on shipping" }));
+    await user.click(card().getByRole("checkbox", { name: "Local pickup (free)" }));
+    await user.type(card().getByLabelText("Where and when to pick up"), "Studio, 11-6");
+    await user.click(card().getByRole("checkbox", { name: "Bank transfer" }));
+    await user.click(card().getByRole("checkbox", { name: "Pay when picking up" }));
+    await user.type(card().getByLabelText("Payment instructions"), "Account 000, reference: your order number");
+    await user.click(card().getByRole("button", { name: "Save storefront" }));
+    await waitFor(() =>
+      expect(server.last("PATCH", "/api/v1/settings/storefront")?.body).toEqual({
+        ship_enabled: true,
+        ship_flat_cents: 600,
+        free_ship_over_cents: 15000,
+        tax_shipping: true,
+        pickup_enabled: true,
+        pickup_note: "Studio, 11-6",
+        bank_transfer_enabled: true,
+        pay_on_pickup_enabled: true,
+        manual_payment_instructions: "Account 000, reference: your order number",
+      }),
+    );
+  });
+
+  it("paying on pickup needs pickup, and bank transfer needs instructions", async () => {
+    const { server, user } = setup();
+    await screen.findByRole("form", { name: "Storefront" });
+    await user.click(card().getByRole("checkbox", { name: "Pay when picking up" }));
+    await user.click(card().getByRole("checkbox", { name: "Bank transfer" }));
+    await user.click(card().getByRole("button", { name: "Save storefront" }));
+    expect(await card().findByText("Paying on pickup needs pickup: turn pickup on, or this off.")).toBeInTheDocument();
+    expect(card().getByText("Tell shoppers how to pay by bank transfer (account and reference).")).toBeInTheDocument();
+    expect(server.last("PATCH", "/api/v1/settings/storefront")).toBeUndefined();
+  });
+
+  it("refuses a malformed shipping rate", async () => {
+    const { server, user } = setup();
+    await screen.findByRole("form", { name: "Storefront" });
+    await user.click(card().getByRole("checkbox", { name: "Ship orders (US addresses)" }));
+    await user.clear(card().getByLabelText("Flat shipping rate"));
+    await user.type(card().getByLabelText("Flat shipping rate"), "6.999");
+    await user.click(card().getByRole("button", { name: "Save storefront" }));
+    expect(await card().findByText("Use at most 2 decimal places.")).toBeInTheDocument();
+    expect(server.last("PATCH", "/api/v1/settings/storefront")).toBeUndefined();
+  });
+});

@@ -99,6 +99,24 @@ export function productServer(initial: Product[] = [], options: { onInvoice?: Se
       return jsonResponse(201, product);
     }
 
+    const fields = /^\/api\/v1\/products\/([^/]+)\/personalization$/.exec(path);
+    if (fields && method === "PUT") {
+      const target = products.get(fields[1]);
+      if (!target) return jsonResponse(404, { detail: "Product not found" });
+      const sent = (body as { fields: Record<string, unknown>[] }).fields;
+      target.personalization = sent.map((f, i) => ({
+        id: (f.id as string | undefined) ?? id("pf"),
+        position: i + 1,
+        label: f.label as string,
+        kind: f.kind as "text" | "choice",
+        required: Boolean(f.required),
+        max_length: (f.max_length as number | undefined) ?? null,
+        choices: (f.choices as string[] | undefined) ?? null,
+      }));
+      target.updated_at = new Date().toISOString();
+      return jsonResponse(200, target);
+    }
+
     const match = /^\/api\/v1\/products\/([^/]+)(\/images(?:\/(uploads|order|[^/]+)(?:\/(primary))?)?)?$/.exec(path);
     if (!match) return jsonResponse(404, { detail: "Not found" });
     const [, productId, imagesPart, sub, primary] = match;

@@ -213,9 +213,16 @@ export function invoiceServer({
       if (query.get("date_from")) rows = rows.filter((i) => i.created_at.slice(0, 10) >= query.get("date_from")!);
       if (query.get("date_to")) rows = rows.filter((i) => i.created_at.slice(0, 10) <= query.get("date_to")!);
       const q = query.get("q")?.toLowerCase();
-      if (q) rows = rows.filter((i) => [i.quote_number, i.invoice_number].some((n) => n?.toLowerCase().includes(q)));
+      if (q) rows = rows.filter((i) => [i.quote_number, i.invoice_number, i.order_ref].some((n) => n?.toLowerCase().includes(q)));
+      if (query.get("source")) rows = rows.filter((i) => i.source === query.get("source"));
+      if (query.get("awaiting_payment") === "true") rows = rows.filter((i) => i.source === "storefront" && i.order_status === "quote" && !i.cancelled_at);
       const offset = Number(query.get("offset") ?? 0);
       return jsonResponse(200, rows.slice(offset, offset + Number(query.get("limit") ?? 50)).map((i) => ({ ...i, items: null })));
+    }
+    if (path === "/api/v1/invoices/counts") {
+      if (!writer) return jsonResponse(403, { detail: "Insufficient role" });
+      const awaiting = [...invoiceMap.values()].filter((i) => i.source === "storefront" && i.order_status === "quote" && !i.cancelled_at);
+      return jsonResponse(200, { awaiting_payment_web: awaiting.length });
     }
     if (path === "/api/v1/invoices/export.csv") {
       return new Response("quote_number,invoice_number\n", { status: 200, headers: { "Content-Type": "text/csv" } });

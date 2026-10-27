@@ -41,8 +41,18 @@ export interface InvoiceFilters {
   dateFrom: string | null; // YYYY-MM-DD, UTC
   dateTo: string | null;
   q: string;
+  /** admin: made in the admin; storefront: placed on the website */
+  source: InvoiceSource | null;
+  /** website orders still waiting for payment (not cancelled) */
+  awaiting: boolean;
   page: number; // 1-based
 }
+
+export type InvoiceSource = "admin" | "storefront";
+export const SOURCES: { value: InvoiceSource; label: string }[] = [
+  { value: "admin", label: "Admin" },
+  { value: "storefront", label: "Website" },
+];
 
 const keys = {
   all: ["invoices"] as const,
@@ -58,6 +68,8 @@ function listQuery(f: InvoiceFilters) {
     date_from: f.dateFrom ?? undefined,
     date_to: f.dateTo ?? undefined,
     q: f.q || undefined,
+    source: f.source ?? undefined,
+    awaiting_payment: f.awaiting || undefined,
   };
 }
 
@@ -77,6 +89,24 @@ export function useInvoiceList(filters: InvoiceFilters) {
       );
       return { items: rows.slice(0, PAGE_SIZE), hasNext: rows.length > PAGE_SIZE };
     },
+  });
+}
+
+const countsKey = ["invoices", "counts"] as const;
+
+/**
+ * Website orders waiting for payment, for the Invoices nav badge and the Awaiting payment card
+ * (owner and staff; the CPA doesn't confirm payments). Refreshed every minute and on focus;
+ * any invoice change invalidates it with the rest of ["invoices"].
+ */
+export function useInvoiceCounts(enabled: boolean) {
+  const api = useApi();
+  return useQuery({
+    queryKey: countsKey,
+    enabled,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    queryFn: () => unwrap(api.GET("/api/v1/invoices/counts")),
   });
 }
 

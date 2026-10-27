@@ -88,12 +88,14 @@ function StatusActions({ invoice, actions }: { invoice: Invoice; actions: Invoic
   const busy = change.isPending || refund.isPending || cancel.isPending || remove.isPending;
   const error = change.error ?? refund.error ?? cancel.error ?? remove.error;
 
+  // A website order's payment is what the shopper chose (pay on pickup: cash by default).
+  const website = invoice.source === "storefront";
   function open(next: Pending) {
     change.reset();
     refund.reset();
     cancel.reset();
     remove.reset();
-    setMethod(null);
+    setMethod(website && invoice.payment_choice ? CHOICE_METHOD[invoice.payment_choice] : null);
     setPending(next);
   }
 
@@ -137,14 +139,16 @@ function StatusActions({ invoice, actions }: { invoice: Invoice; actions: Invoic
     switch (pending.kind) {
       case "pay":
         return {
-          title: `Mark ${number} paid?`,
+          title: website ? `Confirm the payment for ${invoice.order_ref ?? number}?` : `Mark ${number} paid?`,
           description: (
             <>
-              <p>This gives it an invoice number and takes its items out of stock. It can't be undone.</p>
+              <p>
+                {website ? "Do this once the money has arrived. " : ""}This gives it an invoice number and takes its items out of stock. It can't be undone.
+              </p>
               <PaymentMethodChoice name="mark-paid-method" value={method} onChange={setMethod} disabled={busy} />
             </>
           ),
-          confirmLabel: "Mark paid",
+          confirmLabel: website ? "Confirm payment" : "Mark paid",
         };
       case "status":
         return {
@@ -182,7 +186,7 @@ function StatusActions({ invoice, actions }: { invoice: Invoice; actions: Invoic
       <div className="invoice-actions">
         {actions.markPaid && (
           <Button type="button" onClick={() => open({ kind: "pay" })}>
-            Mark paid
+            {website ? "Confirm payment" : "Mark paid"}
           </Button>
         )}
         {actions.forward.map((status) => (
@@ -375,6 +379,75 @@ function PaymentMethodEditor({ invoice }: { invoice: Invoice }) {
   );
 }
 
+const CHOICE_LABEL = { bank_transfer: "Bank transfer", pay_on_pickup: "Pay on pickup" } as const;
+const CHOICE_METHOD = { bank_transfer: "bank_transfer", pay_on_pickup: "cash" } as const;
+
+/** The shopper and where it goes (owner and staff only; the API never sends it to the CPA). */
+function ShopperCard({ invoice }: { invoice: Invoice }) {
+  const c = invoice.contact;
+  return (
+    <section className="invoice-section" aria-labelledby="shopper-heading">
+      <h2 id="shopper-heading">Shopper</h2>
+      {!c ? (
+        <p className="muted">The shopper's details aren't visible to your role.</p>
+      ) : (
+        <dl className="facts">
+          <div>
+            <dt>Name</dt>
+            <dd>
+              {c.first_name} {c.last_name}
+            </dd>
+          </div>
+          <div>
+            <dt>Email</dt>
+            <dd>
+              <a href={`mailto:${c.email}`}>{c.email}</a>
+            </dd>
+          </div>
+          {c.phone && (
+            <div>
+              <dt>Phone</dt>
+              <dd>
+                <a href={`tel:${c.phone}`}>{c.phone}</a>
+              </dd>
+            </div>
+          )}
+          <div>
+            <dt>{invoice.fulfillment === "pickup" ? "Pickup" : "Ship to"}</dt>
+            <dd>
+              {invoice.fulfillment === "pickup" ? (
+                "Picks up at the studio"
+              ) : (
+                <address>
+                  {c.ship_line1}
+                  <br />
+                  {c.ship_line2 && (
+                    <>
+                      {c.ship_line2}
+                      <br />
+                    </>
+                  )}
+                  {c.ship_city}, {c.ship_state} {c.ship_postal_code}
+                </address>
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt>Paying by</dt>
+            <dd>{invoice.payment_choice ? CHOICE_LABEL[invoice.payment_choice] : "—"}</dd>
+          </div>
+          {c.note && (
+            <div>
+              <dt>Note from the shopper</dt>
+              <dd>{c.note}</dd>
+            </div>
+          )}
+        </dl>
+      )}
+    </section>
+  );
+}
+
 function InvoiceView({ invoice, actions, canLinkCustomer }: { invoice: Invoice; actions: InvoiceActions; canLinkCustomer: boolean }) {
   const currency = useCurrency();
   const money = (cents: number) => (currency.status === "success" ? formatMoney(cents, currency.currency) : "…");
@@ -424,6 +497,14 @@ function InvoiceView({ invoice, actions, canLinkCustomer }: { invoice: Invoice; 
               )}
             </dd>
           </div>
+          {invoice.source === "storefront" && (
+            <div>
+              <dt>Website order</dt>
+              <dd>
+                <span className="tag tag--web">Website</span> {invoice.order_ref}
+              </dd>
+            </div>
+          )}
           <div>
             <dt>Quote number</dt>
             <dd>{invoice.quote_number ?? "—"}</dd>
@@ -506,7 +587,18 @@ function InvoiceView({ invoice, actions, canLinkCustomer }: { invoice: Invoice; 
               <tbody>
                 {invoice.items.map((line) => (
                   <tr key={line.id}>
-                    <td className="cell-title">{line.description}</td>
+                    <td className="cell-title">
+                      {line.description}
+                      {line.personalization && line.personalization.length > 0 && (
+                        <ul className="line-answers" aria-label={`Personalization for ${line.description}`}>
+                          {line.personalization.map((answer) => (
+                            <li key={answer.label}>
+                              <span className="line-answers__label">{answer.label}:</span> {answer.value}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
                     <td data-label="Qty">{line.qty}</td>
                     <td data-label="Unit price" className="num">
                       {money(line.unit_price_cents)}
@@ -522,6 +614,8 @@ function InvoiceView({ invoice, actions, canLinkCustomer }: { invoice: Invoice; 
         )}
         <Totals totals={invoice} pending={false} />
       </section>
+
+      {invoice.source === "storefront" && <ShopperCard invoice={invoice} />}
 
       <section className="invoice-section" aria-labelledby="notes-heading">
         <h2 id="notes-heading">Notes</h2>

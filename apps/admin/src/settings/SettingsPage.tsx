@@ -399,6 +399,63 @@ function StorefrontCard({ settings }: { settings: StorefrontSettings }) {
       <Field id="contact-email" label="Contact email" error={errors.contactEmail} hint="Shown in your store's footer.">
         <input id="contact-email" type="email" value={values.contactEmail} onChange={(e) => set("contactEmail", e.target.value)} disabled={busy} aria-invalid={Boolean(errors.contactEmail)} aria-describedby={describedBy("contact-email", errors.contactEmail, true)} />
       </Field>
+      <fieldset>
+        <legend>Delivery</legend>
+        <label className="check">
+          <input type="checkbox" checked={values.shipEnabled} onChange={(e) => set("shipEnabled", e.target.checked)} disabled={busy} />
+          Ship orders (US addresses)
+        </label>
+        {values.shipEnabled && (
+          <div className="form-grid">
+            <Field id="ship-flat" label="Flat shipping rate" error={errors.shipFlat} hint="Charged once per order. 0 for free shipping.">
+              <input id="ship-flat" type="text" inputMode="decimal" value={values.shipFlat} onChange={(e) => set("shipFlat", e.target.value)} disabled={busy} aria-invalid={Boolean(errors.shipFlat)} aria-describedby={describedBy("ship-flat", errors.shipFlat, true)} />
+            </Field>
+            <Field id="free-ship-over" label="Free shipping over (optional)" error={errors.freeShipOver} hint="When the items total reaches this amount. Empty: never free.">
+              <input id="free-ship-over" type="text" inputMode="decimal" value={values.freeShipOver} onChange={(e) => set("freeShipOver", e.target.value)} disabled={busy} aria-invalid={Boolean(errors.freeShipOver)} aria-describedby={describedBy("free-ship-over", errors.freeShipOver, true)} />
+            </Field>
+          </div>
+        )}
+        {values.shipEnabled && (
+          <label className="check">
+            <input type="checkbox" checked={values.taxShipping} onChange={(e) => set("taxShipping", e.target.checked)} disabled={busy} aria-describedby="tax-shipping-hint" />
+            Charge tax on shipping
+          </label>
+        )}
+        {values.shipEnabled && (
+          <p id="tax-shipping-hint" className="field-hint">
+            Some US states tax shipping. Every order uses your one tax rate; tax for buyers in other states isn't calculated.
+          </p>
+        )}
+        <label className="check">
+          <input type="checkbox" checked={values.pickupEnabled} onChange={(e) => set("pickupEnabled", e.target.checked)} disabled={busy} />
+          Local pickup (free)
+        </label>
+        {values.pickupEnabled && (
+          <Field id="pickup-note" label="Where and when to pick up" error={errors.pickupNote}>
+            <input id="pickup-note" type="text" maxLength={500} value={values.pickupNote} onChange={(e) => set("pickupNote", e.target.value)} disabled={busy} aria-invalid={Boolean(errors.pickupNote)} aria-describedby={describedBy("pickup-note", errors.pickupNote)} />
+          </Field>
+        )}
+      </fieldset>
+      <fieldset>
+        <legend>Payment</legend>
+        <p className="field-hint">Shoppers order now and pay you directly. You confirm each payment on the order. Card payments come later.</p>
+        <label className="check">
+          <input type="checkbox" checked={values.bankTransferEnabled} onChange={(e) => set("bankTransferEnabled", e.target.checked)} disabled={busy} />
+          Bank transfer
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={values.payOnPickupEnabled} onChange={(e) => set("payOnPickupEnabled", e.target.checked)} disabled={busy} aria-invalid={Boolean(errors.payOnPickupEnabled)} aria-describedby={errors.payOnPickupEnabled ? "pay-on-pickup-error" : undefined} />
+          Pay when picking up
+        </label>
+        {errors.payOnPickupEnabled && (
+          <p id="pay-on-pickup-error" className="field-error">
+            {errors.payOnPickupEnabled}
+          </p>
+        )}
+        <Field id="payment-instructions" label="Payment instructions" error={errors.paymentInstructions} hint="Shown to the shopper after ordering, until you confirm the payment. Never on your public pages.">
+          <textarea id="payment-instructions" rows={3} value={values.paymentInstructions} onChange={(e) => set("paymentInstructions", e.target.value)} disabled={busy} aria-invalid={Boolean(errors.paymentInstructions)} aria-describedby={describedBy("payment-instructions", errors.paymentInstructions, true)} />
+        </Field>
+      </fieldset>
       {PAGES.map((page) => (
         <Field key={page.key} id={page.id} label={page.label} error={errors[page.key]} hint={page.hint}>
           <textarea id={page.id} rows={4} value={values[page.key]} onChange={(e) => set(page.key, e.target.value)} disabled={busy} aria-invalid={Boolean(errors[page.key])} aria-describedby={describedBy(page.id, errors[page.key], Boolean(page.hint))} />

@@ -100,6 +100,17 @@ export function useUpdateProduct(id: string) {
   });
 }
 
+/** Replace the product's personalization questions (owner). */
+export function useReplacePersonalization(id: string) {
+  const api = useApi();
+  const done = useInvalidate();
+  return useMutation({
+    mutationFn: (body: Schemas["PersonalizationReplace"]) =>
+      unwrap(api.PUT("/api/v1/products/{product_id}/personalization", { params: { path: { product_id: id } }, body })),
+    onSuccess: done,
+  });
+}
+
 export function useDeleteProduct() {
   const api = useApi();
   const client = useQueryClient();
