@@ -70,8 +70,8 @@ AnyMember = Depends(require_role("owner", "staff", "cpa"))
 
 _COMPANY_COLUMNS = (
     "tenant_id, legal_name, ein, address, currency::text as currency, default_language, "
-    "enabled_languages, default_tax_rate_bps, stripe_account_id, next_quote_number, "
-    "next_invoice_number, updated_at"
+    "enabled_languages, default_tax_rate_bps, next_quote_number, next_invoice_number, "
+    "updated_at"
 )
 _BRAND_COLUMNS = (
     "tenant_id, business_name, tagline, primary_color, accent_color, logo_path, hero_title, "

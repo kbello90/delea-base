@@ -26,8 +26,15 @@ class Settings(BaseSettings):
     db_pool_min_size: int = 1
     db_pool_max_size: int = 10
 
+    # Stripe (Slice B2, test mode only). Never commit a key; never log one. A live key
+    # (sk_live_ / rk_live_) stops the API at startup (app/services/stripe_service.py).
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
+    # "stripe": the real API. "fake": an in-memory stand-in for the local end-to-end run only;
+    # refused outside ENVIRONMENT=local/test.
+    stripe_gateway: str = "stripe"
+    # Where Stripe-hosted onboarding sends the owner back: the admin app.
+    admin_app_url: str = "http://localhost:5173"
 
     llm_api_key: str = ""
 

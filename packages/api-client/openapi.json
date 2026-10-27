@@ -4168,6 +4168,59 @@
           }
         }
       }
+    },
+    "/api/v1/settings/payments": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Payment Settings",
+        "description": "The shop's Stripe account. One that can't take charges yet is read from Stripe again\n(the owner may have just come back from onboarding); Stripe being unreachable only means\nthe stored state is shown.",
+        "operationId": "payment_settings_api_v1_settings_payments_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentSettingsOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/payments/stripe/onboarding-link": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Onboarding Link",
+        "operationId": "onboarding_link_api_v1_settings_payments_stripe_onboarding_link_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingLinkOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -4616,17 +4669,6 @@
             "type": "integer",
             "title": "Default Tax Rate Bps"
           },
-          "stripe_account_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Stripe Account Id"
-          },
           "next_quote_number": {
             "type": "integer",
             "title": "Next Quote Number"
@@ -4651,7 +4693,6 @@
           "default_language",
           "enabled_languages",
           "default_tax_rate_bps",
-          "stripe_account_id",
           "next_quote_number",
           "next_invoice_number",
           "updated_at"
@@ -6959,6 +7000,19 @@
         ],
         "title": "MonthlyTrend"
       },
+      "OnboardingLinkOut": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "title": "OnboardingLinkOut"
+      },
       "OrderContactOut": {
         "properties": {
           "first_name": {
@@ -7406,6 +7460,49 @@
         ],
         "title": "PasswordResetRequest"
       },
+      "PaymentAccountOut": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "charges_enabled": {
+            "type": "boolean",
+            "title": "Charges Enabled"
+          },
+          "details_submitted": {
+            "type": "boolean",
+            "title": "Details Submitted"
+          },
+          "connected_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Connected At"
+          },
+          "disconnected_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disconnected At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id",
+          "charges_enabled",
+          "details_submitted",
+          "connected_at",
+          "disconnected_at"
+        ],
+        "title": "PaymentAccountOut",
+        "description": "The shop's connected Stripe account (Standard equivalent, onboarded on Stripe)."
+      },
       "PaymentCreate": {
         "properties": {
           "amount_cents": {
@@ -7553,6 +7650,40 @@
         ],
         "title": "PaymentOut",
         "description": "One row of the ledger: money received (payment) or returned (refund). Only succeeded\nrows count towards what has been paid."
+      },
+      "PaymentSettingsOut": {
+        "properties": {
+          "stripe_configured": {
+            "type": "boolean",
+            "title": "Stripe Configured"
+          },
+          "is_demo": {
+            "type": "boolean",
+            "title": "Is Demo"
+          },
+          "account": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaymentAccountOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "card_payments": {
+            "type": "boolean",
+            "title": "Card Payments"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stripe_configured",
+          "is_demo",
+          "account",
+          "card_payments"
+        ],
+        "title": "PaymentSettingsOut"
       },
       "PaymentTerms": {
         "type": "string",

@@ -1055,6 +1055,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Payment Settings
+         * @description The shop's Stripe account. One that can't take charges yet is read from Stripe again
+         *     (the owner may have just come back from onboarding); Stripe being unreachable only means
+         *     the stored state is shown.
+         */
+        get: operations["payment_settings_api_v1_settings_payments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/payments/stripe/onboarding-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Onboarding Link */
+        post: operations["onboarding_link_api_v1_settings_payments_stripe_onboarding_link_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1182,8 +1221,6 @@ export interface components {
             enabled_languages: string[];
             /** Default Tax Rate Bps */
             default_tax_rate_bps: number;
-            /** Stripe Account Id */
-            stripe_account_id: string | null;
             /** Next Quote Number */
             next_quote_number: number;
             /** Next Invoice Number */
@@ -1927,6 +1964,11 @@ export interface components {
             /** Months */
             months: components["schemas"]["MonthTotals"][];
         };
+        /** OnboardingLinkOut */
+        OnboardingLinkOut: {
+            /** Url */
+            url: string;
+        };
         /**
          * OrderContactOut
          * @description The shopper of a storefront order. Owner and staff only (RLS); never the CPA.
@@ -2074,6 +2116,25 @@ export interface components {
             email: string;
         };
         /**
+         * PaymentAccountOut
+         * @description The shop's connected Stripe account (Standard equivalent, onboarded on Stripe).
+         */
+        PaymentAccountOut: {
+            /** Account Id */
+            account_id: string;
+            /** Charges Enabled */
+            charges_enabled: boolean;
+            /** Details Submitted */
+            details_submitted: boolean;
+            /**
+             * Connected At
+             * Format: date-time
+             */
+            connected_at: string;
+            /** Disconnected At */
+            disconnected_at: string | null;
+        };
+        /**
          * PaymentCreate
          * @description A payment taken outside DELEA's card checkout: a deposit or the rest of the balance.
          *     It can't be more than what is still due; it is received now.
@@ -2134,6 +2195,16 @@ export interface components {
             refund_of: string | null;
             /** Voided At */
             voided_at: string | null;
+        };
+        /** PaymentSettingsOut */
+        PaymentSettingsOut: {
+            /** Stripe Configured */
+            stripe_configured: boolean;
+            /** Is Demo */
+            is_demo: boolean;
+            account: components["schemas"]["PaymentAccountOut"] | null;
+            /** Card Payments */
+            card_payments: boolean;
         };
         /**
          * PaymentTerms
@@ -5134,6 +5205,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    payment_settings_api_v1_settings_payments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentSettingsOut"];
+                };
+            };
+        };
+    };
+    onboarding_link_api_v1_settings_payments_stripe_onboarding_link_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingLinkOut"];
                 };
             };
         };

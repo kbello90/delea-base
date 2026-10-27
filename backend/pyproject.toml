@@ -14,6 +14,8 @@ dependencies = [
   "psycopg[binary,pool]>=3.2",
   "pillow==13.0.0",  # product image validation and WebP variants
   "httpx>=0.28",  # Supabase Storage and Auth admin calls (app/core/storage.py, auth_admin.py)
+  # Exact pin: it pins the Stripe API version (2026-09-30.endive); the owner's sandbox matches.
+  "stripe==16.0.0",
 ]
 
 [project.optional-dependencies]

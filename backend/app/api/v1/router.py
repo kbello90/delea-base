@@ -17,6 +17,7 @@ from app.api.v1 import (
     products,
     public,
     settings,
+    stripe_connect,
     stripe_webhooks,
 )
 
@@ -36,6 +37,7 @@ for module in (
     ai,
     dashboard,
     public,
+    stripe_connect,
     stripe_webhooks,
 ):
     api_router.include_router(module.router)

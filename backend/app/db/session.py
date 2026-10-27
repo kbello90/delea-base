@@ -153,6 +153,20 @@ async def checkout_session(pool: AsyncConnectionPool) -> AsyncIterator[AsyncConn
 
 
 @asynccontextmanager
+async def payments_session(pool: AsyncConnectionPool) -> AsyncIterator[AsyncConnection]:
+    """One transaction as `payments_writer` (TRD §6.14, decision K4).
+
+    No table grants: it may execute the Stripe functions only (stripe_apply_session,
+    stripe_apply_refund, stripe_apply_account, stripe_record_event, stripe_link_account,
+    stripe_close_session). Used by the webhook and Connect onboarding. The connection role
+    must be granted `payments_writer`.
+    """
+    async with pool.connection() as conn, conn.transaction():
+        await conn.execute("set local role payments_writer")
+        yield conn
+
+
+@asynccontextmanager
 async def service_session(pool: AsyncConnectionPool) -> AsyncIterator[AsyncConnection]:
     """One transaction with NO role switch: the connection's own role, RLS not applied.
 

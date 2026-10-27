@@ -1,10 +1,11 @@
 """Company settings and brand config schemas (Schema §3).
 
 Not writable here: tenant identity (tenant_id), the currency (set at provisioning; the
-database refuses a change once the tenant has data), stripe_account_id (set by the Stripe
-Connect flow), the document counters next_quote_number / next_invoice_number (rewriting them
-could reuse document numbers), and the logo (uploaded through its own endpoints). Request
-models forbid unknown fields, so sending any of these is a 422.
+database refuses a change once the tenant has data), the document counters
+next_quote_number / next_invoice_number (rewriting them could reuse document numbers), and
+the logo (uploaded through its own endpoints). Request models forbid unknown fields, so
+sending any of these is a 422. The shop's Stripe account is in payment_accounts
+(GET /settings/payments, Slice B2).
 """
 
 import re
@@ -128,7 +129,6 @@ class CompanySettingsOut(BaseModel):
     default_language: Language
     enabled_languages: list[str]
     default_tax_rate_bps: int
-    stripe_account_id: str | None  # read-only here
     next_quote_number: int  # read-only
     next_invoice_number: int  # read-only
     updated_at: datetime

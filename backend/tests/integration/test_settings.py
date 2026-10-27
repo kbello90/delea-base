@@ -26,7 +26,6 @@ _COMPANY_COLS = (
     "default_language",
     "enabled_languages",
     "default_tax_rate_bps",
-    "stripe_account_id",
     "next_quote_number",
     "next_invoice_number",
 )
@@ -180,12 +179,13 @@ def test_read_only_company_fields(
     value = TENANT_B if field == "tenant_id" else ("acct_IT" if field == "stripe_account_id" else 1)
     response = client.patch(COMPANY, json={field: value}, headers=users["owner_a"].headers)
     assert response.status_code == 422
+    # stripe_account_id is no longer a column (moved to payment_accounts, K2): still a 422.
     row = db.execute(
-        "select stripe_account_id, next_quote_number, next_invoice_number "
+        "select next_quote_number, next_invoice_number "
         "from public.company_settings where tenant_id = %s",
         (TENANT_A,),
     ).fetchone()
-    assert row == (None, 43, 90)
+    assert row == (43, 90)
 
 
 def test_brand_get_and_patch(client: TestClient, users: dict[str, TestUser]) -> None:

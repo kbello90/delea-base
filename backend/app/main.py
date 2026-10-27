@@ -15,6 +15,7 @@ from app.core.cors import StorefrontCORSMiddleware
 from app.core.errors import register_exception_handlers
 from app.core.security import ACCESS_HEADER
 from app.db.session import close_pool, create_pool, open_pool
+from app.services.stripe_service import check_stripe_settings
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
+    check_stripe_settings(settings)  # a live key, or the fake outside local/test: no start
     app.state.db_pool = None
     if settings.database_url:
         app.state.db_pool = create_pool(settings)
