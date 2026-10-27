@@ -346,6 +346,21 @@ def test_refunding_a_paid_invoice_records_the_refund(
     assert ledger(refunded)[-1] == ("refund", "card", "succeeded", 10800)
 
 
+def test_a_card_payment_taken_online_is_refunded_in_stripe(
+    client: TestClient, users: dict[str, TestUser], db
+) -> None:
+    owner = users["owner_a"]
+    inv = quote(client, owner, db)
+    db.execute(
+        "insert into public.payments (tenant_id, invoice_id, kind, provider, method, amount_cents, "
+        "currency, external_id) values (%s, %s, 'payment', 'stripe', 'card', 10800, 'USD', %s)",
+        (TENANT_A, inv["id"], f"pi_test_{tag()}"),
+    )
+    response = client.post(f"{INVOICES}/{inv['id']}/refund", headers=owner.headers)
+    assert response.status_code == 409
+    assert response.json()["detail"] == "This invoice was paid by card online. Refund it in Stripe."
+
+
 def test_correcting_the_method_corrects_its_single_payment(
     client: TestClient, users: dict[str, TestUser], db
 ) -> None:

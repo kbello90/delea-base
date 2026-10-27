@@ -165,6 +165,14 @@ describe("an invoice's payments", () => {
     expect(screen.queryByRole("button", { name: /^Void/ })).not.toBeInTheDocument();
   });
 
+  it("an invoice paid by card online is refunded in Stripe: no Refund button", async () => {
+    const card = paidInvoice({ quote_number: "QTE-2026-059", items: [line], payments: [makePayment({ provider: "stripe", method: "card", amount_cents: 10800 })] });
+    setup(`/invoices/${card.id}`, { invoices: [card] });
+    await screen.findByRole("heading", { name: "Payments" });
+    expect(screen.queryByRole("button", { name: "Refund" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Void/ })).not.toBeInTheDocument();
+  });
+
   it("the list shows a deposit's state and what is due", async () => {
     const q = depositQuote(3000, { quote_number: "QTE-2026-058", production_started_at: "2026-10-22T15:45:00Z" });
     setup("/invoices", { invoices: [q] });
