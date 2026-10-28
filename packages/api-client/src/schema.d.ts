@@ -756,6 +756,27 @@ export interface paths {
         patch: operations["update_storefront_settings_api_v1_settings_storefront_patch"];
         trace?: never;
     };
+    "/api/v1/settings/website": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Website
+         * @description The shop's own website address (its first storefront domain, alphabetically: the one
+         *     customer emails link to) and whether the storefront is switched on.
+         */
+        get: operations["get_website_api_v1_settings_website_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/currency": {
         parameters: {
             query?: never;
@@ -3089,6 +3110,16 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /**
+         * WebsiteOut
+         * @description The shop's own website, for the admin's Website page.
+         */
+        WebsiteOut: {
+            /** Url */
+            url: string | null;
+            /** Enabled */
+            enabled: boolean;
+        };
         /** PersonalizationFieldOut */
         app__models__product__PersonalizationFieldOut: {
             /**
@@ -4985,6 +5016,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_website_api_v1_settings_website_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebsiteOut"];
                 };
             };
         };

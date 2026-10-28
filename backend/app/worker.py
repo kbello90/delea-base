@@ -31,6 +31,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
 from app.core.config import Settings, get_settings
+from app.core.storefront_hosts import storefront_url
 from app.db.session import close_pool, create_pool, email_session, open_pool
 from app.services import email_templates as templates
 from app.services.email_senders import (
@@ -122,7 +123,7 @@ async def customer_emails(
     if not ctx or ctx["cancelled"] or not ctx["storefront_domain"]:
         return
     shop = event["context"]
-    website = templates.storefront_url(ctx["storefront_domain"], settings.is_dev_environment)
+    website = storefront_url(ctx["storefront_domain"], settings.is_dev_environment)
     payload = event["payload"]
     for template, key in wanted:
         if not ctx["switches"].get(template, True):

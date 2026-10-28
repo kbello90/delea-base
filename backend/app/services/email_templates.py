@@ -297,11 +297,6 @@ class Order:
     intro: str | None = None
 
 
-def storefront_url(domain: str, dev: bool) -> str:
-    """The shop's website from its storefront domain: plain http only in local/test."""
-    return f"{'http' if dev else 'https'}://{domain}"
-
-
 def order_from_context(
     shop: str,
     color: str | None,

@@ -3444,6 +3444,33 @@
         ]
       }
     },
+    "/api/v1/settings/website": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get Website",
+        "description": "The shop's own website address (its first storefront domain, alphabetically: the one\ncustomer emails link to) and whether the storefront is switched on.",
+        "operationId": "get_website_api_v1_settings_website_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebsiteOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/settings/currency": {
       "get": {
         "tags": [
@@ -10453,6 +10480,32 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WebsiteOut": {
+        "properties": {
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "enabled"
+        ],
+        "title": "WebsiteOut",
+        "description": "The shop's own website, for the admin's Website page."
       },
       "app__models__product__PersonalizationFieldOut": {
         "properties": {

@@ -29,6 +29,7 @@ from app.api.deps import CurrentClaims, DbConn, get_pool, require_role
 from app.core import rate_limit
 from app.core.config import get_settings
 from app.core.errors import ConflictError
+from app.core.storefront_hosts import storefront_url
 from app.db.session import email_session, service_session
 from app.models.emails import (
     CustomerEmail,
@@ -202,7 +203,7 @@ async def request_reply_to(
 def _sample(shop: dict[str, Any], template: str, intro: str | None) -> templates.Rendered:
     """A customer email about a made-up order, in the shop's colours and with its footer."""
     website = (
-        templates.storefront_url(shop["storefront_domain"], get_settings().is_dev_environment)
+        storefront_url(shop["storefront_domain"], get_settings().is_dev_environment)
         if shop["storefront_domain"]
         else None
     )

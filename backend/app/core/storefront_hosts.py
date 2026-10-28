@@ -27,6 +27,11 @@ CACHE_MAX_ENTRIES = 1000
 _MAX_ORIGIN_LENGTH = 300
 
 
+def storefront_url(domain: str, dev: bool) -> str:
+    """A shop's website from its storefront domain: plain http only in local/test."""
+    return f"{'http' if dev else 'https'}://{domain}"
+
+
 def origin_host(origin: str | None, *, dev: bool) -> str | None:
     """The lowercased host[:port] of an acceptable storefront Origin, or None.
 

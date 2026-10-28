@@ -36,6 +36,7 @@ from app.core import storage
 from app.core.config import get_settings
 from app.core.errors import NotFoundError
 from app.core.security import TokenClaims
+from app.core.storefront_hosts import storefront_url
 from app.db.session import user_session
 from app.db.sql_helpers import patch_changes, update_statement
 from app.models.settings import (
@@ -54,6 +55,7 @@ from app.models.settings import (
     LogoUploadTicket,
     StorefrontSettingsOut,
     StorefrontSettingsUpdate,
+    WebsiteOut,
     language_rule_errors,
     storefront_rule_errors,
 )
@@ -187,6 +189,27 @@ async def get_storefront_settings(claims: CurrentClaims, conn: DbConn) -> Storef
     if row is None:
         raise NotFoundError("Storefront settings not found")
     return StorefrontSettingsOut.model_validate(row)
+
+
+@router.get("/website", response_model=WebsiteOut, dependencies=[OwnerOnly])
+async def get_website(claims: CurrentClaims, conn: DbConn) -> WebsiteOut:
+    """The shop's own website address (its first storefront domain, alphabetically: the one
+    customer emails link to) and whether the storefront is switched on."""
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            "select (select d.domain from public.tenant_domains d "
+            "where d.tenant_id = %(t)s and d.kind = 'storefront' order by d.domain limit 1) "
+            "as domain, coalesce((select s.storefront_enabled from public.storefront_settings s "
+            "where s.tenant_id = %(t)s), false) as enabled",
+            {"t": claims.tenant_id},
+        )
+        row = await cur.fetchone()
+    assert row is not None
+    dev = get_settings().is_dev_environment
+    return WebsiteOut(
+        url=storefront_url(row["domain"], dev) if row["domain"] else None,
+        enabled=row["enabled"],
+    )
 
 
 @router.patch("/storefront", response_model=StorefrontSettingsOut, dependencies=[OwnerOnly])
