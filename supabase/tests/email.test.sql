@@ -117,6 +117,25 @@ select is(pg_temp.enqueue('customer', 'many@example.test', 'k-many-' || n), 'que
 select is(pg_temp.enqueue('customer', 'many@example.test', 'k-many-6'), 'suppressed', 'at most 5 a day to one customer');
 select is(pg_temp.enqueue('test', 'owner-a@example.test', 'k-test-' || n), 'queued', 'test ' || n) from generate_series(1, 10) n;
 select is(pg_temp.enqueue('test', 'owner-a@example.test', 'k-test-11'), 'suppressed', 'at most 10 tests a day');
+-- 300 customer emails a day per shop. Every attempt counts, whatever its status.
+select count(*) from (
+  select pg_temp.enqueue('customer', 'bulk-' || n || '@example.test', 'k-bulk-' || n)
+    from generate_series(1, 300 - (select count(*)::int from public.email_messages
+                                    where tenant_id = '11111111-1111-1111-1111-111111111111' and kind = 'customer')) n
+) filled;
+select is((select count(*) from public.email_messages
+            where tenant_id = '11111111-1111-1111-1111-111111111111' and kind = 'customer'), 300::bigint,
+          'the shop is at 300 customer emails today');
+select is((select count(*) from public.email_messages where source_key like 'k-bulk-%' and status <> 'queued'), 0::bigint,
+          'and every one of them was queued');
+select is(pg_temp.enqueue('customer', 'one-more@example.test', 'k-bulk-301'), 'suppressed', 'at most 300 customer emails a day per shop');
+select is((select last_error from public.email_messages where source_key = 'k-bulk-301'), 'daily limit reached', 'and says why');
+update public.tenants set is_demo = false where id = '22222222-2222-2222-2222-222222222222';
+select is(pg_temp.enqueue('customer', 'one-more@example.test', 'k-bulk-b', '22222222-2222-2222-2222-222222222222'), 'queued',
+          'another shop has its own 300');
+update public.tenants set is_demo = true where id = '22222222-2222-2222-2222-222222222222';
+-- The rest of this file sends as if the day were quiet.
+delete from public.email_messages where source_key like 'k-bulk-%';
 
 -- ---------------------------------------------------------------------------
 -- 3. Reply-to: confirmed through the link before use
