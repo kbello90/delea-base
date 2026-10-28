@@ -90,7 +90,7 @@ describe("product page", () => {
     await user.click(screen.getByRole("button", { name: "Add to bag" }));
     expect(await screen.findByText(/Added to your bag/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Bag, 1 item" })).toBeInTheDocument();
-    expect(loadBag()[0].personalization).toEqual({ [SIZE_FIELD]: "7", [ENGRAVING_FIELD]: "K & J" });
+    await waitFor(() => expect(loadBag()[0]?.personalization).toEqual({ [SIZE_FIELD]: "7", [ENGRAVING_FIELD]: "K & J" }));
   });
 
   it("a card adds a plain piece in one tap; a personalized one sends you to choose", async () => {
@@ -200,7 +200,8 @@ describe("checkout", () => {
     expect(body.items).toEqual([{ product_id: RING.id, qty: 1, personalization: { [SIZE_FIELD]: "7" } }]);
     expect(body.ship_to).toEqual({ line1: "1 Main St", city: "Portland", state: "ME", postal_code: "04101" });
     expect(JSON.stringify(body.items)).not.toMatch(/price|total/);
-    expect(loadBag()).toEqual([]); // the bag is emptied
+    // The bag is saved by an effect after the confirmation renders: wait for it.
+    await waitFor(() => expect(loadBag()).toEqual([]));
   });
 
   it("a double click sends one request", async () => {

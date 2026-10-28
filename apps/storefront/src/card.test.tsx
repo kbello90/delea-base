@@ -56,7 +56,7 @@ describe("card at checkout", () => {
     await waitFor(() => expect(leaving).toHaveBeenCalledWith(CHECKOUT_URL));
     expect(server.orders).toHaveLength(1);
     expect(server.orders[0].payment_choice).toBe("card");
-    expect(loadBag()).toEqual([]);
+    await waitFor(() => expect(loadBag()).toEqual([]));
   });
 
   it("never follows a link that isn't Stripe's Checkout", () => {
