@@ -123,18 +123,27 @@ async def customer_emails(
         return
     shop = event["context"]
     website = templates.storefront_url(ctx["storefront_domain"], settings.is_dev_environment)
+    payload = event["payload"]
     for template, key in wanted:
         if not ctx["switches"].get(template, True):
             continue
+        facts = ctx
+        if template == "deposit_received" and "balance_cents" in payload:
+            # As at the deposit, even if the rest has been paid since.
+            facts = {
+                **ctx,
+                "amount_paid_cents": payload["paid_cents"],
+                "balance_cents": payload["balance_cents"],
+            }
         order = templates.order_from_context(
             shop["business_name"],
             shop.get("primary_color"),
-            ctx,
+            facts,
             f"{website}/orders/{ctx['public_token']}",
             website,
             ctx["intros"].get(template),
         )
-        content = templates.customer_email(template, order, event["payload"].get("amount_cents"))
+        content = templates.customer_email(template, order, payload.get("amount_cents"))
         if await _enqueue(conn, event["tenant_id"], "customer", template, key, ctx["to"], content):
             report.queued += 1
 

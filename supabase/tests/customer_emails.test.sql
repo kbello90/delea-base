@@ -124,8 +124,15 @@ select is(pg_temp.context((select id from d2_order), '22222222-2222-2222-2222-22
 select throws_ok(format($q$update public.invoices set carrier = 'USPS', tracking_number = '9400 1000 0000'
                             where id = %L$q$, (select id from d2_order)),
                  '23514', null, 'an unshipped order has no tracking number');
+-- A deposit event keeps the amounts of its moment.
 insert into public.payments (tenant_id, invoice_id, kind, method, amount_cents, currency)
-select tenant_id, id, 'payment', 'bank_transfer', total_cents, 'USD' from d2_order;
+select tenant_id, id, 'payment', 'bank_transfer', 3000, 'USD' from d2_order;
+select is((select payload - 'invoice_id' - 'payment_id' from public.automation_events
+            where event_type = 'deposit_received' and payload ->> 'invoice_id' = (select id::text from d2_order)),
+          '{"amount_cents": 3000, "paid_cents": 3000, "balance_cents": 8184}'::jsonb,
+          'a deposit event carries what was paid and what was still due then');
+insert into public.payments (tenant_id, invoice_id, kind, method, amount_cents, currency)
+select tenant_id, id, 'payment', 'bank_transfer', total_cents - 3000, 'USD' from d2_order;
 update public.invoices set order_status = 'paid' where id = (select id from d2_order);
 select throws_ok(format($q$update public.invoices set order_status = 'shipped', carrier = 'USPS',
                             tracking_number = '<script>' where id = %L$q$, (select id from d2_order)),

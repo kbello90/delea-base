@@ -123,7 +123,7 @@ test("a shopper orders a personalized ring; the owner sees it in the admin", asy
 });
 
 /** Places an order of the necklace on a phone, the way a shopper does; returns its tracking URL and reference. */
-async function placeNecklaceOrder(page: Page, origin: string) {
+async function placeNecklaceOrder(page: Page, origin: string, email = "lena@example.com") {
   await page.goto(origin);
   await page.getByRole("link", { name: /Necklace/ }).first().click();
   await page.getByRole("button", { name: "Add to bag" }).click();
@@ -132,7 +132,7 @@ async function placeNecklaceOrder(page: Page, origin: string) {
   const opened = Date.now();
   await page.getByLabel("First name").fill("Lena");
   await page.getByLabel("Last name").fill("Ortiz");
-  await page.getByLabel("Email").fill("lena@example.com");
+  await page.getByLabel("Email").fill(email);
   await page.getByLabel("Street address").fill("9 Elm St");
   await page.getByLabel("City").fill("Bangor");
   await page.getByLabel("State").selectOption("ME");
@@ -329,3 +329,110 @@ test("email: the owner gets a new-order alert; Settings › Emails shows it sent
   await desk.close();
 });
 
+
+async function signInAdmin(page: Page, s: Shop) {
+  await page.goto(`http://localhost:${PORTS.admin}/sign-in`);
+  await page.getByLabel("Email").fill(s.owner_email);
+  await page.getByLabel("Password").fill(s.owner_password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL((url) => !url.pathname.startsWith("/sign-in"));
+}
+
+/** One pass of the worker, into the local mail catcher only (never Resend, whatever backend/.env says). */
+function runWorker() {
+  execFileSync(PYTHON, ["-m", "app.worker", "--once"], {
+    cwd: BACKEND,
+    env: { ...process.env, EMAIL_PROVIDER: "mailpit", RESEND_API_KEY: "", ADMIN_APP_URL: `http://localhost:${PORTS.admin}` },
+  });
+}
+
+async function mailTo(address: string) {
+  const found = (await (await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:${address}`)}`)).json()) as {
+    messages: { ID: string; Subject: string }[];
+  };
+  return found.messages;
+}
+
+test("customer emails: order received, deposit received and shipped reach the shopper; the owner previews one", async ({ browser }) => {
+  test.setTimeout(240_000); // an order, two payments, shipping, the worker and two admin sessions
+  const s = shop();
+  const shopper = "noor@example.com";
+  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  const order = await placeNecklaceOrder(await phone.newPage(), s.origin, shopper);
+  runWorker(); // the worker runs all the time; here, after each step
+
+  // In the admin: a $50 deposit, then the rest, then shipped with a carrier and tracking number.
+  const desk = await browser.newContext({ viewport: { width: 1440, height: 1700 } });
+  const admin = await desk.newPage();
+  await signInAdmin(admin, s);
+  await admin.getByRole("link", { name: /^Invoices/ }).click();
+  await admin.getByRole("row", { name: new RegExp(order.ref) }).getByRole("link").first().click();
+  const payments = admin.getByRole("region", { name: "Payments" });
+  await payments.getByRole("button", { name: "Record payment" }).click();
+  let form = admin.getByRole("form", { name: "Record a payment" });
+  await form.getByLabel("Amount received").fill("50");
+  await form.getByRole("radio", { name: "Bank transfer" }).check();
+  await form.getByRole("button", { name: "Record payment" }).click();
+  await expect(admin.getByText(/^\$50\.00 recorded\./)).toBeVisible();
+  runWorker();
+  await payments.getByRole("button", { name: "Record payment" }).click();
+  form = admin.getByRole("form", { name: "Record a payment" });
+  await form.getByRole("radio", { name: "Bank transfer" }).check(); // the amount defaults to what is due
+  await form.getByRole("button", { name: "Record payment" }).click();
+  await admin.getByRole("button", { name: "Mark shipped" }).click();
+  const dialog = admin.getByRole("dialog");
+  await dialog.getByLabel("Carrier (optional)").fill("USPS");
+  await dialog.getByLabel("Tracking number (optional)").fill("9400 1000 0000 0000 0000 00");
+  await dialog.getByRole("button", { name: "Mark shipped" }).click();
+  await expect(admin.getByText("USPS · tracking 9400 1000 0000 0000 0000 00")).toBeVisible();
+  runWorker();
+  const inbox = await mailTo(shopper);
+  const wanted: [string, string][] = [
+    [`Order ${order.ref} received`, "19-email-order-received-phone"],
+    [`Deposit received for ${order.ref}`, "20-email-deposit-received-phone"],
+    [`Order ${order.ref} has shipped`, "21-email-shipped-phone"],
+  ];
+  const mail = await phone.newPage();
+  for (const [subject, name] of wanted) {
+    const found = inbox.find((m) => m.Subject === subject);
+    expect(found, subject).toBeTruthy();
+    const message = (await (await fetch(`${MAILPIT}/api/v1/message/${found!.ID}`)).json()) as { HTML: string; Text: string };
+    expect(message.Text).not.toMatch(/Elm St|Bangor|04401/); // never the address
+    expect(message.Text).toContain("You're receiving this because you placed an order with");
+    expect(message.Text).toContain(order.url.replace(/\?.*$/, ""));
+    if (subject.endsWith("received")) expect(message.Text).toContain("Transfer the total to E2E Jewelry"); // how to pay
+    if (subject.startsWith("Deposit")) expect(message.Text).toMatch(/Paid so far: \$50\.00\s+Left to pay: \$61\.84/);
+    await mail.setContent(message.HTML);
+    await mail.screenshot({ path: shots(name), fullPage: true });
+  }
+  expect(inbox.some((m) => m.Subject === `Payment received for ${order.ref}`)).toBe(true);
+
+  // Settings › Emails: the preview of the Order received email, with an unsaved intro.
+  await admin.getByRole("link", { name: /^Settings/ }).click();
+  const customer = admin.getByRole("form", { name: "Emails to your customers" });
+  await customer.getByLabel("Your intro for “Order received” (optional)").fill("Thank you for shopping small!");
+  await customer.getByRole("button", { name: "Preview “Order received”" }).click();
+  const preview = admin.getByRole("region", { name: /^Preview: Order received/ });
+  await expect(preview.frameLocator("iframe").getByText("Thank you for shopping small!")).toBeVisible();
+  await expect(preview.frameLocator("iframe").getByRole("heading", { name: "Thank you, Sarah" })).toBeVisible();
+  await preview.scrollIntoViewIfNeeded();
+  await preview.screenshot({ path: shots("22-admin-email-preview") });
+
+  // The same at phone width.
+  const small = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  const adminPhone = await small.newPage();
+  await signInAdmin(adminPhone, s);
+  await adminPhone.goto(`http://localhost:${PORTS.admin}/settings`);
+  await adminPhone
+    .getByRole("form", { name: "Emails to your customers" })
+    .getByRole("button", { name: "Preview “Deposit received”" })
+    .click();
+  const phonePreview = adminPhone.getByRole("region", { name: /^Preview: Deposit received/ });
+  await expect(phonePreview.frameLocator("iframe").getByRole("heading", { name: "Deposit received" })).toBeVisible();
+  await adminPhone.addStyleTag({ content: ".topbar { position: static !important; }" }); // not over the preview
+  await phonePreview.scrollIntoViewIfNeeded();
+  await phonePreview.screenshot({ path: shots("22-admin-email-preview-phone") });
+  await small.close();
+  await phone.close();
+  await desk.close();
+});

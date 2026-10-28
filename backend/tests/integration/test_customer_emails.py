@@ -81,7 +81,8 @@ async def test_an_order_from_placed_to_shipped(client, shop, db, pool) -> None:
     assert rest.status_code == 201 and rest.json()["order_status"] == "in_production"
     await worker.run_once()
     subjects = [e.subject for e in to_shopper(recorder)]
-    assert subjects[-2:] == [f"Order {ref} is being made", f"Payment received for {ref}"]
+    # Queued in the same pass, so in no particular order.
+    assert set(subjects[-2:]) == {f"Order {ref} is being made", f"Payment received for {ref}"}
     # Production started, then the status became in production: one email, not two.
     assert subjects.count(f"Order {ref} is being made") == 1
 
@@ -124,6 +125,26 @@ async def test_an_order_from_placed_to_shipped(client, shop, db, pool) -> None:
     )
     await worker.run_once()
     assert len(to_shopper(recorder)) == 5
+
+
+@pytest.mark.anyio
+async def test_a_late_worker_still_describes_the_deposit_as_it_was(client, shop, db, pool) -> None:
+    owner = shop["tenant"].headers("owner")
+    order = place(client, shop)
+    invoice = invoice_of(db, shop["tenant"].id, order["order_ref"])
+    for cents in (5000, 11260):  # a deposit, then the rest, before the worker runs
+        paid = client.post(
+            f"/api/v1/invoices/{invoice}/payments",
+            json={"amount_cents": cents, "method": "bank_transfer"},
+            headers=owner,
+        )
+        assert paid.status_code == 201, paid.text
+    recorder = Recorder()
+    await Worker(pool, recorder, get_settings()).run_once()
+    by_subject = {e.subject.split(" for ")[0]: e for e in to_shopper(recorder)}
+    deposit = by_subject["Deposit received"]
+    assert "Paid so far: $50.00" in deposit.text and "Left to pay: $112.60" in deposit.text
+    assert "Payment received" in by_subject  # and the payment in full has its own email
 
 
 @pytest.mark.anyio

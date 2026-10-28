@@ -7,6 +7,9 @@
 --      only. Website orders only. It never carries the street address, the phone number, the
 --      city, the ZIP code or the shopper's note: a customer email shows the order reference,
 --      the items, the amounts, how to pay and the tracking link, nothing more.
+--   5. deposit_received events also carry what was paid and what was still due at that
+--      moment, so the Deposit received email describes the deposit even when the worker writes
+--      it later (after the rest was paid, say).
 
 -- ---------------------------------------------------------------------------
 -- 1. Carrier and tracking number
@@ -158,3 +161,31 @@ $$;
 
 revoke all on function public.email_customer_context(uuid, uuid) from public, anon, authenticated, service_role;
 grant execute on function public.email_customer_context(uuid, uuid) to email_worker;
+
+-- ---------------------------------------------------------------------------
+-- 5. A deposit event remembers the amounts of its moment
+-- ---------------------------------------------------------------------------
+create or replace function public.payments_emit_deposit_received()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_balance bigint;
+begin
+  if new.kind = 'payment' and new.status = 'succeeded'
+     and (tg_op = 'INSERT' or old.status is distinct from 'succeeded') then
+    v_balance := public.invoice_balance(new.invoice_id);
+    if v_balance > 0 then
+      insert into public.automation_events (tenant_id, event_type, payload)
+      values (new.tenant_id, 'deposit_received', jsonb_build_object(
+        'invoice_id', new.invoice_id, 'payment_id', new.id, 'amount_cents', new.amount_cents,
+        'paid_cents', public.invoice_amount_paid(new.invoice_id), 'balance_cents', v_balance));
+    end if;
+  end if;
+  return null;
+end;
+$$;
+
+revoke all on function public.payments_emit_deposit_received() from public, anon, authenticated, service_role;

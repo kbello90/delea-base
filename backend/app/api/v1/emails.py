@@ -18,6 +18,7 @@ import json
 import logging
 import secrets
 import time
+from dataclasses import replace
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -212,6 +213,12 @@ def _sample(shop: dict[str, Any], template: str, intro: str | None) -> templates
         shop["contact_email"] or shop["reply_to"],
         intro,
     )
+    # The made-up order at the moment each email is about: just placed, after a $50 deposit,
+    # or paid in full.
+    if template == "order_received":
+        order = replace(order, paid_cents=0, balance_cents=order.total_cents)
+    elif template in ("payment_received", "in_production", "shipped"):
+        order = replace(order, paid_cents=order.total_cents, balance_cents=0)
     return templates.customer_email(template, order, 5000)
 
 
