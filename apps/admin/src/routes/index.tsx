@@ -19,6 +19,7 @@ import { ProductsPage } from "../products/ProductsPage";
 import { SettingsPage } from "../settings/SettingsPage";
 import { TeamPage } from "../settings/TeamPage";
 import { AppShell } from "../shell/AppShell";
+import { WebsitePage } from "../website/WebsitePage";
 import { DefaultLanding, NotFoundPage, PlaceholderPage } from "./pages";
 import { RequireRole } from "./RequireRole";
 import { ROUTES } from "./routeTable";
@@ -31,6 +32,7 @@ const PAGES: Record<string, JSX.Element> = {
   "/customers": <CustomersPage />,
   "/invoices": <InvoicesPage />,
   "/expenses": <ExpensesPage />,
+  "/website": <WebsitePage />,
   "/settings": <SettingsPage />,
 };
 

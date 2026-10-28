@@ -1,0 +1,68 @@
+/* Website (owner): the live preview beside the Brand and Storefront settings. */
+.website-layout {
+  display: grid;
+  gap: 1.25rem;
+  align-items: start;
+}
+.website-preview {
+  min-width: 0;
+}
+.website-preview__widths {
+  display: inline-flex;
+  margin: 0 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.btn-toggle {
+  border: 0;
+  padding: 0.4rem 0.9rem;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.btn-toggle + .btn-toggle {
+  border-left: 1px solid var(--border);
+}
+.btn-toggle[aria-pressed="true"] {
+  background: var(--brand);
+  color: #fff;
+}
+.btn-toggle:focus-visible {
+  outline: 2px solid var(--brand-gold);
+  outline-offset: -2px;
+}
+/* The frame keeps its real width (390 or 1280) and is scaled down to the column. */
+.website-preview__box {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.website-preview__frame {
+  display: block;
+  border: 0;
+  background: #fff;
+  transform-origin: 0 0;
+}
+.website-controls {
+  min-width: 0;
+}
+
+/* Wide screens: settings on the left, the preview on the right, kept in view while scrolling. */
+@media (min-width: 1100px) {
+  .website-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    grid-template-areas: "controls preview";
+  }
+  .website-controls {
+    grid-area: controls;
+  }
+  .website-preview {
+    grid-area: preview;
+    position: sticky;
+    top: 1rem;
+  }
+}

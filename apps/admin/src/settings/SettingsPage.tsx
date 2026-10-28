@@ -159,7 +159,7 @@ function ColorField({ id, label, value, error, onChange, disabled }: { id: strin
   );
 }
 
-function LogoSection({ brand }: { brand: BrandConfig }) {
+function LogoSection({ brand, onSaved }: { brand: BrandConfig; onSaved?: () => void }) {
   const toast = useToast();
   const upload = useUploadLogo();
   const remove = useRemoveLogo();
@@ -183,7 +183,10 @@ function LogoSection({ brand }: { brand: BrandConfig }) {
     upload.mutate(
       { file, type: checked.type, onProgress: setProgress },
       {
-        onSuccess: () => toast({ title: logo ? "Logo replaced" : "Logo added", variant: "success" }),
+        onSuccess: () => {
+          toast({ title: logo ? "Logo replaced" : "Logo added", variant: "success" });
+          onSaved?.();
+        },
         onSettled: () => {
           setProgress(null);
           setInputKey((k) => k + 1);
@@ -241,6 +244,7 @@ function LogoSection({ brand }: { brand: BrandConfig }) {
             onSuccess: () => {
               setConfirm(false);
               toast({ title: "Logo removed", variant: "success" });
+              onSaved?.();
             },
           })
         }
@@ -249,7 +253,8 @@ function LogoSection({ brand }: { brand: BrandConfig }) {
   );
 }
 
-function BrandCard({ brand }: { brand: BrandConfig }) {
+/** Brand: shared with the Website page, where `onSaved` reloads the live preview. */
+export function BrandCard({ brand, onSaved }: { brand: BrandConfig; onSaved?: () => void }) {
   const toast = useToast();
   const update = useUpdateBrand();
   const [values, setValues] = useState<BrandFormValues>(() => toBrandValues(brand));
@@ -267,6 +272,7 @@ function BrandCard({ brand }: { brand: BrandConfig }) {
       onSuccess: (saved) => {
         setValues(toBrandValues(saved));
         toast({ title: "Brand saved", variant: "success" });
+        onSaved?.();
       },
     });
   }
@@ -353,7 +359,7 @@ function BrandCard({ brand }: { brand: BrandConfig }) {
           </Button>
         </div>
       </form>
-      <LogoSection brand={brand} />
+      <LogoSection brand={brand} onSaved={onSaved} />
     </section>
   );
 }
@@ -365,7 +371,8 @@ const PAGES: { key: "customOrdersInfo" | "returnPolicy" | "privacyPolicy" | "ter
   { key: "terms", id: "terms", label: "Terms" },
 ];
 
-function StorefrontCard({ settings }: { settings: StorefrontSettings }) {
+/** Storefront: shared with the Website page, where `onSaved` reloads the live preview. */
+export function StorefrontCard({ settings, onSaved }: { settings: StorefrontSettings; onSaved?: () => void }) {
   const toast = useToast();
   const update = useUpdateStorefront();
   const [values, setValues] = useState<StorefrontFormValues>(() => toStorefrontValues(settings));
@@ -383,6 +390,7 @@ function StorefrontCard({ settings }: { settings: StorefrontSettings }) {
       onSuccess: (saved) => {
         setValues(toStorefrontValues(saved));
         toast({ title: "Storefront saved", variant: "success" });
+        onSaved?.();
       },
     });
   }

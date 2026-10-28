@@ -13,11 +13,12 @@ const PAGES = [
   { path: "/customers", label: "Customers" },
   { path: "/invoices", label: "Invoices" },
   { path: "/expenses", label: "Expenses" },
+  { path: "/website", label: "Website" },
   { path: "/settings", label: "Settings" },
 ] as const;
 
 const ALLOWED: Record<AppRole, readonly string[]> = {
-  owner: ["Dashboard", "Products", "Materials", "Customers", "Invoices", "Expenses", "Settings"],
+  owner: ["Dashboard", "Products", "Materials", "Customers", "Invoices", "Expenses", "Website", "Settings"],
   staff: ["Products", "Materials", "Customers", "Invoices"],
   cpa: ["Invoices", "Expenses"],
 };
@@ -27,7 +28,7 @@ const LANDING: Record<AppRole, string> = { owner: "Dashboard", staff: "Products"
 const ROLES: AppRole[] = ["owner", "staff", "cpa"];
 
 // Pages that are built (no placeholder). Placeholders say which slice builds them.
-const BUILT = new Set(["/dashboard", "/products", "/materials", "/customers", "/invoices", "/expenses", "/settings"]);
+const BUILT = new Set(["/dashboard", "/products", "/materials", "/customers", "/invoices", "/expenses", "/website", "/settings"]);
 
 const cases = ROLES.flatMap((role) =>
   PAGES.map((page) => ({ role, ...page, allowed: ALLOWED[role].includes(page.label) })),
