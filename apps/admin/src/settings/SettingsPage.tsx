@@ -1,7 +1,7 @@
 import { ApiError } from "@delea/api-client";
 import { Button } from "@delea/ui";
-import { useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState, type FormEvent } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ErrorState } from "../components/ErrorState";
 import { Field } from "../components/Field";
@@ -553,6 +553,11 @@ export function SettingsPage() {
   const storefront = useStorefrontSettings();
   const payments = usePaymentSettings();
   const emails = useEmailSettings();
+  const { hash } = useLocation();
+  const emailsReady = Boolean(emails.data);
+  useEffect(() => {
+    if (hash && emailsReady) document.getElementById(hash.slice(1))?.scrollIntoView?.();
+  }, [hash, emailsReady]);
 
   return (
     <>

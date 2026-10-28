@@ -19,6 +19,7 @@ export const ROUTES: readonly AppRoute[] = [
   { path: "/invoices", label: "Invoices", roles: ["owner", "staff", "cpa"], glyph: "▢", slice: 6 },
   { path: "/expenses", label: "Expenses", roles: ["owner", "cpa"], glyph: "▥", slice: 7 },
   { path: "/website", label: "Website", roles: ["owner"], glyph: "◎", slice: 9 },
+  { path: "/automations", label: "Automations", roles: ["owner"], glyph: "↻", slice: 9 },
   { path: "/settings", label: "Settings", roles: ["owner"], glyph: "⚙", slice: 8 },
 ];
 

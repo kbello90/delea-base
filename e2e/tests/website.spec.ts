@@ -67,3 +67,18 @@ test("website: the owner sees the live shop beside its settings, on desktop and 
   await small.close();
   await desk.close();
 });
+
+test("automations: every automatic email, its trigger and whether it is on; read only", async ({ browser }) => {
+  const s = shop();
+  const desk = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const admin = await desk.newPage();
+  await signIn(admin, s);
+  await admin.getByRole("link", { name: /^Automations/ }).click();
+  const table = admin.getByRole("table", { name: "Automatic emails" });
+  await expect(table.getByRole("row")).toHaveCount(9);
+  await expect(admin.getByRole("checkbox")).toHaveCount(0);
+  await admin.screenshot({ path: shots("24-admin-automations") });
+  await admin.getByRole("link", { name: "Change in Settings › Emails" }).click();
+  await expect(admin.getByRole("heading", { name: "Emails", exact: true })).toBeInViewport();
+  await desk.close();
+});

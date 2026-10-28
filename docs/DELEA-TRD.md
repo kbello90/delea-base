@@ -616,3 +616,6 @@ Live mode is blocked in all of Slice B: the API refuses live keys and the databa
   - **Local and e2e:** the Vite dev and preview servers send the header (`vite.config.ts`, `ADMIN_ORIGIN` from the environment or `apps/storefront/.env.local`).
   - **Hosted (Vercel):** Routing Middleware (`apps/storefront/middleware.ts`, `@vercel/functions` `next()`), on pages only (not `/assets/*`). Set `ADMIN_ORIGIN` in the Vercel project. The middleware runs on each page request (fluid compute pricing).
 - **Frame sandbox:** scripts, same-origin, forms and popups are allowed (the shop needs its own scripts and storage). Top navigation isn't, so the shop can never navigate the admin. `referrerpolicy="no-referrer"`.
+
+### 6.19 Automations page (read only)
+- **Automations (owner only, admin menu):** every automatic email (the three owner alerts and the five customer emails), who it goes to, the trigger that sends it, and whether it is on, read from `GET /settings/emails`. There is no rule editing: the switches and intros stay in Settings › Emails, which the page links to (`/settings#emails-heading`). The API's `/automation` stays a stub.

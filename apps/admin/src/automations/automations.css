@@ -1,0 +1,10 @@
+/* Row headers name the email: read like content, not like column headings. */
+.automations-table tbody th {
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: inherit;
+  color: var(--text);
+}
+.automations-table tbody tr:last-child th {
+  border-bottom: none;
+}
