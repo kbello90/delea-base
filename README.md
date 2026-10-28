@@ -46,6 +46,12 @@ Each app reads `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, plus the backen
 from the LOCAL stack only: `API_URL` and `ANON_KEY` from `npx supabase@2.121.0 status -o env`.
 The admin app shows a "not configured" message without them.
 
+The storefront also reads `ADMIN_ORIGIN` (not `VITE_`: the dev server only): the admin's origin,
+the one other site allowed to frame the storefront, for the admin's Website preview
+(`frame-ancestors`, TRD §6.18). Locally `ADMIN_ORIGIN=http://localhost:5173` in
+`apps/storefront/.env.local`; hosted, set it in the storefront's Vercel project. Without it the
+preview says it couldn't load and "Open my website" still works.
+
 ```sh
 pnpm test         # Vitest (admin, storefront, api-client)
 pnpm typecheck

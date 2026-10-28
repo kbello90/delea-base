@@ -597,3 +597,22 @@ Live mode is blocked in all of Slice B: the API refuses live keys and the databa
   - Demo shops: the preview works; customers never get email (enforced by `email_enqueue`).
 - **Shipping details:** "Mark shipped" takes an optional carrier (USPS, UPS, FedEx and DHL suggested) and tracking number. The API refuses them with any other move, or once the order is already shipped. The invoice page and the tracking page show them.
 - **No rules page yet:** the admin has no automation rules page (the API's `/automation` is a stub, and the demo page only mocks one). Settings › Emails lists each email with the trigger that sends it, including `production_started` and `deposit_received`.
+
+### 6.18 Website page and framing (Website slice)
+- **Website page (owner only, admin menu):**
+  - a live preview of the shop's own storefront in a frame, with a Phone (390px) and Desktop (1280px, scaled to fit) toggle;
+  - "Open my website" (a new tab);
+  - the existing Brand and Storefront settings beside the preview (the same cards as Settings); the preview reloads after each Save, including the logo.
+  - No layout editor.
+  - The page says that an order placed in the preview is a real order.
+- **Which address:** `GET /settings/website` (owner only) returns the shop's first storefront domain, alphabetically (the one customer emails link to), with `https://` (plain `http://` only in `local`/`test`), and whether the storefront is switched on.
+- **When the preview can't load:**
+  - **No domain yet:** a message says so; there is no frame and nothing to open.
+  - **Storefront switched off:** a notice above the preview.
+  - **Blocked or unreachable:** the storefront tells its parent window it loaded (`postMessage` of `delea:storefront-ready`, carrying no data), and only a message from the shop's own origin counts. Without it within 10 seconds, the page says the preview couldn't load, and "Open my website" keeps working.
+- **Who may frame the storefront:** every page gets `Content-Security-Policy: frame-ancestors 'self' <admin origin>`. Other sites can't frame it (clickjacking).
+  - The admin origin comes from the `ADMIN_ORIGIN` setting, never from code. It must be exactly one origin: https, or http for a local host only; no wildcard, list, path or credentials.
+  - Missing or invalid, it fails closed to `'self'`: the preview is blocked and the shop stays safe.
+  - **Local and e2e:** the Vite dev and preview servers send the header (`vite.config.ts`, `ADMIN_ORIGIN` from the environment or `apps/storefront/.env.local`).
+  - **Hosted (Vercel):** Routing Middleware (`apps/storefront/middleware.ts`, `@vercel/functions` `next()`), on pages only (not `/assets/*`). Set `ADMIN_ORIGIN` in the Vercel project. The middleware runs on each page request (fluid compute pricing).
+- **Frame sandbox:** scripts, same-origin, forms and popups are allowed (the shop needs its own scripts and storage). Top navigation isn't, so the shop can never navigate the admin. `referrerpolicy="no-referrer"`.

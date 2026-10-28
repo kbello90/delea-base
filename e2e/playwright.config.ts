@@ -70,7 +70,12 @@ export default defineConfig({
       url: `http://localhost:${PORTS.storefront}`,
       reuseExistingServer: false,
       timeout: 60_000,
-      env: { VITE_API_BASE_URL: `http://localhost:${PORTS.api}`, VITE_TURNSTILE_SITE_KEY: TURNSTILE_TEST_SITE_KEY },
+      env: {
+        VITE_API_BASE_URL: `http://localhost:${PORTS.api}`,
+        VITE_TURNSTILE_SITE_KEY: TURNSTILE_TEST_SITE_KEY,
+        // Who may frame the storefront besides itself: the admin's Website preview.
+        ADMIN_ORIGIN: `http://localhost:${PORTS.admin}`,
+      },
     },
     {
       command: `pnpm --filter @delea/admin exec vite --port ${PORTS.admin} --strictPort`,
