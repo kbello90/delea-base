@@ -162,8 +162,10 @@ async def test_a_website_order_alerts_the_owner_once(client, shop, db, pool) -> 
     )
     await worker.run_once()
     assert len([e for e in recorder.sent if e.recipient == shop["owner"]]) == 1
+    # The alert and (D2) the shopper's order received email, each once.
     assert [m[:3] for m in messages(db, shop["tenant"].id)] == [
-        ("new_order", shop["owner"], "sent")
+        ("new_order", shop["owner"], "sent"),
+        ("order_received", "sarah@example.com", "sent"),
     ]
 
 

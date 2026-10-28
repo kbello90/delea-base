@@ -315,6 +315,8 @@ class OrderOut(BaseModel):
     pickup_note: str | None
     amount_paid_cents: int  # received so far (a deposit, or everything)
     balance_cents: int  # still due; 0 once paid in full or cancelled
+    carrier: str | None = None  # entered by the shop when it marks the order shipped
+    tracking_number: str | None = None
     # Placing a card order: Stripe's hosted Checkout for the balance. None when Stripe couldn't
     # be reached (the tracking page then offers Pay now) and on every other read.
     checkout_url: str | None = None

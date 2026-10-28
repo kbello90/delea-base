@@ -106,7 +106,8 @@ _COLUMNS = (
     "customer_id, customer_name, source, subtotal_cents, tax_rate_bps, tax_cents, total_cents, "
     "due_date, notes, payment_method::text as payment_method, paid_at, refunded_at, "
     "cancelled_at, created_at, updated_at, shipping_cents, fulfillment, payment_choice, order_ref, "
-    "production_started_at, public.invoice_amount_paid(id) as amount_paid_cents, "
+    "production_started_at, carrier, tracking_number, "
+    "public.invoice_amount_paid(id) as amount_paid_cents, "
     "total_cents - public.invoice_amount_paid(id) as balance_cents, "
     "(order_status = 'quote' and cancelled_at is null and refunded_at is null and total_cents > 0 "
     "and public.invoice_amount_paid(id) >= total_cents) as stock_short, "
@@ -753,14 +754,24 @@ async def change_status(
         _refuse_if_closed(row)
     paying = row["order_status"] == OrderStatus.quote and body.status != OrderStatus.quote
     _check_payment_method(paying=paying, payment_method=body.payment_method)
+    carrier = body.carrier or None
+    tracking = body.tracking_number or None
+    if (carrier or tracking) and (
+        body.status != OrderStatus.shipped or row["order_status"] == OrderStatus.shipped
+    ):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "A carrier and tracking number go with marking the order shipped.",
+        )
     if paying:
         await _close_card_sessions(pool, gateway, claims, invoice_id)
         await _take_balance(conn, claims, invoice_id, body.payment_method)
     await conn.execute(
         "update public.invoices set order_status = %s::public.order_status, "
-        "payment_method = coalesce(%s::public.payment_method, payment_method) "
+        "payment_method = coalesce(%s::public.payment_method, payment_method), "
+        "carrier = coalesce(%s, carrier), tracking_number = coalesce(%s, tracking_number) "
         "where id = %s and tenant_id = %s",
-        (body.status.value, body.payment_method, invoice_id, claims.tenant_id),
+        (body.status.value, body.payment_method, carrier, tracking, invoice_id, claims.tenant_id),
     )
     return await _load(conn, claims, invoice_id)
 

@@ -4321,7 +4321,7 @@
           "settings"
         ],
         "summary": "Update Email Settings",
-        "description": "The alerts on or off and the sender name (null: the business name). Only what is sent\nchanges; the column names below are fixed, never taken from the request.",
+        "description": "The alerts and customer emails on or off, the intros, and the sender name (null: the\nbusiness name). Only what is sent changes; the column names below are fixed, never taken\nfrom the request.",
         "operationId": "update_email_settings_api_v1_settings_emails_patch",
         "requestBody": {
           "content": {
@@ -4409,14 +4409,78 @@
         ]
       }
     },
+    "/api/v1/settings/emails/preview": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Preview",
+        "description": "Renders a customer email with a made-up order (nothing is queued or sent). The intro\nis the one in the request, so unsaved text can be previewed.",
+        "operationId": "preview_api_v1_settings_emails_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailPreviewOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/settings/emails/test": {
       "post": {
         "tags": [
           "settings"
         ],
         "summary": "Send Test",
-        "description": "A test to the signed-in owner's own sign-in email, and nowhere else (10 a day).",
+        "description": "A test to the signed-in owner's own sign-in email, and nowhere else (10 a day): the\nplain test, or one customer email about a made-up order (with the saved intro). Never to\na customer.",
         "operationId": "send_test_api_v1_settings_emails_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/TestEmailRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -4424,6 +4488,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TestEmailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -5311,6 +5385,60 @@
         ],
         "title": "CustomerCreate"
       },
+      "CustomerEmail": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "intro": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intro"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "CustomerEmail"
+      },
+      "CustomerEmails": {
+        "properties": {
+          "order_received": {
+            "$ref": "#/components/schemas/CustomerEmail"
+          },
+          "payment_received": {
+            "$ref": "#/components/schemas/CustomerEmail"
+          },
+          "deposit_received": {
+            "$ref": "#/components/schemas/CustomerEmail"
+          },
+          "in_production": {
+            "$ref": "#/components/schemas/CustomerEmail"
+          },
+          "shipped": {
+            "$ref": "#/components/schemas/CustomerEmail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order_received",
+          "payment_received",
+          "deposit_received",
+          "in_production",
+          "shipped"
+        ],
+        "title": "CustomerEmails",
+        "description": "Emails to shoppers about their website orders (D2)."
+      },
       "CustomerOut": {
         "properties": {
           "id": {
@@ -5868,6 +5996,63 @@
         ],
         "title": "EmailLogEntry"
       },
+      "EmailPreviewOut": {
+        "properties": {
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "html": {
+            "type": "string",
+            "title": "Html"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject",
+          "html",
+          "text"
+        ],
+        "title": "EmailPreviewOut"
+      },
+      "EmailPreviewRequest": {
+        "properties": {
+          "template": {
+            "type": "string",
+            "enum": [
+              "order_received",
+              "payment_received",
+              "deposit_received",
+              "in_production",
+              "shipped"
+            ],
+            "title": "Template"
+          },
+          "intro": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intro"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "template"
+        ],
+        "title": "EmailPreviewRequest",
+        "description": "A customer email rendered with a made-up order; `intro` previews unsaved text."
+      },
       "EmailSettingsOut": {
         "properties": {
           "provider": {
@@ -5919,6 +6104,9 @@
           "alerts": {
             "$ref": "#/components/schemas/OwnerAlerts"
           },
+          "customer": {
+            "$ref": "#/components/schemas/CustomerEmails"
+          },
           "delayed": {
             "type": "boolean",
             "title": "Delayed"
@@ -5939,6 +6127,7 @@
           "reply_to",
           "reply_to_pending",
           "alerts",
+          "customer",
           "delayed",
           "recent"
         ],
@@ -5950,6 +6139,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/OwnerAlerts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "customer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerEmails"
               },
               {
                 "type": "null"
@@ -6730,6 +6929,28 @@
             ],
             "title": "Production Started At"
           },
+          "carrier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier"
+          },
+          "tracking_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracking Number"
+          },
           "stock_short": {
             "type": "boolean",
             "title": "Stock Short"
@@ -6914,6 +7135,32 @@
                 "type": "null"
               }
             ]
+          },
+          "carrier": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40,
+                "pattern": "^[^<>\\x00-\\x1f]*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier"
+          },
+          "tracking_number": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40,
+                "pattern": "^([A-Za-z0-9 -]{3,40})?$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracking Number"
           }
         },
         "additionalProperties": false,
@@ -7709,6 +7956,28 @@
           "balance_cents": {
             "type": "integer",
             "title": "Balance Cents"
+          },
+          "carrier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier"
+          },
+          "tracking_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracking Number"
           },
           "checkout_url": {
             "anyOf": [
@@ -10027,6 +10296,31 @@
           "status"
         ],
         "title": "TestEmailOut"
+      },
+      "TestEmailRequest": {
+        "properties": {
+          "template": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "order_received",
+                  "payment_received",
+                  "deposit_received",
+                  "in_production",
+                  "shipped"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TestEmailRequest"
       },
       "TrackedLineOut": {
         "properties": {

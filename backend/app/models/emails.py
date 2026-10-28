@@ -19,6 +19,28 @@ class OwnerAlerts(BaseModel):
     balance_due: bool  # a daily digest of deposits whose balance is past due
 
 
+CustomerTemplate = Literal[
+    "order_received", "payment_received", "deposit_received", "in_production", "shipped"
+]
+# Shown above the email's own text. Blank counts as none.
+Intro = Annotated[str, StringConstraints(strip_whitespace=True, max_length=300)]
+
+
+class CustomerEmail(BaseModel):
+    enabled: bool
+    intro: Intro | None = None
+
+
+class CustomerEmails(BaseModel):
+    """Emails to shoppers about their website orders (D2)."""
+
+    order_received: CustomerEmail  # the order is placed: reference, items, how to pay, tracking
+    payment_received: CustomerEmail  # paid in full
+    deposit_received: CustomerEmail  # a part payment: amount and what is left
+    in_production: CustomerEmail  # work started (once per order)
+    shipped: CustomerEmail  # with the carrier and tracking number, if entered
+
+
 class EmailLogEntry(BaseModel):
     created_at: datetime
     kind: str
@@ -36,6 +58,7 @@ class EmailSettingsOut(BaseModel):
     reply_to: str | None  # confirmed; replies go here
     reply_to_pending: str | None  # waiting for its confirmation link
     alerts: OwnerAlerts
+    customer: CustomerEmails
     delayed: bool  # the oldest queued email has waited more than 15 minutes
     recent: list[EmailLogEntry]  # the latest 20
 
@@ -44,7 +67,29 @@ class EmailSettingsUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     alerts: OwnerAlerts | None = None
+    customer: CustomerEmails | None = None
     sender_name: SenderName | None = None
+
+
+class EmailPreviewRequest(BaseModel):
+    """A customer email rendered with a made-up order; `intro` previews unsaved text."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    template: CustomerTemplate
+    intro: Intro | None = None
+
+
+class EmailPreviewOut(BaseModel):
+    subject: str
+    html: str  # shown in a sandboxed frame
+    text: str
+
+
+class TestEmailRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    template: CustomerTemplate | None = None  # None: the plain test email
 
 
 class ReplyToRequest(BaseModel):

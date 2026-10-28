@@ -10,7 +10,7 @@ from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 
 class OrderStatus(StrEnum):
@@ -71,12 +71,25 @@ class InvoiceItemsReplace(BaseModel):
     items: Items
 
 
+Carrier = Annotated[
+    str, StringConstraints(strip_whitespace=True, max_length=40, pattern=r"^[^<>\x00-\x1f]*$")
+]
+TrackingNumber = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, max_length=40, pattern=r"^([A-Za-z0-9 -]{3,40})?$"),
+]
+
+
 class InvoiceStatusChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: OrderStatus
     # Required when the invoice leaves quote (that is when it is paid), refused otherwise.
     payment_method: PaymentMethod | None = None
+    # Optional, and only when marking it shipped: shown in the Shipped email and on the
+    # tracking page. Blank counts as none.
+    carrier: Carrier | None = None
+    tracking_number: TrackingNumber | None = None
 
 
 class InvoiceUpdate(BaseModel):
@@ -214,6 +227,8 @@ class InvoiceOut(BaseModel):
     amount_paid_cents: int
     balance_cents: int
     production_started_at: datetime | None
+    carrier: str | None = None  # set when marked shipped
+    tracking_number: str | None = None
     # A quote paid in full that couldn't be completed: not enough stock (Slice B1, Rule 3).
     stock_short: bool
     # Paid with more than one method: the stored payment_method is 'other', shown as "Mixed".

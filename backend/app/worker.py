@@ -2,10 +2,13 @@
 
 Each pass, all as `email_worker` (no table grants; the outbox functions only):
   1. Events: claim unprocessed automation events (FOR UPDATE SKIP LOCKED: two workers never
-     take the same one), write the owner alerts they call for into the outbox, and mark them
-     processed, in one transaction. Each outbox row is unique per shop and source key
-     (`event:<id>:<template>:<recipient>`, or per product and day for low stock), so a replay
-     queues nothing new. Events older than two days are closed without email.
+     take the same one), write the owner alerts and customer emails they call for into the
+     outbox, and mark them processed, in one transaction. Each outbox row is unique per shop
+     and source key (`event:<id>:<template>:<recipient>`, per product and day for low stock,
+     `customer:<template>:<order>` for customer emails, per payment for a deposit), so a
+     replay queues nothing new. Events older than two days are closed without email.
+     Customer emails (D2) go to website orders only: order received, payment received,
+     deposit received, in production (once per order) and shipped, each switchable per shop.
   2. Balances due: once an hour, a daily digest per shop (one per owner and day).
   3. Sending: claim due emails (marked 'sending' and committed, so no other worker takes
      them), send each with its row id as the idempotency key, and record sent, retry later
@@ -77,6 +80,65 @@ async def _enqueue(
     return queued is not None
 
 
+def customer_templates(event_type: str, payload: dict) -> list[tuple[str, str]]:
+    """The customer emails an event calls for, each with its source key: one per order and
+    email (one per payment for a deposit), so a replay or a second route to the same email
+    (production started, then the status moving to in production) queues nothing new."""
+    invoice = payload.get("invoice_id")
+    if not invoice:
+        return []
+    out: list[tuple[str, str]] = []
+    if event_type == "order_placed":
+        out.append(("order_received", f"customer:order_received:{invoice}"))
+    elif event_type == "deposit_received" and payload.get("payment_id"):
+        out.append(("deposit_received", f"customer:deposit_received:{payload['payment_id']}"))
+    elif event_type == "production_started":
+        out.append(("in_production", f"customer:in_production:{invoice}"))
+    elif event_type == "order_status_changed":
+        # Leaving quote is the payment (in full: a deposit is still a quote).
+        if payload.get("from_status") == "quote":
+            out.append(("payment_received", f"customer:payment_received:{invoice}"))
+        if payload.get("to_status") == "in_production":
+            out.append(("in_production", f"customer:in_production:{invoice}"))
+        elif payload.get("to_status") == "shipped":
+            out.append(("shipped", f"customer:shipped:{invoice}"))
+    return out
+
+
+async def customer_emails(
+    conn: AsyncConnection, settings: Settings, event: dict, report: PassReport
+) -> None:
+    """Website orders only (email_customer_context is null for any other invoice). What the
+    shopper may receive, and whether at all (demo shops, suppressed addresses, daily limits),
+    is still decided by email_enqueue."""
+    wanted = customer_templates(event["event_type"], event["payload"])
+    if not wanted:
+        return
+    cur = await conn.execute(
+        "select public.email_customer_context(%s, %s)",
+        (event["tenant_id"], event["payload"]["invoice_id"]),
+    )
+    (ctx,) = await cur.fetchone()
+    if not ctx or ctx["cancelled"] or not ctx["storefront_domain"]:
+        return
+    shop = event["context"]
+    website = templates.storefront_url(ctx["storefront_domain"], settings.is_dev_environment)
+    for template, key in wanted:
+        if not ctx["switches"].get(template, True):
+            continue
+        order = templates.order_from_context(
+            shop["business_name"],
+            shop.get("primary_color"),
+            ctx,
+            f"{website}/orders/{ctx['public_token']}",
+            website,
+            ctx["intros"].get(template),
+        )
+        content = templates.customer_email(template, order, event["payload"].get("amount_cents"))
+        if await _enqueue(conn, event["tenant_id"], "customer", template, key, ctx["to"], content):
+            report.queued += 1
+
+
 async def expand_events(pool: AsyncConnectionPool, settings: Settings, report: PassReport) -> None:
     admin = settings.admin_app_url.rstrip("/")
     today = datetime.now(UTC).date().isoformat()
@@ -113,6 +175,7 @@ async def expand_events(pool: AsyncConnectionPool, settings: Settings, report: P
                     conn, event["tenant_id"], "owner_alert", template, key, owner, content
                 ):
                     report.queued += 1
+            await customer_emails(conn, settings, event, report)
         if events:
             await conn.execute(
                 "select public.email_mark_events_processed(%s)", ([e["event_id"] for e in events],)

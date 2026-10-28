@@ -1151,8 +1151,9 @@ export interface paths {
         head?: never;
         /**
          * Update Email Settings
-         * @description The alerts on or off and the sender name (null: the business name). Only what is sent
-         *     changes; the column names below are fixed, never taken from the request.
+         * @description The alerts and customer emails on or off, the intros, and the sender name (null: the
+         *     business name). Only what is sent changes; the column names below are fixed, never taken
+         *     from the request.
          */
         patch: operations["update_email_settings_api_v1_settings_emails_patch"];
         trace?: never;
@@ -1178,6 +1179,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/emails/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview
+         * @description Renders a customer email with a made-up order (nothing is queued or sent). The intro
+         *     is the one in the request, so unsaved text can be previewed.
+         */
+        post: operations["preview_api_v1_settings_emails_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/emails/test": {
         parameters: {
             query?: never;
@@ -1189,7 +1211,9 @@ export interface paths {
         put?: never;
         /**
          * Send Test
-         * @description A test to the signed-in owner's own sign-in email, and nowhere else (10 a day).
+         * @description A test to the signed-in owner's own sign-in email, and nowhere else (10 a day): the
+         *     plain test, or one customer email about a made-up order (with the saved intro). Never to
+         *     a customer.
          */
         post: operations["send_test_api_v1_settings_emails_test_post"];
         delete?: never;
@@ -1461,6 +1485,24 @@ export interface components {
             /** @default due_on_receipt */
             payment_terms: components["schemas"]["PaymentTerms"];
         };
+        /** CustomerEmail */
+        CustomerEmail: {
+            /** Enabled */
+            enabled: boolean;
+            /** Intro */
+            intro?: string | null;
+        };
+        /**
+         * CustomerEmails
+         * @description Emails to shoppers about their website orders (D2).
+         */
+        CustomerEmails: {
+            order_received: components["schemas"]["CustomerEmail"];
+            payment_received: components["schemas"]["CustomerEmail"];
+            deposit_received: components["schemas"]["CustomerEmail"];
+            in_production: components["schemas"]["CustomerEmail"];
+            shipped: components["schemas"]["CustomerEmail"];
+        };
         /** CustomerOut */
         CustomerOut: {
             /**
@@ -1622,6 +1664,28 @@ export interface components {
             /** Last Error */
             last_error: string | null;
         };
+        /** EmailPreviewOut */
+        EmailPreviewOut: {
+            /** Subject */
+            subject: string;
+            /** Html */
+            html: string;
+            /** Text */
+            text: string;
+        };
+        /**
+         * EmailPreviewRequest
+         * @description A customer email rendered with a made-up order; `intro` previews unsaved text.
+         */
+        EmailPreviewRequest: {
+            /**
+             * Template
+             * @enum {string}
+             */
+            template: "order_received" | "payment_received" | "deposit_received" | "in_production" | "shipped";
+            /** Intro */
+            intro?: string | null;
+        };
         /** EmailSettingsOut */
         EmailSettingsOut: {
             /**
@@ -1638,6 +1702,7 @@ export interface components {
             /** Reply To Pending */
             reply_to_pending: string | null;
             alerts: components["schemas"]["OwnerAlerts"];
+            customer: components["schemas"]["CustomerEmails"];
             /** Delayed */
             delayed: boolean;
             /** Recent */
@@ -1646,6 +1711,7 @@ export interface components {
         /** EmailSettingsUpdate */
         EmailSettingsUpdate: {
             alerts?: components["schemas"]["OwnerAlerts"] | null;
+            customer?: components["schemas"]["CustomerEmails"] | null;
             /** Sender Name */
             sender_name?: string | null;
         };
@@ -1902,6 +1968,10 @@ export interface components {
             balance_cents: number;
             /** Production Started At */
             production_started_at: string | null;
+            /** Carrier */
+            carrier?: string | null;
+            /** Tracking Number */
+            tracking_number?: string | null;
             /** Stock Short */
             stock_short: boolean;
             /** Mixed Methods */
@@ -1943,6 +2013,10 @@ export interface components {
         InvoiceStatusChange: {
             status: components["schemas"]["OrderStatus"];
             payment_method?: components["schemas"]["PaymentMethod"] | null;
+            /** Carrier */
+            carrier?: string | null;
+            /** Tracking Number */
+            tracking_number?: string | null;
         };
         /**
          * InvoiceUpdate
@@ -2246,6 +2320,10 @@ export interface components {
             amount_paid_cents: number;
             /** Balance Cents */
             balance_cents: number;
+            /** Carrier */
+            carrier?: string | null;
+            /** Tracking Number */
+            tracking_number?: string | null;
             /** Checkout Url */
             checkout_url?: string | null;
         };
@@ -2961,6 +3039,11 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "sending" | "sent" | "failed" | "suppressed";
+        };
+        /** TestEmailRequest */
+        TestEmailRequest: {
+            /** Template */
+            template?: ("order_received" | "payment_received" | "deposit_received" | "in_production" | "shipped") | null;
         };
         /** TrackedLineOut */
         TrackedLineOut: {
@@ -5620,6 +5703,39 @@ export interface operations {
             };
         };
     };
+    preview_api_v1_settings_emails_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailPreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     send_test_api_v1_settings_emails_test_post: {
         parameters: {
             query?: never;
@@ -5627,7 +5743,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TestEmailRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -5636,6 +5756,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TestEmailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

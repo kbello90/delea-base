@@ -1,9 +1,11 @@
 """Email settings, the reply-to confirmation and the provider webhook (Slice D, TRD §6.16).
 
-Owner only, under /settings/emails: the owner alerts on or off, the sender name, the reply-to
-address (used only once confirmed through the link emailed to it), a test sent to the owner's
-own sign-in email, and the shop's latest emails. Emails are queued through email_worker
-(email_enqueue enforces who may receive what); the worker sends them.
+Owner only, under /settings/emails: the owner alerts and customer emails on or off (with an
+intro of the owner's own for each customer email), the sender name, the reply-to address (used
+only once confirmed through the link emailed to it), a preview of each customer email with a
+made-up order, a test sent to the owner's own sign-in email, and the shop's latest emails.
+Emails are queued through email_worker (email_enqueue enforces who may receive what); the
+worker sends them.
 
 Public, under /email: the confirmation link's endpoint (no sign-in: whoever owns the address
 confirms it) and Resend's webhook for bounces and complaints, signed with Svix's scheme.
@@ -28,7 +30,11 @@ from app.core.config import get_settings
 from app.core.errors import ConflictError
 from app.db.session import email_session, service_session
 from app.models.emails import (
+    CustomerEmail,
+    CustomerEmails,
     EmailLogEntry,
+    EmailPreviewOut,
+    EmailPreviewRequest,
     EmailSettingsOut,
     EmailSettingsUpdate,
     OwnerAlerts,
@@ -36,6 +42,7 @@ from app.models.emails import (
     ReplyToConfirmed,
     ReplyToRequest,
     TestEmailOut,
+    TestEmailRequest,
 )
 from app.services import email_templates as templates
 from app.services.email_senders import from_address, provider_name
@@ -52,6 +59,9 @@ PROVIDER_LABEL = {"resend": "resend", "mailpit": "local", "off": "off"}
 WEBHOOK_TOLERANCE = 300
 
 
+CUSTOMER_COLUMNS = ", ".join(f"es.customer_{t}, es.intro_{t}" for t in templates.CUSTOMER_TEMPLATES)
+
+
 def _hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
@@ -61,10 +71,15 @@ async def _shop(conn, tenant_id: str) -> dict[str, Any]:
         await cur.execute(
             "select coalesce(b.business_name, t.name) as business_name, b.primary_color, "
             "t.is_demo, es.alert_new_order, es.alert_low_stock, es.alert_balance_due, "
+            f"{CUSTOMER_COLUMNS}, "
             "es.sender_name, case when es.reply_to_confirmed_at is not null "
-            "then es.reply_to_email end as reply_to, es.reply_to_pending "
+            "then es.reply_to_email end as reply_to, es.reply_to_pending, "
+            "ss.contact_email, (select d.domain from public.tenant_domains d "
+            "where d.tenant_id = t.id and d.kind = 'storefront' order by d.domain limit 1) "
+            "as storefront_domain "
             "from public.tenants t left join public.brand_config b on b.tenant_id = t.id "
-            "left join public.email_settings es on es.tenant_id = t.id where t.id = %s",
+            "left join public.email_settings es on es.tenant_id = t.id "
+            "left join public.storefront_settings ss on ss.tenant_id = t.id where t.id = %s",
             (tenant_id,),
         )
         row = await cur.fetchone()
@@ -102,6 +117,14 @@ async def _out(conn, tenant_id: str) -> EmailSettingsOut:
             low_stock=shop["alert_low_stock"] is not False,
             balance_due=shop["alert_balance_due"] is not False,
         ),
+        customer=CustomerEmails(
+            **{
+                t: CustomerEmail(
+                    enabled=shop[f"customer_{t}"] is not False, intro=shop[f"intro_{t}"]
+                )
+                for t in templates.CUSTOMER_TEMPLATES
+            }
+        ),
         delayed=delayed,
         recent=[EmailLogEntry.model_validate(r) for r in recent],
     )
@@ -116,8 +139,9 @@ async def email_settings(claims: CurrentClaims, conn: DbConn) -> EmailSettingsOu
 async def update_email_settings(
     body: EmailSettingsUpdate, claims: CurrentClaims, conn: DbConn
 ) -> EmailSettingsOut:
-    """The alerts on or off and the sender name (null: the business name). Only what is sent
-    changes; the column names below are fixed, never taken from the request."""
+    """The alerts and customer emails on or off, the intros, and the sender name (null: the
+    business name). Only what is sent changes; the column names below are fixed, never taken
+    from the request."""
     changed: dict[str, Any] = {}
     if "alerts" in body.model_fields_set and body.alerts is not None:
         changed |= {
@@ -125,6 +149,11 @@ async def update_email_settings(
             "alert_low_stock": body.alerts.low_stock,
             "alert_balance_due": body.alerts.balance_due,
         }
+    if "customer" in body.model_fields_set and body.customer is not None:
+        for t in templates.CUSTOMER_TEMPLATES:
+            email: CustomerEmail = getattr(body.customer, t)
+            changed[f"customer_{t}"] = email.enabled
+            changed[f"intro_{t}"] = email.intro or None
     if "sender_name" in body.model_fields_set:
         changed["sender_name"] = body.sender_name
     if changed:
@@ -169,9 +198,41 @@ async def request_reply_to(
     return await _out(conn, claims.tenant_id)
 
 
+def _sample(shop: dict[str, Any], template: str, intro: str | None) -> templates.Rendered:
+    """A customer email about a made-up order, in the shop's colours and with its footer."""
+    website = (
+        templates.storefront_url(shop["storefront_domain"], get_settings().is_dev_environment)
+        if shop["storefront_domain"]
+        else None
+    )
+    order = templates.sample_order(
+        shop["business_name"],
+        shop["primary_color"],
+        website,
+        shop["contact_email"] or shop["reply_to"],
+        intro,
+    )
+    return templates.customer_email(template, order, 5000)
+
+
+@router.post("/preview", response_model=EmailPreviewOut, dependencies=[OwnerOnly])
+async def preview(
+    body: EmailPreviewRequest, claims: CurrentClaims, conn: DbConn
+) -> EmailPreviewOut:
+    """Renders a customer email with a made-up order (nothing is queued or sent). The intro
+    is the one in the request, so unsaved text can be previewed."""
+    shop = await _shop(conn, claims.tenant_id)
+    content = _sample(shop, body.template, body.intro or None)
+    return EmailPreviewOut(subject=content.subject, html=content.html, text=content.text)
+
+
 @router.post("/test", response_model=TestEmailOut, dependencies=[OwnerOnly])
-async def send_test(claims: CurrentClaims, conn: DbConn, pool: Pool) -> TestEmailOut:
-    """A test to the signed-in owner's own sign-in email, and nowhere else (10 a day)."""
+async def send_test(
+    claims: CurrentClaims, conn: DbConn, pool: Pool, body: TestEmailRequest | None = None
+) -> TestEmailOut:
+    """A test to the signed-in owner's own sign-in email, and nowhere else (10 a day): the
+    plain test, or one customer email about a made-up order (with the saved intro). Never to
+    a customer."""
     async with service_session(pool) as service:
         cur = await service.execute(
             "select u.email from auth.users u join public.tenant_members m on m.user_id = u.id "
@@ -182,12 +243,20 @@ async def send_test(claims: CurrentClaims, conn: DbConn, pool: Pool) -> TestEmai
     if row is None or not row[0]:
         raise ConflictError("Your account has no email address to send a test to.")
     shop = await _shop(conn, claims.tenant_id)
-    content = templates.test_email(shop["business_name"], shop["primary_color"])
+    template = body.template if body else None
+    if template:
+        sample = _sample(shop, template, shop[f"intro_{template}"])
+        content = templates.Rendered(
+            subject=f"[Test] {sample.subject}", html=sample.html, text=sample.text
+        )
+    else:
+        content = templates.test_email(shop["business_name"], shop["primary_color"])
     async with email_session(pool) as writer:
         cur = await writer.execute(
-            "select public.email_enqueue(%s, 'test', 'test', %s, %s, %s, %s, %s)",
+            "select public.email_enqueue(%s, 'test', %s, %s, %s, %s, %s, %s)",
             (
                 claims.tenant_id,
+                template or "test",
                 f"test:{secrets.token_hex(8)}",
                 row[0],
                 content.subject,
