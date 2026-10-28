@@ -48,6 +48,8 @@ test("website: the owner sees the live shop beside its settings, on desktop and 
   await admin.getByRole("link", { name: /^Website/ }).click();
   await expect(admin.getByRole("heading", { level: 1, name: "Website" })).toBeVisible();
   await expect(admin.getByRole("link", { name: "Open my website" })).toHaveAttribute("href", s.origin);
+  await expect(admin.getByRole("button", { name: "Phone" })).toHaveAttribute("aria-pressed", "true"); // the default
+  await admin.getByRole("button", { name: "Desktop" }).click();
   const preview = admin.frameLocator('iframe[title="Live preview of your website"]');
   await expect(preview.getByRole("link", { name: /E2E Jewelry, home/ })).toBeVisible();
   await admin.waitForTimeout(500);
@@ -59,7 +61,6 @@ test("website: the owner sees the live shop beside its settings, on desktop and 
   const phone = await small.newPage();
   await signIn(phone, s);
   await phone.goto(`${ADMIN}/website`);
-  await phone.getByRole("button", { name: "Phone" }).click();
   await expect(phone.frameLocator('iframe[title="Live preview of your website"]').getByRole("link", { name: /E2E Jewelry, home/ })).toBeVisible();
   await phone.addStyleTag({ content: ".topbar { position: static !important; }" });
   await phone.screenshot({ path: shots("23-admin-website-phone") }); // one screen: the header and the preview

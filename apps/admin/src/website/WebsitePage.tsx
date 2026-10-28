@@ -37,7 +37,7 @@ function useFit(width: number) {
 }
 
 function Preview({ url, version }: { url: string; version: number }) {
-  const [width, setWidth] = useState<Width>("desktop");
+  const [width, setWidth] = useState<Width>("phone"); // most shoppers see the shop on a phone
   const [state, setState] = useState<"loading" | "ready" | "blocked">("loading");
   const size = WIDTHS[width];
   const { box, scale } = useFit(size.width);

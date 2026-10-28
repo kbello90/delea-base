@@ -46,14 +46,15 @@ describe("website page", () => {
     expect(screen.getByText(/an order placed in the preview is a real order/)).toBeInTheDocument();
   });
 
-  it("switches between phone and desktop widths", async () => {
+  it("starts at phone width and switches to desktop and back", async () => {
     const { user } = setup();
+    expect(await frame()).toHaveAttribute("width", "390");
+    expect(screen.getByRole("button", { name: "Phone" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "Desktop" }));
+    expect(screen.getByRole("button", { name: "Desktop" })).toHaveAttribute("aria-pressed", "true");
     expect(await frame()).toHaveAttribute("width", "1280");
     await user.click(screen.getByRole("button", { name: "Phone" }));
-    expect(screen.getByRole("button", { name: "Phone" })).toHaveAttribute("aria-pressed", "true");
     expect(await frame()).toHaveAttribute("width", "390");
-    await user.click(screen.getByRole("button", { name: "Desktop" }));
-    expect(await frame()).toHaveAttribute("width", "1280");
   });
 
   it("says when the preview can't load, and Open my website still works", async () => {
