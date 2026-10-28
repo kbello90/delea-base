@@ -559,7 +559,41 @@ Live mode is blocked in all of Slice B: the API refuses live keys and the databa
 - **Rules (in `email_enqueue`, for every caller):** owner alerts go to the shop's owners only; a demo shop emails its own owners only (owner alerts, tests), never customers or anyone else; suppressed addresses get nothing; per shop: 300 customer emails a day, 5 a day to one customer, 10 tests a day. A refused email is kept as `suppressed` with the reason.
 - **Worker (`python -m app.worker`, as `email_worker`):** claims unprocessed automation events (`FOR UPDATE SKIP LOCKED`), writes the owner alerts they call for and marks them processed in one transaction (events older than two days are closed without email); once an hour, a daily balance-due digest; then claims due emails (marked `sending` and committed), sends each with its row id as the provider's idempotency key, and records sent, retry (1 min, 5 min, 30 min, 2 h, 6 h) or failed. A row left `sending` for 10 minutes (a worker died) is retried with the same key, which Resend deduplicates (24 hours). Provider down: emails wait; the admin shows "Emails are delayed" after 15 minutes. **Hosting:** the worker needs to run next to the API once hosted (a WebJob or a small container); until then, no real email.
 - **Owner alerts (D1):** new website order (reference, customer name, item count, total, how they pay; never a street address or phone), low stock (at most once per product per day), balances due (a daily digest of open quotes holding a deposit past their due date). Each can be switched off in Settings › Emails.
-- **New automation events:** `production_started` (a quote's production starts) and `deposit_received` (a payment leaves part of the total due). Customer emails using them arrive in D2.
+- **New automation events:** `production_started` (a quote's production starts) and `deposit_received` (a payment leaves part of the total due). Customer emails using them: §6.17 (D2).
 - **Provider webhook:** `POST /email/webhook`, signed with Svix's scheme (as Resend signs), 5-minute tolerance; each event recorded once; a bounce or complaint suppresses the address for every shop.
 - **Admin:** Settings › Emails: who sends and from which address, the reply-to address (and its confirmation), the alerts, "Send a test to myself" (the signed-in owner's own sign-in email only), the latest 20 emails with their status and why one wasn't sent.
 - **Email content:** single column, mobile-friendly, the shop's colour (a value that isn't a hex colour is ignored), always with a plain-text version; every value escaped.
+
+### 6.17 Customer emails (Slice D2: website orders only)
+- **The emails:**
+  - **Order received:** the W- reference, the items with the shopper's answers, the amounts, how to pay (the shop's instructions, or a Pay now button for card) and the tracking link.
+  - **Deposit received:** the amount, paid so far, left to pay.
+  - **In production:** once per order, whether production started on a deposit or the status moved.
+  - **Payment received:** paid in full.
+  - **Shipped:** the carrier and tracking number when entered; "ready for pickup" for a pickup order.
+  - Pay now opens the tracking page, whose own button starts the payment; a link in an email never charges.
+  - Under Stripe's 50-cent minimum, the email says to pay the rest with the shop, as the tracking page does.
+- **Which event sends which:**
+  - `order_placed` (website orders) → order received;
+  - `deposit_received` → deposit received (one per payment);
+  - `production_started`, or the status moving to `in_production` → in production;
+  - leaving `quote` → payment received;
+  - moving to `shipped` → shipped.
+  - Each is unique per shop, order and email (`customer:<template>:<order>`, per payment for a deposit), so a replay, or a second route to the same email, queues nothing new. Admin invoices and cancelled orders get none.
+- **What they never say:** the street address, phone number, city, ZIP code or the shopper's note. `email_customer_context` doesn't carry them, and the email model has no field for them.
+- **No promotion:** these are transactional (CAN-SPAM), so they have no unsubscribe link. Marketing remains a separate slice.
+- **When they are written:** when the worker takes the event, from the order as it is then. A deposit email uses the amounts recorded in its event, so a worker that runs late still describes the deposit, not the balance paid since.
+- **Footer:**
+  - "You're receiving this because you placed an order with <shop>.";
+  - "Questions? Write to <contact>" (the storefront contact email, otherwise the confirmed reply-to);
+  - the shop's website.
+  - The shop's postal address isn't shown: it isn't required for transactional email, and many makers work from home.
+- **Website address:** the shop's first storefront domain (alphabetically), with `https://` (plain `http://` only in `local`/`test`). A shop with no storefront domain gets no customer emails.
+- **Settings › Emails:**
+  - each customer email on or off;
+  - an intro of the owner's own (up to 300 characters, shown first, escaped);
+  - a preview with a made-up order, in a sandboxed frame at phone width (nothing queued; unsaved intros can be previewed);
+  - "Send this one to myself": the owner's own sign-in email, within the 10 tests a day.
+  - Demo shops: the preview works; customers never get email (enforced by `email_enqueue`).
+- **Shipping details:** "Mark shipped" takes an optional carrier (USPS, UPS, FedEx and DHL suggested) and tracking number. The API refuses them with any other move, or once the order is already shipped. The invoice page and the tracking page show them.
+- **No rules page yet:** the admin has no automation rules page (the API's `/automation` is a stub, and the demo page only mocks one). Settings › Emails lists each email with the trigger that sends it, including `production_started` and `deposit_received`.

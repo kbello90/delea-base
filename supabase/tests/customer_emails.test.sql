@@ -115,6 +115,10 @@ select ok(not ((select c from ctx) ?| array['phone', 'ship_line1', 'ship_line2',
 insert into public.invoices (id, tenant_id, customer_name, subtotal_cents, tax_cents, total_cents)
 values ('c2000000-0000-0000-0000-0000000000a1', '11111111-1111-1111-1111-111111111111', 'Counter sale', 1000, 0, 1000);
 select is(pg_temp.context('c2000000-0000-0000-0000-0000000000a1'), null, 'an admin invoice has no customer emails');
+-- Even with contact details attached, it isn't a website order.
+insert into public.order_contacts (invoice_id, tenant_id, first_name, last_name, email)
+values ('c2000000-0000-0000-0000-0000000000a1', '11111111-1111-1111-1111-111111111111', 'Counter', 'Sale', 'counter@example.com');
+select is(pg_temp.context('c2000000-0000-0000-0000-0000000000a1'), null, 'only website orders, whatever else is attached');
 select is(pg_temp.context((select id from d2_order), '22222222-2222-2222-2222-222222222222'), null,
           'another shop can''t read this order');
 
