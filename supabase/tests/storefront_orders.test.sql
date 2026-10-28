@@ -456,7 +456,7 @@ select is(pg_temp.count_as('storefront_reader', 'select count(*) from storefront
           'the token finds its order');
 select is(pg_temp.json_as('storefront_reader',
             'select to_jsonb(o) - ''created_at'' - ''order_ref'' - ''payment_instructions'' from storefront.orders o'),
-          '{"order_status": "quote", "paid": false, "cancelled": false, "refunded": false, "fulfillment": "ship", "payment_choice": "bank_transfer", "subtotal_cents": 9800, "shipping_cents": 600, "tax_rate_bps": 800, "tax_cents": 784, "total_cents": 11184, "first_name": "Sarah", "ship_city": "Portland", "ship_state": "ME", "pickup_note": null, "amount_paid_cents": 0, "balance_cents": 11184, "production_started": false}'::jsonb,
+          '{"order_status": "quote", "paid": false, "cancelled": false, "refunded": false, "fulfillment": "ship", "payment_choice": "bank_transfer", "subtotal_cents": 9800, "shipping_cents": 600, "tax_rate_bps": 800, "tax_cents": 784, "total_cents": 11184, "first_name": "Sarah", "ship_city": "Portland", "ship_state": "ME", "pickup_note": null, "amount_paid_cents": 0, "balance_cents": 11184, "production_started": false, "carrier": null, "tracking_number": null}'::jsonb,
           'tracking shows the order with the first name and city/state only');
 select ok(pg_temp.json_as('storefront_reader', 'select to_jsonb(payment_instructions) from storefront.orders') is not null
           and pg_temp.json_as('storefront_reader', 'select to_jsonb(payment_instructions) from storefront.orders') <> 'null'::jsonb,
