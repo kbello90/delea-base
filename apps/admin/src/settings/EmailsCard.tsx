@@ -3,6 +3,7 @@ import { Button } from "@delea/ui";
 import { useState, type FormEvent } from "react";
 import { Field } from "../components/Field";
 import { useToast } from "../components/toastContext";
+import { CustomerEmailsForm } from "./CustomerEmailsForm";
 import { useRequestReplyTo, useSendTestEmail, useUpdateEmailSettings, type EmailSettings, type OwnerAlerts } from "./emailApi";
 
 const message = (e: unknown) => (e instanceof ApiError ? e.message : "Something went wrong. Please try again.");
@@ -30,7 +31,7 @@ const STATUS: Record<EmailSettings["recent"][number]["status"], string> = {
 
 const when = (iso: string) => new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }) + " UTC";
 
-/** Settings › Emails (Slice D1): who sends, replies, owner alerts, a test, the latest emails. */
+/** Settings › Emails (Slices D1, D2): who sends, replies, owner alerts, customer emails, a test, the latest emails. */
 export function EmailsCard({ settings }: { settings: EmailSettings }) {
   const toast = useToast();
   const update = useUpdateEmailSettings();
@@ -134,6 +135,8 @@ export function EmailsCard({ settings }: { settings: EmailSettings }) {
           {update.isPending ? "Saving…" : "Save alerts"}
         </Button>
       </form>
+
+      <CustomerEmailsForm emails={settings.customer} />
 
       <div className="emails-card__test">
         <Button

@@ -39,6 +39,9 @@ import { cardNetCents, invoiceActions, paymentActions, type InvoiceActions, type
 import { StatusTags } from "./InvoicesPage";
 import "./invoices.css";
 
+const CARRIERS = ["USPS", "UPS", "FedEx", "DHL"];
+const TRACKING = /^[A-Za-z0-9 -]{3,40}$/;
+
 const message = (e: unknown) => (e instanceof ApiError ? e.message : "Something went wrong. Please try again.");
 
 /** Payment method radios (shared by Mark paid and the sale screen). */
@@ -89,6 +92,9 @@ function StatusActions({ invoice, actions, money }: { invoice: Invoice; actions:
   const navigate = useNavigate();
   const [pending, setPending] = useState<Pending | null>(null);
   const [method, setMethod] = useState<PaymentMethod | null>(null);
+  const [carrier, setCarrier] = useState("");
+  const [tracking, setTracking] = useState("");
+  const [trackingError, setTrackingError] = useState<string | null>(null);
   const change = useChangeStatus();
   const refund = useRefund(invoice.id);
   const cancel = useCancel(invoice.id);
@@ -104,6 +110,9 @@ function StatusActions({ invoice, actions, money }: { invoice: Invoice; actions:
     cancel.reset();
     remove.reset();
     setMethod(website && invoice.payment_choice ? CHOICE_METHOD[invoice.payment_choice] : null);
+    setCarrier("");
+    setTracking("");
+    setTrackingError(null);
     setPending(next);
   }
 
@@ -120,8 +129,13 @@ function StatusActions({ invoice, actions, money }: { invoice: Invoice; actions:
         { onSuccess: (paid) => close(`${documentNumber(paid)} is paid`) },
       );
     } else if (pending.kind === "status") {
+      const shipping = pending.status === "shipped";
+      if (shipping && tracking.trim() && !TRACKING.test(tracking.trim())) {
+        setTrackingError("Use letters, digits, spaces and hyphens only (3 to 40).");
+        return;
+      }
       change.mutate(
-        { id: invoice.id, status: pending.status },
+        { id: invoice.id, status: pending.status, ...(shipping ? { carrier, trackingNumber: tracking } : {}) },
         { onSuccess: () => close(`${number} is ${statusLabel(pending.status).toLowerCase()}`) },
       );
     } else if (pending.kind === "refund") {
@@ -163,7 +177,53 @@ function StatusActions({ invoice, actions, money }: { invoice: Invoice; actions:
       case "status":
         return {
           title: `Mark ${number} ${statusLabel(pending.status).toLowerCase()}?`,
-          description: <p>The status only moves forward, so this can't be undone.</p>,
+          description: (
+            <>
+              <p>The status only moves forward, so this can't be undone.</p>
+              {pending.status === "shipped" && (
+                <div className="shipment-fields">
+                  <Field id="ship-carrier" label="Carrier (optional)" hint="For example USPS, UPS or FedEx.">
+                    <input
+                      id="ship-carrier"
+                      type="text"
+                      list="ship-carriers"
+                      maxLength={40}
+                      value={carrier}
+                      onChange={(e) => setCarrier(e.target.value)}
+                      disabled={busy}
+                      aria-describedby="ship-carrier-hint"
+                    />
+                  </Field>
+                  <datalist id="ship-carriers">
+                    {CARRIERS.map((c) => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
+                  <Field
+                    id="ship-tracking"
+                    label="Tracking number (optional)"
+                    error={trackingError ?? undefined}
+                    hint={website ? "Shown in the Shipped email and on the shopper's tracking page." : undefined}
+                  >
+                    <input
+                      id="ship-tracking"
+                      type="text"
+                      maxLength={40}
+                      autoComplete="off"
+                      value={tracking}
+                      onChange={(e) => {
+                        setTracking(e.target.value);
+                        setTrackingError(null);
+                      }}
+                      disabled={busy}
+                      aria-invalid={trackingError ? true : undefined}
+                      aria-describedby={trackingError ? "ship-tracking-error" : website ? "ship-tracking-hint" : undefined}
+                    />
+                  </Field>
+                </div>
+              )}
+            </>
+          ),
           confirmLabel: `Mark ${statusLabel(pending.status).toLowerCase()}`,
         };
       case "refund":
@@ -858,6 +918,12 @@ function InvoiceView({
               )}
             </dd>
           </div>
+          {(invoice.carrier || invoice.tracking_number) && (
+            <div>
+              <dt>Shipped with</dt>
+              <dd>{[invoice.carrier, invoice.tracking_number && `tracking ${invoice.tracking_number}`].filter(Boolean).join(" · ")}</dd>
+            </div>
+          )}
           {invoice.refunded_at && (
             <div>
               <dt>Refunded</dt>

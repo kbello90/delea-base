@@ -5,6 +5,9 @@ import { useApi } from "../lib/api";
 export type EmailSettings = Schemas["EmailSettingsOut"];
 export type EmailSettingsUpdate = Schemas["EmailSettingsUpdate"];
 export type OwnerAlerts = Schemas["OwnerAlerts"];
+export type CustomerEmails = Schemas["CustomerEmails"];
+export type CustomerTemplate = keyof CustomerEmails;
+export type EmailPreview = Schemas["EmailPreviewOut"];
 
 const key = ["settings", "emails"] as const;
 
@@ -33,12 +36,22 @@ export function useRequestReplyTo() {
   });
 }
 
-/** A test to the signed-in owner's own email. */
+/** A customer email rendered with a made-up order (nothing is sent); `intro` may be unsaved. */
+export function usePreviewEmail() {
+  const api = useApi();
+  return useMutation({
+    mutationFn: (body: { template: CustomerTemplate; intro: string | null }) =>
+      unwrap(api.POST("/api/v1/settings/emails/preview", { body })),
+  });
+}
+
+/** A test to the signed-in owner's own email: the plain test, or one customer email. */
 export function useSendTestEmail() {
   const api = useApi();
   const client = useQueryClient();
   return useMutation({
-    mutationFn: () => unwrap(api.POST("/api/v1/settings/emails/test")),
+    mutationFn: (template?: CustomerTemplate) =>
+      unwrap(api.POST("/api/v1/settings/emails/test", template ? { body: { template } } : {})),
     onSuccess: () => void client.invalidateQueries({ queryKey: key }),
   });
 }

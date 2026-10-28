@@ -429,6 +429,24 @@ describe("tracking page", () => {
     expect(screen.queryByRole("button", { name: /pay/i })).not.toBeInTheDocument();
   });
 
+  it("shipped: the carrier and tracking number, when the shop entered them", async () => {
+    const server = checkoutServer();
+    server.setPlaced({ ...order, status: "shipped", payment_instructions: null, balance_cents: 0, carrier: "USPS", tracking_number: "9400 1000-0000" });
+    renderShop(`/orders/${TOKEN}`, server.fetch);
+    expect(await screen.findByText("On its way")).toBeInTheDocument();
+    const delivery = screen.getByRole("region", { name: "Delivery" });
+    expect(within(delivery).getByText("Carrier").nextSibling).toHaveTextContent("USPS");
+    expect(within(delivery).getByText("Tracking number").nextSibling).toHaveTextContent("9400 1000-0000");
+  });
+
+  it("shipped without them says nothing more", async () => {
+    const server = checkoutServer();
+    server.setPlaced({ ...order, status: "shipped", payment_instructions: null, balance_cents: 0 });
+    renderShop(`/orders/${TOKEN}`, server.fetch);
+    expect(await screen.findByText("On its way")).toBeInTheDocument();
+    expect(screen.queryByText("Tracking number")).not.toBeInTheDocument();
+  });
+
   it("paid in full shows no balance", async () => {
     const server = checkoutServer();
     server.setPlaced({ ...order, status: "paid", payment_instructions: null, amount_paid_cents: order.total_cents, balance_cents: 0 });

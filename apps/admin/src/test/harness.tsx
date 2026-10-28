@@ -119,6 +119,13 @@ export const EMAILS_RESPONSE: Schemas["EmailSettingsOut"] = {
   reply_to: null,
   reply_to_pending: null,
   alerts: { new_order: true, low_stock: true, balance_due: true },
+  customer: {
+    order_received: { enabled: true, intro: null },
+    payment_received: { enabled: true, intro: null },
+    deposit_received: { enabled: true, intro: null },
+    in_production: { enabled: true, intro: null },
+    shipped: { enabled: true, intro: null },
+  },
   delayed: false,
   recent: [],
 };

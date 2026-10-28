@@ -75,6 +75,15 @@ export function settingsServer({
       return jsonResponse(200, emailsRow);
     }
     if (path === "/api/v1/settings/emails/test" && method === "POST") return jsonResponse(200, { sent_to: "owner@shop.com", status: "queued" });
+    if (path === "/api/v1/settings/emails/preview" && method === "POST") {
+      const { template, intro } = body as { template: string; intro: string | null };
+      return jsonResponse(200, {
+        subject: `Preview ${template}`,
+        html: `<!doctype html><p>${template}</p><p>${intro ?? ""}</p>`,
+        text: `${template}
+`,
+      });
+    }
     if (path === "/api/v1/settings/payments/stripe/onboarding-link" && method === "POST") {
       if (!payments.stripe_configured) return jsonResponse(503, { detail: "Card payments aren't set up on this server yet." });
       return jsonResponse(200, { url: "https://connect.stripe.com/setup/s/acct_test_onboarding" });

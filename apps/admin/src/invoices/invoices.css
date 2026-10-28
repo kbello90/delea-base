@@ -291,3 +291,8 @@
   font-size: 0.95rem;
   font-weight: 500;
 }
+.shipment-fields {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}

@@ -210,11 +210,29 @@ export function useChangeStatus() {
   const api = useApi();
   const done = useInvalidate();
   return useMutation({
-    mutationFn: ({ id, status, paymentMethod }: { id: string; status: OrderStatus; paymentMethod?: PaymentMethod }) =>
+    mutationFn: ({
+      id,
+      status,
+      paymentMethod,
+      carrier,
+      trackingNumber,
+    }: {
+      id: string;
+      status: OrderStatus;
+      paymentMethod?: PaymentMethod;
+      carrier?: string;
+      trackingNumber?: string;
+    }) =>
       unwrap(
         api.POST("/api/v1/invoices/{invoice_id}/status", {
           params: { path: { invoice_id: id } },
-          body: { status, payment_method: paymentMethod ?? null },
+          body: {
+            status,
+            payment_method: paymentMethod ?? null,
+            // Only with marking it shipped; blank is none.
+            ...(carrier?.trim() ? { carrier: carrier.trim() } : {}),
+            ...(trackingNumber?.trim() ? { tracking_number: trackingNumber.trim() } : {}),
+          },
         }),
       ),
     onSuccess: (invoice) => done(invoice),

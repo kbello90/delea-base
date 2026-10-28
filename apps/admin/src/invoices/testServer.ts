@@ -407,7 +407,7 @@ export function invoiceServer({
       return jsonResponse(200, invoice);
     }
     if (action === "/status") {
-      const b = body as { status: (typeof ORDER)[number]; payment_method?: string | null };
+      const b = body as { status: (typeof ORDER)[number]; payment_method?: string | null; carrier?: string; tracking_number?: string };
       if (b.status !== invoice.order_status) {
         if (invoice.cancelled_at) return jsonResponse(409, { detail: "This invoice is cancelled, so its status can't change." });
         if (invoice.refunded_at) return jsonResponse(409, { detail: "This invoice is refunded, so its status can't change." });
@@ -426,6 +426,8 @@ export function invoiceServer({
         invoice.payment_method = b.payment_method as Invoice["payment_method"];
       }
       invoice.order_status = b.status;
+      if (b.carrier) invoice.carrier = b.carrier;
+      if (b.tracking_number) invoice.tracking_number = b.tracking_number;
       return jsonResponse(200, invoice);
     }
     if (action === "" && method === "PATCH") {

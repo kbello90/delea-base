@@ -269,6 +269,22 @@ export function OrderPage() {
       <section className="order__delivery" aria-labelledby="delivery-title">
         <h2 id="delivery-title">{o.fulfillment === "pickup" ? "Pickup" : "Delivery"}</h2>
         {o.fulfillment === "pickup" ? <p>{o.pickup_note ?? "We'll tell you when it's ready."}</p> : <p>Shipping to {o.ship_city ?? "your address"}.</p>}
+        {(o.carrier || o.tracking_number) && (
+          <dl className="order__tracking">
+            {o.carrier && (
+              <div>
+                <dt>Carrier</dt>
+                <dd>{o.carrier}</dd>
+              </div>
+            )}
+            {o.tracking_number && (
+              <div>
+                <dt>Tracking number</dt>
+                <dd className="order__ref">{o.tracking_number}</dd>
+              </div>
+            )}
+          </dl>
+        )}
       </section>
 
       <Link to="/" className="text-link">

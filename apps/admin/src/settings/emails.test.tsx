@@ -78,6 +78,65 @@ describe("settings › emails", () => {
   });
 });
 
+// Slice D2: emails to customers.
+describe("settings › emails › customers", () => {
+  const form = async () => within(await screen.findByRole("form", { name: "Emails to your customers" }));
+
+  it("lists each customer email with the trigger that sends it, including the new ones", async () => {
+    setup();
+    const section = await form();
+    for (const name of ["Order received", "Deposit received", "In production", "Payment received", "Shipped"]) {
+      expect(section.getByRole("checkbox", { name: new RegExp(`^${name}`) })).toBeChecked();
+    }
+    expect(section.getByText("Sent when production starts, once per order.")).toBeInTheDocument();
+    expect(section.getByText("Sent when a deposit is received: the amount and what is left to pay.")).toBeInTheDocument();
+    expect(section.getByText(/never the shopper's address or phone number/)).toBeInTheDocument();
+  });
+
+  it("switches one off and saves an intro, trimmed; blank intros are none", async () => {
+    const { server, user } = setup();
+    const section = await form();
+    await user.click(section.getByRole("checkbox", { name: /^Shipped/ }));
+    await user.type(section.getByLabelText("Your intro for “Order received” (optional)"), "  Thank you for shopping small!  ");
+    await user.type(section.getByLabelText("Your intro for “Payment received” (optional)"), "   ");
+    expect(section.getByLabelText("Your intro for “Shipped” (optional)")).toHaveAttribute("maxLength", "300");
+    await user.click(section.getByRole("button", { name: "Save customer emails" }));
+    expect(await screen.findByText("Customer emails saved")).toBeInTheDocument();
+    expect(server.calls.find((c) => c.method === "PATCH")!.body).toEqual({
+      customer: {
+        order_received: { enabled: true, intro: "Thank you for shopping small!" },
+        deposit_received: { enabled: true, intro: null },
+        in_production: { enabled: true, intro: null },
+        payment_received: { enabled: true, intro: null },
+        shipped: { enabled: false, intro: null },
+      },
+    });
+  });
+
+  it("previews an email with the unsaved intro in a sandboxed frame, sending nothing", async () => {
+    const { server, user } = setup();
+    const section = await form();
+    await user.type(section.getByLabelText("Your intro for “Shipped” (optional)"), "On its way!");
+    await user.click(section.getByRole("button", { name: "Preview “Shipped”" }));
+    const frame = await screen.findByTitle("Preview of the “Shipped” email");
+    expect(frame).toHaveAttribute("sandbox", "");
+    expect(frame.getAttribute("srcdoc")).toContain("On its way!");
+    expect(screen.getByText("Preview shipped")).toBeInTheDocument(); // the subject
+    expect(server.calls.find((c) => c.path.endsWith("/preview"))!.body).toEqual({ template: "shipped", intro: "On its way!" });
+    expect(server.calls.some((c) => c.method === "PATCH" || c.path.endsWith("/test"))).toBe(false);
+  });
+
+  it("sends the previewed email to the owner only", async () => {
+    const { server, user } = setup();
+    const section = await form();
+    await user.click(section.getByRole("button", { name: "Preview “Deposit received”" }));
+    await user.click(await screen.findByRole("button", { name: "Send this one to myself" }));
+    expect(await screen.findByText("“Deposit received” test on its way to owner@shop.com")).toBeInTheDocument();
+    expect(screen.getByText("With your saved intro, to the email you sign in with. Never to a customer.")).toBeInTheDocument();
+    expect(server.calls.find((c) => c.path.endsWith("/test"))!.body).toEqual({ template: "deposit_received" });
+  });
+});
+
 describe("the reply-to confirmation page", () => {
   it("confirms only on a click, then says so", async () => {
     const posts: unknown[] = [];

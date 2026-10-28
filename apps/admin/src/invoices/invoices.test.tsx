@@ -303,6 +303,37 @@ describe("invoice record page", () => {
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("A cancelled invoice can't be refunded.");
   });
 
+  it("marking it shipped takes an optional carrier and tracking number, checked first", async () => {
+    const invoice = paidInvoice();
+    const { server, user } = setup(`/invoices/${invoice.id}`, { invoices: [invoice] });
+    await user.click(await screen.findByRole("button", { name: "Mark shipped" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    await user.type(dialog.getByLabelText("Carrier (optional)"), " USPS ");
+    await user.type(dialog.getByLabelText("Tracking number (optional)"), "<b>");
+    await user.click(dialog.getByRole("button", { name: "Mark shipped" }));
+    expect(dialog.getByText("Use letters, digits, spaces and hyphens only (3 to 40).")).toBeInTheDocument();
+    expect(server.last("POST", `/api/v1/invoices/${invoice.id}/status`)).toBeUndefined();
+    await user.clear(dialog.getByLabelText("Tracking number (optional)"));
+    await user.type(dialog.getByLabelText("Tracking number (optional)"), "9400 1000-0000");
+    await user.click(dialog.getByRole("button", { name: "Mark shipped" }));
+    await waitFor(() =>
+      expect(server.last("POST", `/api/v1/invoices/${invoice.id}/status`)!.body).toEqual({
+        status: "shipped",
+        payment_method: null,
+        carrier: "USPS",
+        tracking_number: "9400 1000-0000",
+      }),
+    );
+    expect(await screen.findByText("USPS · tracking 9400 1000-0000")).toBeInTheDocument();
+  });
+
+  it("only marking it shipped asks for a tracking number", async () => {
+    const invoice = paidInvoice();
+    const { user } = setup(`/invoices/${invoice.id}`, { invoices: [invoice] });
+    await user.click(await screen.findByRole("button", { name: "Mark in production" }));
+    expect(within(await screen.findByRole("dialog")).queryByLabelText("Tracking number (optional)")).not.toBeInTheDocument();
+  });
+
   it("staff edit notes on a paid invoice; the due date is editable only on a quote", async () => {
     const invoice = paidInvoice({ notes: "Gift wrap" });
     const { server, user } = setup(`/invoices/${invoice.id}`, { role: "staff", invoices: [invoice] });

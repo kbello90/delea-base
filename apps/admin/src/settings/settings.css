@@ -100,3 +100,28 @@
 .emails-card__hint {
   display: block;
 }
+.customer-email {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 0;
+  padding: 12px 0 4px;
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.customer-email .field {
+  width: 100%;
+}
+.email-preview {
+  margin-top: 16px;
+}
+/* Phone width: what most shoppers read it on. */
+.email-preview__frame {
+  display: block;
+  width: 100%;
+  max-width: 390px;
+  height: 640px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #f7f4ef;
+}

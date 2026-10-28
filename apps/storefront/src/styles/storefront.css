@@ -1136,3 +1136,20 @@ fieldset legend {
     top: 12px;
   }
 }
+.order__tracking {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+}
+.order__tracking div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.order__tracking dt {
+  font-weight: 600;
+}
+.order__tracking dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
