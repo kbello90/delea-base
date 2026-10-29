@@ -97,10 +97,12 @@ pins Stripe API version **2026-09-30.endive**.
    environment variable `SHOWCASE_STRIPE_ACCOUNT_ID`; then reload the showcase.
 
 **Running locally:** start the API on 8000 as usual, and in another terminal forward the
-connected accounts' events to it:
+connected accounts' events to it. The Stripe CLI needs the events listed; these are the nine the
+webhook handles (anything else would only be recorded as ignored; the two `async_payment_*`
+events are recorded as unsupported, since DELEA takes card only):
 
 ```sh
-stripe listen --forward-connect-to localhost:8000/api/v1/stripe/webhook
+stripe listen --events checkout.session.completed,checkout.session.expired,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,refund.created,refund.updated,refund.failed,account.updated,account.application.deauthorized --forward-connect-to localhost:8000/api/v1/stripe/webhook
 ```
 
 **Manual checks (they need your sandbox; CI never talks to Stripe):**
