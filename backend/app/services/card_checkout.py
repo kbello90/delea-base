@@ -7,6 +7,12 @@ shop's own account. The session is created with the idempotency key
 expiry are then attached to the row. If Stripe can't be reached the attempt is marked failed:
 the order stays, and the shopper's tracking page offers Pay now.
 
+Card only: each session names the shop's card-only payment method configuration
+(payment_accounts.card_config_id), made on the shop's account at its first card checkout. If
+Stripe refuses a session and the configuration turns out to be unusable (the owner switched it
+off or turned card off in their Stripe Dashboard), a new one is made and the session is tried
+once more.
+
 The webhook (app/api/v1/stripe_webhooks.py) records what Stripe says happened.
 """
 
@@ -64,24 +70,35 @@ async def start_card_payment(
 
     payment_id = started["payment_id"]
     tracking = f"{origin.rstrip('/')}/orders/{token}"
-    try:
-        session = await gateway.create_checkout_session(
-            CheckoutRequest(
-                account_id=account_id,
-                amount_cents=started["amount_cents"],
-                currency=started["currency"],
-                description=f"Order {started['order_ref']}",
-                metadata={
-                    "tenant_id": tenant_id,
-                    "invoice_id": str(started["invoice_id"]),
-                    "payment_id": str(payment_id),
-                    "order_ref": started["order_ref"],
-                },
-                success_url=f"{tracking}?paid=1",
-                cancel_url=tracking,
-                idempotency_key=f"delea:checkout:{payment_id}",
-            )
+
+    def request(card_config_id: str, key_suffix: str = "") -> CheckoutRequest:
+        return CheckoutRequest(
+            account_id=account_id,
+            amount_cents=started["amount_cents"],
+            currency=started["currency"],
+            description=f"Order {started['order_ref']}",
+            metadata={
+                "tenant_id": tenant_id,
+                "invoice_id": str(started["invoice_id"]),
+                "payment_id": str(payment_id),
+                "order_ref": started["order_ref"],
+            },
+            success_url=f"{tracking}?paid=1",
+            cancel_url=tracking,
+            idempotency_key=f"delea:checkout:{payment_id}{key_suffix}",
+            card_config_id=card_config_id,
         )
+
+    try:
+        config_id = await card_config(pool, gateway, tenant_id, account_id)
+        try:
+            session = await gateway.create_checkout_session(request(config_id))
+        except StripeUnavailable:
+            if await gateway.card_config_usable(account_id, config_id):
+                raise
+            config_id = await card_config(pool, gateway, tenant_id, account_id, replace=config_id)
+            # Stripe may keep the refusal under the first key: the retry has its own.
+            session = await gateway.create_checkout_session(request(config_id, f":{config_id}"))
     except StripeUnavailable:
         async with checkout_session(pool) as conn:
             await conn.execute(
@@ -94,6 +111,36 @@ async def start_card_payment(
             (tenant_id, payment_id, session.id, session.url, session.expires_at),
         )
     return CardStart(checkout_url=session.url)
+
+
+async def card_config(
+    pool: AsyncConnectionPool,
+    gateway: StripeGateway,
+    tenant_id: str,
+    account_id: str,
+    *,
+    replace: str | None = None,
+) -> str:
+    """The shop's card-only configuration: the stored one, or a new one made at Stripe and
+    stored (`replace` names the unusable one it takes over from). Raises StripeUnavailable."""
+    if replace is None:
+        async with payments_session(pool) as writer:
+            cur = await writer.execute(
+                "select public.stripe_card_config(%s, %s)", (tenant_id, account_id)
+            )
+            (stored,) = await cur.fetchone()
+        if stored:
+            return stored
+    made = await gateway.create_card_config(
+        account_id, idempotency_key=f"delea:card-config:{account_id}:{replace or 'first'}"
+    )
+    async with payments_session(pool) as writer:
+        cur = await writer.execute(
+            "select public.stripe_set_card_config(%s, %s, %s, %s)",
+            (tenant_id, account_id, made, replace),
+        )
+        (in_force,) = await cur.fetchone()
+    return in_force or made
 
 
 class CardSessionOpen(Exception):

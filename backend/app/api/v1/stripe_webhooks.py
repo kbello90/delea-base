@@ -10,6 +10,8 @@ applied by one function, as payments_writer, in one transaction:
   refund.created / .updated / .failed      stripe_apply_refund
   account.updated                          stripe_apply_account
   account.application.deauthorized         stripe_apply_account (card off)
+  checkout.session.async_payment_*         stripe_record_unsupported (methods that confirm
+                                           later: DELEA takes card only; recorded, nothing else)
   anything else                            stripe_record_event (recorded, ignored)
 
 Each function records the event id first (ON CONFLICT DO NOTHING) in that same transaction,
@@ -42,6 +44,9 @@ Pool = Annotated[AsyncConnectionPool, Depends(get_pool)]
 
 SESSION_EVENTS = frozenset({"checkout.session.completed", "checkout.session.expired"})
 REFUND_EVENTS = frozenset({"refund.created", "refund.updated", "refund.failed"})
+ASYNC_EVENTS = frozenset(
+    {"checkout.session.async_payment_succeeded", "checkout.session.async_payment_failed"}
+)
 
 
 def _uuid(value: Any) -> UUID | None:
@@ -113,6 +118,11 @@ async def _apply(conn: AsyncConnection, event: dict[str, Any]) -> str:
             "select public.stripe_apply_account(%s, %s, %s, %s, null, null, true)",
             (event_id, kind, account, live),
         )
+    elif kind in ASYNC_EVENTS:
+        cur = await conn.execute(
+            "select public.stripe_record_unsupported(%s, %s, %s, %s)",
+            (event_id, kind, account, live),
+        )
     else:
         cur = await conn.execute(
             "select public.stripe_record_event(%s, %s, %s, %s)", (event_id, kind, account, live)
@@ -145,5 +155,12 @@ async def stripe_webhook(request: Request, pool: Pool) -> dict[str, bool]:
 
     async with payments_session(pool) as conn:
         outcome = await _apply(conn, event)
-    logger.info("Stripe event %s (%s): %s", event_id, kind, outcome)
+    if outcome == "unsupported":
+        logger.warning(
+            "Stripe event %s (%s): unsupported, the shop's card-only configuration was changed",
+            event_id,
+            kind,
+        )
+    else:
+        logger.info("Stripe event %s (%s): %s", event_id, kind, outcome)
     return {"received": True}

@@ -130,6 +130,17 @@ def pending(db, invoice_id) -> tuple:
     ).fetchone()
 
 
+def card_config(db, shop: dict) -> str | None:
+    return db.execute(
+        "select card_config_id from public.payment_accounts where tenant_id = %s",
+        (shop["tenant"].id,),
+    ).fetchone()[0]
+
+
+def calls(fake: FakeStripeGateway, name: str) -> list[dict]:
+    return [data for called, data in fake.calls if called == name]
+
+
 def signed(payload: dict, secret: str = SECRET, at: int | None = None) -> tuple[bytes, dict]:
     """Stripe's scheme: v1 = HMAC-SHA256(secret, "<t>.<body>")."""
     body = json.dumps(payload).encode()
@@ -305,6 +316,9 @@ def test_a_card_order_gets_checkout_for_its_total_once(
     }
     assert request.success_url == f"{shop['origin']}/orders/{placed['public_token']}?paid=1"
     assert (cents, status) == (TOTAL, "pending") and session_id.startswith("cs_test_fake")
+    # Card only: the session names the card-only configuration made on the shop's account.
+    assert request.card_config_id == card_config(db, shop)
+    assert fake.card_configs[request.card_config_id] == {"account": shop["account"], "active": True}
 
     # A double submit: the same order and the same open session, no second session.
     again = place(client, shop, body=body, code=200)
@@ -331,6 +345,74 @@ def test_stripe_down_at_checkout_keeps_the_order_and_pay_now_retries(
     assert paid.status_code == 200 and paid.json()["checkout_url"].startswith("https://")
     assert paid.headers["cache-control"] == "no-store"
     assert pending(db, inv["id"])[3] == "pending"
+
+
+def test_the_card_only_configuration_is_made_once_per_shop(
+    client: TestClient, shop, db, fake: FakeStripeGateway
+) -> None:
+    assert card_config(db, shop) is None  # none until the first card checkout
+    place(client, shop)
+    first = card_config(db, shop)
+    assert first and first.startswith("pmc_fake")
+    made = calls(fake, "create_card_config")
+    key = f"delea:card-config:{shop['account']}:first"
+    assert made == [{"account_id": shop["account"], "idempotency_key": key}]
+    place(client, shop)  # a second order reuses it
+    assert card_config(db, shop) == first
+    assert len(calls(fake, "create_card_config")) == 1
+    sessions = [c["request"] for c in calls(fake, "create_checkout_session")]
+    assert [s.card_config_id for s in sessions] == [first, first]
+
+
+def test_a_configuration_the_owner_switched_off_is_replaced_once(
+    client: TestClient, shop, db, fake: FakeStripeGateway
+) -> None:
+    place(client, shop)
+    old = card_config(db, shop)
+    fake.deactivate_card_config(old)  # the owner, in their Stripe Dashboard
+    placed = place(client, shop)
+    assert placed["checkout_url"].startswith("https://checkout.stripe.com/")
+    new = card_config(db, shop)
+    assert new not in (None, old)
+    assert calls(fake, "create_card_config")[-1]["idempotency_key"] == (
+        f"delea:card-config:{shop['account']}:{old}"
+    )
+    last = calls(fake, "create_checkout_session")[-1]["request"]
+    payment_id = pending(db, invoice(db, placed["public_token"])["id"])[0]
+    # The retry has its own idempotency key: Stripe may have kept the refusal under the first.
+    assert (last.card_config_id, last.idempotency_key) == (
+        new,
+        f"delea:checkout:{payment_id}:{new}",
+    )
+
+
+def test_stripe_refusing_a_session_for_another_reason_keeps_the_configuration(
+    client: TestClient, shop, db, fake: FakeStripeGateway
+) -> None:
+    place(client, shop)
+    config = card_config(db, shop)
+    fake.fail.add("create_checkout_session")  # the configuration itself is fine
+    placed = place(client, shop)
+    assert placed["checkout_url"] is None
+    assert pending(db, invoice(db, placed["public_token"])["id"])[3] == "failed"
+    assert card_config(db, shop) == config
+    assert len(calls(fake, "create_card_config")) == 1
+
+
+def test_stripe_down_while_making_the_configuration_keeps_the_order(
+    client: TestClient, shop, db, fake: FakeStripeGateway
+) -> None:
+    fake.fail.add("create_card_config")
+    placed = place(client, shop)
+    assert placed["checkout_url"] is None  # the tracking page offers Pay now
+    inv = invoice(db, placed["public_token"])
+    assert pending(db, inv["id"])[3] == "failed"
+    assert card_config(db, shop) is None
+    assert not calls(fake, "create_checkout_session")
+    paid = client.post(
+        f"/api/v1/public/orders/{placed['public_token']}/pay", headers={"Origin": shop["origin"]}
+    )
+    assert paid.status_code == 200 and card_config(db, shop) is not None
 
 
 def test_pay_now_after_a_deposit_charges_the_balance(
@@ -484,6 +566,40 @@ def test_events_that_dont_match_change_nothing(client: TestClient, shop, db, fak
         "select outcome from public.stripe_events where event_id like 'evt_it_%' order by outcome"
     ).fetchall()
     assert [o for (o,) in outcomes] == ["live_refused", "no_match", "no_match"]
+
+
+def test_async_payment_events_are_recorded_as_unsupported(
+    client: TestClient, shop, db, fake
+) -> None:
+    """Card only: if the owner turns on a method that confirms later in their Stripe Dashboard,
+    its async_payment_* events change nothing and are recorded as unsupported (TRD §6.14)."""
+    token = place(client, shop)["public_token"]
+    inv = invoice(db, token)
+    payment_id, session_id, cents, _ = pending(db, inv["id"])
+    ids = []
+    for kind in ("async_payment_succeeded", "async_payment_failed"):
+        ev = event(
+            f"checkout.session.{kind}",
+            {
+                "id": session_id,
+                "object": "checkout.session",
+                "payment_status": "paid" if kind.endswith("succeeded") else "unpaid",
+                "amount_total": cents,
+                "currency": "usd",
+                "metadata": {"tenant_id": shop["tenant"].id, "payment_id": str(payment_id)},
+            },
+            shop["account"],
+        )
+        ids.append(ev["id"])
+        deliver(client, ev)
+        deliver(client, ev)  # a replay
+    assert invoice(db, token) == inv
+    assert pending(db, inv["id"])[3] == "pending"
+    rows = db.execute(
+        "select outcome, tenant_id::text from public.stripe_events where event_id = any(%s)",
+        (ids,),
+    ).fetchall()
+    assert rows == [("unsupported", shop["tenant"].id)] * 2
 
 
 def test_stock_short_at_payment_keeps_the_payment_and_a_replay_changes_nothing(

@@ -105,22 +105,34 @@ stripe listen --forward-connect-to localhost:8000/api/v1/stripe/webhook
 
 **Manual checks (they need your sandbox; CI never talks to Stripe):**
 
+A non-demo shop with an owner login for them, on the local stack only (never the seed tenants;
+the password is printed once): `cd backend` then
+`.venv/Scripts/python scripts/e2e_shop.py create --port 5174` (macOS/Linux: `.venv/bin/python`);
+remove it afterwards with `e2e_shop.py delete <tenant id>`.
+
 1. *Connect.* Sign in to the admin as a non-demo shop's owner → Settings → Card payments →
    **Connect Stripe** → finish Stripe's form with test data → you return to Settings, which
-   should say **Card payments on**.
-2. *Pay by card.* On that shop's storefront, check out with **Card**; on Stripe's page pay with
+   should say **Card payments on**. `stripe get /v1/accounts/<acct_…>` shows
+   `controller.stripe_dashboard.type` = `full`.
+2. *First session on the pinned API version.* Start one card checkout on that shop's storefront:
+   Stripe accepts it (no "The card payment couldn't start" message) and its page shows
+   **Pay with card** with card as the only payment method. The shop's account now has a
+   payment method configuration named "DELEA card only". The fake gateway in CI can't catch a
+   parameter Stripe refuses, so repeat this whenever the Stripe library or the API version
+   changes (TRD §6.14, §6.15).
+3. *Pay by card.* On that shop's storefront, check out with **Card**; on Stripe's page pay with
    `4242 4242 4242 4242`, any future date, any CVC. You return to the order page, which says the
    payment is being confirmed, then **Paid**. In the admin the invoice is paid, method Card, with
    one "Card (online)" payment; stock went down once. `stripe listen` shows
    `checkout.session.completed` answered `200`.
-3. *Pay now.* Place another card order and press back on Stripe's page: the order page offers
+4. *Pay now.* Place another card order and press back on Stripe's page: the order page offers
    **Pay … by card**; it opens the same session again.
-4. *Refund.* In the Stripe Dashboard (switch to the connected account), refund part of the
+5. *Refund.* In the Stripe Dashboard (switch to the connected account), refund part of the
    payment, then the rest. The admin shows a refund row each time; after the second the invoice
    is Refunded. The dashboard's revenue goes down in this month. Stock is not put back.
-5. *Replay.* `stripe events resend <evt_… of step 2> --account <acct_…>`: `200`, and nothing in
+6. *Replay.* `stripe events resend <evt_… of step 3> --account <acct_…>`: `200`, and nothing in
    the admin changes (no second payment, stock unchanged).
-6. *Expiry.* Start a card checkout and leave it; after it expires (1 hour), the admin shows
+7. *Expiry.* Start a card checkout and leave it; after it expires (1 hour), the admin shows
    that payment as Expired and the order page offers Pay now again.
 
 ### Email (Slice D)

@@ -79,6 +79,8 @@ class CheckoutRequest:
     success_url: str
     cancel_url: str
     idempotency_key: str
+    # The shop's card-only payment method configuration (pmc_...) on its own account.
+    card_config_id: str
 
 
 class StripeGateway(Protocol):
@@ -87,6 +89,10 @@ class StripeGateway(Protocol):
     async def account_link(self, account_id: str, *, refresh_url: str, return_url: str) -> str: ...
 
     async def retrieve_account(self, account_id: str) -> AccountState: ...
+
+    async def create_card_config(self, account_id: str, *, idempotency_key: str) -> str: ...
+
+    async def card_config_usable(self, account_id: str, config_id: str) -> bool: ...
 
     async def create_checkout_session(self, request: CheckoutRequest) -> CheckoutSession: ...
 
@@ -102,6 +108,46 @@ STANDARD_EQUIVALENT_CONTROLLER = {
     "losses": {"payments": "stripe"},
     "requirement_collection": "stripe",
 }
+
+CARD_CONFIG_NAME = "DELEA card only"
+
+
+def card_config_params(existing: dict[str, Any]) -> dict[str, Any]:
+    """A payment method configuration with card on and every other method off. The methods are
+    the ones an existing configuration on the account lists (each has a display_preference), so
+    a method Stripe adds later is switched off too."""
+    params: dict[str, Any] = {"name": CARD_CONFIG_NAME}
+    for method, value in sorted(existing.items()):
+        if isinstance(value, dict) and "display_preference" in value:
+            preference = "on" if method == "card" else "off"
+            params[method] = {"display_preference": {"preference": preference}}
+    params["card"] = {"display_preference": {"preference": "on"}}
+    return params
+
+
+def checkout_session_params(request: CheckoutRequest, expires_at: datetime) -> dict[str, Any]:
+    """The Checkout Session as sent to Stripe. Card only comes from the configuration: API
+    version 2026-09-30.endive refuses payment_method_types."""
+    return {
+        "mode": "payment",
+        "payment_method_configuration": request.card_config_id,
+        "line_items": [
+            {
+                "quantity": 1,
+                "price_data": {
+                    "currency": request.currency.lower(),
+                    "unit_amount": request.amount_cents,
+                    "product_data": {"name": request.description},
+                },
+            }
+        ],
+        "success_url": request.success_url,
+        "cancel_url": request.cancel_url,
+        "expires_at": int(expires_at.timestamp()),
+        "client_reference_id": request.metadata["payment_id"],
+        "metadata": request.metadata,
+        "payment_intent_data": {"metadata": request.metadata},
+    }
 
 
 class LiveStripeGateway:
@@ -153,31 +199,53 @@ class LiveStripeGateway:
             bool(getattr(account, "livemode", False)),
         )
 
+    async def create_card_config(self, account_id: str, *, idempotency_key: str) -> str:
+        options = {"stripe_account": account_id}
+        listed = await self._call(
+            "payment method configurations",
+            self._client.v1.payment_method_configurations.list,
+            {"limit": 100},
+            options,
+        )
+        # The account's own default lists every method it can offer; any other will do.
+        configs = sorted(listed.data, key=lambda c: (c.parent is not None, not c.is_default))
+        if not configs:
+            raise StripeUnavailable("Stripe payment method configurations: none on the account")
+        created = await self._call(
+            "card-only configuration",
+            self._client.v1.payment_method_configurations.create,
+            card_config_params(configs[0].to_dict()),
+            {**options, "idempotency_key": idempotency_key},
+        )
+        return created.id
+
+    async def card_config_usable(self, account_id: str, config_id: str) -> bool:
+        """False when the configuration is gone, inactive or has card off (the owner changed
+        it in their Stripe Dashboard); StripeUnavailable when Stripe can't say."""
+        try:
+            config = await anyio.to_thread.run_sync(
+                lambda: self._client.v1.payment_method_configurations.retrieve(
+                    config_id, None, {"stripe_account": account_id}
+                )
+            )
+        except stripe.InvalidRequestError:
+            return False
+        except stripe.StripeError as exc:
+            logger.warning(
+                "Stripe configuration read failed: %s (request %s)",
+                type(exc).__name__,
+                exc.request_id,
+            )
+            raise StripeUnavailable("Stripe configuration read failed") from exc
+        card = (config.to_dict().get("card") or {}).get("display_preference") or {}
+        return bool(config.active) and card.get("value") == "on"
+
     async def create_checkout_session(self, request: CheckoutRequest) -> CheckoutSession:
         expires_at = datetime.now(UTC) + CHECKOUT_LIFETIME
         session = await self._call(
             "checkout",
             self._client.v1.checkout.sessions.create,
-            {
-                "mode": "payment",
-                "payment_method_types": ["card"],
-                "line_items": [
-                    {
-                        "quantity": 1,
-                        "price_data": {
-                            "currency": request.currency.lower(),
-                            "unit_amount": request.amount_cents,
-                            "product_data": {"name": request.description},
-                        },
-                    }
-                ],
-                "success_url": request.success_url,
-                "cancel_url": request.cancel_url,
-                "expires_at": int(expires_at.timestamp()),
-                "client_reference_id": request.metadata["payment_id"],
-                "metadata": request.metadata,
-                "payment_intent_data": {"metadata": request.metadata},
-            },
+            checkout_session_params(request, expires_at),
             {"stripe_account": request.account_id, "idempotency_key": request.idempotency_key},
         )
         return CheckoutSession(
@@ -203,6 +271,8 @@ class FakeStripeGateway:
     checkout_base: str = "https://checkout.stripe.com/c/pay/"
     accounts: dict[str, AccountState] = field(default_factory=dict)
     sessions: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # pmc id -> {"account": acct id, "active": bool}
+    card_configs: dict[str, dict[str, Any]] = field(default_factory=dict)
     calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
     fail: set[str] = field(default_factory=set)
     # The local end-to-end run: finishing Stripe's form is out of reach, so an onboarding link
@@ -238,8 +308,31 @@ class FakeStripeGateway:
         """What the owner finishing Stripe's form does."""
         self.accounts[account_id] = AccountState(account_id, True, True, False)
 
+    async def create_card_config(self, account_id: str, *, idempotency_key: str) -> str:
+        self._record("create_card_config", account_id=account_id, idempotency_key=idempotency_key)
+        if idempotency_key not in self._by_key:
+            config_id = "pmc_fake" + uuid.uuid4().hex[:16]
+            self.card_configs[config_id] = {"account": account_id, "active": True}
+            self._by_key[idempotency_key] = config_id
+        return self._by_key[idempotency_key]
+
+    async def card_config_usable(self, account_id: str, config_id: str) -> bool:
+        self._record("card_config_usable", account_id=account_id, config_id=config_id)
+        return self._usable(account_id, config_id)
+
+    def _usable(self, account_id: str, config_id: str) -> bool:
+        config = self.card_configs.get(config_id)
+        return bool(config and config["account"] == account_id and config["active"])
+
+    def deactivate_card_config(self, config_id: str) -> None:
+        """What the owner switching the configuration off in their Stripe Dashboard does."""
+        self.card_configs[config_id]["active"] = False
+
     async def create_checkout_session(self, request: CheckoutRequest) -> CheckoutSession:
         self._record("create_checkout_session", request=request)
+        # Stripe refuses a configuration that is unknown on the account or inactive.
+        if not self._usable(request.account_id, request.card_config_id):
+            raise StripeUnavailable("Stripe checkout failed")
         if request.idempotency_key not in self._by_key:
             session_id = "cs_test_fake" + uuid.uuid4().hex[:20]
             session = CheckoutSession(
