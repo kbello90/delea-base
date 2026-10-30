@@ -102,8 +102,12 @@ webhook handles (anything else would only be recorded as ignored; the two `async
 events are recorded as unsupported, since DELEA takes card only):
 
 ```sh
-stripe listen --events checkout.session.completed,checkout.session.expired,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,refund.created,refund.updated,refund.failed,account.updated,account.application.deauthorized --forward-connect-to localhost:8000/api/v1/stripe/webhook
+stripe listen --events "checkout.session.completed,checkout.session.expired,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,refund.created,refund.updated,refund.failed,account.updated,account.application.deauthorized" --forward-connect-to localhost:8000/api/v1/stripe/webhook
 ```
+
+Keep the quotes around the event list: in PowerShell an unquoted `a,b,c` becomes a list
+that reaches the CLI joined with spaces, so it listens for no event at all and nothing is
+forwarded.
 
 **Manual checks (they need your sandbox; CI never talks to Stripe):**
 
