@@ -1070,7 +1070,8 @@ export interface paths {
         /**
          * Pay Now
          * @description Pay the order's balance by card: Stripe's hosted Checkout (an open session for the same
-         *     balance is reused). 10 per address per hour.
+         *     balance is reused, unless Stripe says it was already paid: then `confirming`, and the
+         *     webhook records the payment). 10 per address per hour.
          */
         post: operations["pay_now_api_v1_public_orders__public_token__pay_post"];
         delete?: never;
@@ -2419,7 +2420,12 @@ export interface components {
         /** PayNowOut */
         PayNowOut: {
             /** Checkout Url */
-            checkout_url: string;
+            checkout_url?: string | null;
+            /**
+             * Confirming
+             * @default false
+             */
+            confirming: boolean;
         };
         /**
          * PaymentAccountOut

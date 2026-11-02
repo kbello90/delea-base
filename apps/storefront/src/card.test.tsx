@@ -94,6 +94,22 @@ describe("Pay now on the tracking page", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("The card payment couldn't start. Please try again in a minute.");
   });
 
+  it("Pay now on a payment already made at Stripe: waits for the shop, never reopens the page", async () => {
+    const leaving = vi.spyOn(leave, "to").mockImplementation(() => undefined);
+    const user = userEvent.setup();
+    const server = checkoutServer({ store: CARD_STORE, onPay: () => json(200, { checkout_url: null, confirming: true }) });
+    server.setPlaced(cardOrder);
+    renderShop(`/orders/${TOKEN}`, server.fetch);
+    await user.click(await screen.findByRole("button", { name: `Pay ${usd(cardOrder.total_cents)} by card` }));
+    expect(await screen.findByText("Payment received, confirming. This page updates by itself.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /by card/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Paid")).not.toBeInTheDocument(); // the page marks nothing paid
+    expect(leaving).not.toHaveBeenCalled();
+    server.setPlaced({ ...cardOrder, status: "paid", payment_instructions: null, amount_paid_cents: cardOrder.total_cents, balance_cents: 0 });
+    expect(await screen.findByText("Paid", {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.queryByText(/confirming/)).not.toBeInTheDocument();
+  });
+
   it("a bank-transfer order may also be paid by card when the shop takes cards", async () => {
     const server = checkoutServer({ store: CARD_STORE });
     server.setPlaced({ ...cardOrder, payment_choice: "bank_transfer" });

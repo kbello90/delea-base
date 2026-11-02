@@ -79,7 +79,14 @@ function Figures({ summary, period, currency }: { summary: Summary; period: Peri
           id="net"
           label="Net profit"
           value={money(p.net_profit_cents)}
-          note={p.net_profit_cents < 0 ? "Loss: expenses exceed revenue" : "Revenue minus expenses"}
+          note={
+            // Negative revenue: refunds of earlier sales outweigh this period's sales.
+            p.revenue_cents < 0
+              ? `Refunds exceed sales ${period === "mtd" ? "this month" : "this year"}`
+              : p.net_profit_cents < 0
+                ? "Loss: expenses exceed revenue"
+                : "Revenue minus expenses"
+          }
         />
         <Metric
           id="deposits"

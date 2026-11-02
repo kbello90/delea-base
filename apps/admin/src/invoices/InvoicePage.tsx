@@ -561,7 +561,7 @@ function PaymentsSection({ invoice, actions, money }: { invoice: Invoice; action
   const toast = useToast();
   const busy = voidPayment.isPending || start.isPending;
   const error = voidPayment.error ?? start.error;
-  const closed = invoice.cancelled_at !== null || invoice.refunded_at !== null;
+  const refunded = payments.filter((p) => p.kind === "refund" && p.status === "succeeded").reduce((sum, p) => sum + p.amount_cents, 0);
 
   function confirm() {
     if (!pending) return;
@@ -588,10 +588,23 @@ function PaymentsSection({ invoice, actions, money }: { invoice: Invoice; action
           <dt>Paid so far</dt>
           <dd>{money(invoice.amount_paid_cents)}</dd>
         </div>
-        <div>
-          <dt>{invoice.balance_cents < 0 ? "Overpaid" : "Balance due"}</dt>
-          <dd>{invoice.balance_cents === 0 && !closed ? "Paid in full" : money(Math.abs(invoice.balance_cents))}</dd>
-        </div>
+        {invoice.cancelled_at !== null ? (
+          <div>
+            <dt>Balance due</dt>
+            <dd>Cancelled</dd>
+          </div>
+        ) : invoice.refunded_at !== null ? (
+          // Closed: nothing is due. What went back is the figure that matters.
+          <div>
+            <dt>Refunded</dt>
+            <dd>{money(refunded)}</dd>
+          </div>
+        ) : (
+          <div>
+            <dt>{invoice.balance_cents < 0 ? "Overpaid" : "Balance due"}</dt>
+            <dd>{invoice.balance_cents === 0 ? "Paid in full" : money(Math.abs(invoice.balance_cents))}</dd>
+          </div>
+        )}
         {invoice.production_started_at && (
           <div>
             <dt>Production started</dt>

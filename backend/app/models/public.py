@@ -323,4 +323,7 @@ class OrderOut(BaseModel):
 
 
 class PayNowOut(BaseModel):
-    checkout_url: str  # Stripe-hosted Checkout for the order's balance
+    # Stripe-hosted Checkout for the order's balance; null while `confirming`.
+    checkout_url: str | None = None
+    # The open session was already paid at Stripe; the webhook records it within moments.
+    confirming: bool = False

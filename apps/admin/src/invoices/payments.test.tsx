@@ -218,6 +218,30 @@ describe("an invoice's payments", () => {
     await waitFor(() => expect(paidAndDue().getByText("Paid so far").nextSibling).toHaveTextContent("$108.00"));
   });
 
+  it("a refunded invoice says what was refunded, with no balance due; a cancelled one says Cancelled", async () => {
+    const refunded = paidInvoice({
+      quote_number: "QTE-2026-063",
+      items: [line],
+      total_cents: 11184,
+      amount_paid_cents: 0,
+      balance_cents: 11184,
+      refunded_at: "2026-10-30T15:00:00Z",
+      payments: [
+        makePayment({ provider: "stripe", method: "card", amount_cents: 11184 }),
+        makePayment({ kind: "refund", provider: "stripe", method: "card", amount_cents: 5000 }),
+        makePayment({ kind: "refund", provider: "stripe", method: "card", amount_cents: 6184 }),
+        makePayment({ kind: "refund", provider: "stripe", method: "card", status: "failed", amount_cents: 999 }),
+      ],
+    });
+    const cancelled = quote({ quote_number: "QTE-2026-064", cancelled_at: "2026-10-30T15:00:00Z" });
+    const { unmount } = setup(`/invoices/${refunded.id}`, { invoices: [refunded] });
+    await waitFor(() => expect(paidAndDue().getByText("Refunded").nextSibling).toHaveTextContent(/^\$111\.84$/));
+    expect(paidAndDue().queryByText("Balance due")).not.toBeInTheDocument();
+    unmount();
+    setup(`/invoices/${cancelled.id}`, { invoices: [cancelled] });
+    await waitFor(() => expect(paidAndDue().getByText("Balance due").nextSibling).toHaveTextContent(/^Cancelled$/));
+  });
+
   it("card money held: no Cancel, the reason instead; once refunded in Stripe, Cancel is back", async () => {
     const card = paidInvoice({ quote_number: "QTE-2026-062", items: [line], payments: [makePayment({ provider: "stripe", method: "card", amount_cents: 10800 })] });
     const { unmount } = setup(`/invoices/${card.id}`, { invoices: [card] });

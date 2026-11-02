@@ -45,7 +45,7 @@ const CONFIRM_POLL_MS = 3_000;
 const CONFIRM_POLLS = 20;
 
 /** Stripe's hosted Checkout for the balance. */
-function PayNow({ token, label }: { token: string; label: string }) {
+function PayNow({ token, label, onConfirming }: { token: string; label: string; onConfirming: () => void }) {
   const pay = usePayNow(token);
   const error = pay.error instanceof ApiError ? pay.error.message : pay.error ? "Check your connection and try again." : null;
   return (
@@ -57,7 +57,9 @@ function PayNow({ token, label }: { token: string; label: string }) {
         onClick={() =>
           pay.mutate(undefined, {
             onSuccess: (out) => {
-              if (isStripeCheckout(out.checkout_url)) leave.to(out.checkout_url);
+              // Already paid on Stripe's page, the shop not told yet: wait for it, never reopen.
+              if (out.confirming) onConfirming();
+              else if (isStripeCheckout(out.checkout_url)) leave.to(out.checkout_url);
             },
           })
         }
@@ -81,7 +83,9 @@ export function OrderPage() {
   const placed = (location.state as { placed?: Order } | null)?.placed;
   // Back from Stripe (?paid=1): the webhook records the payment within seconds; keep asking.
   const [params] = useSearchParams();
-  const returned = params.get("paid") === "1";
+  // Pay now found the payment already made at Stripe: the same wait as coming back from it.
+  const [received, setReceived] = useState(false);
+  const returned = params.get("paid") === "1" || received;
   const [polls, setPolls] = useState(0);
   const order = useOrder(
     token,
@@ -139,6 +143,10 @@ export function OrderPage() {
   const confirming = returned && open && polls < CONFIRM_POLLS;
   const card = store.payment_choices.includes("card") && open && o.balance_cents >= MIN_CARD_CENTS && !confirming;
   const payLabel = `Pay ${money(o.balance_cents)} by card`;
+  const confirmPaid = () => {
+    setPolls(0);
+    setReceived(true);
+  };
   return (
     <article className="section order" aria-labelledby="order-title">
       {justPlaced ? (
@@ -168,7 +176,7 @@ export function OrderPage() {
 
       {confirming && (
         <p className="order__confirming" role="status">
-          Thank you. Your card payment is being confirmed; this page updates by itself.
+          {received ? "Payment received, confirming. This page updates by itself." : "Thank you. Your card payment is being confirmed; this page updates by itself."}
         </p>
       )}
 
@@ -178,7 +186,7 @@ export function OrderPage() {
           {card ? (
             <>
               <p>Your order is placed. It is confirmed once the payment goes through.</p>
-              <PayNow token={o.public_token} label={payLabel} />
+              <PayNow token={o.public_token} onConfirming={confirmPaid} label={payLabel} />
             </>
           ) : (
             <p>Card payments aren&apos;t available right now. Please contact the shop to pay.</p>
@@ -191,7 +199,7 @@ export function OrderPage() {
           <h2 id="pay-title">{o.payment_choice === "bank_transfer" ? "How to pay" : "Paying when you pick up"}</h2>
           <p className="order__instructions">{o.payment_instructions}</p>
           <p className="field-hint">Use your order number {o.order_ref} as the reference.</p>
-          {card && <PayNow token={o.public_token} label={`Or pay ${money(o.balance_cents)} by card now`} />}
+          {card && <PayNow token={o.public_token} onConfirming={confirmPaid} label={`Or pay ${money(o.balance_cents)} by card now`} />}
         </section>
       )}
 
@@ -211,7 +219,7 @@ export function OrderPage() {
                   <p className="field-hint">Use your order number {o.order_ref} as the reference.</p>
                 </>
               )}
-              {card && <PayNow token={o.public_token} label={`Pay the rest, ${money(o.balance_cents)}, by card`} />}
+              {card && <PayNow token={o.public_token} onConfirming={confirmPaid} label={`Pay the rest, ${money(o.balance_cents)}, by card`} />}
             </>
           )}
         </section>

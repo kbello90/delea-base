@@ -531,13 +531,16 @@ async def pay_now(
     gateway: Gateway,
 ) -> PayNowOut:
     """Pay the order's balance by card: Stripe's hosted Checkout (an open session for the same
-    balance is reused). 10 per address per hour."""
+    balance is reused, unless Stripe says it was already paid: then `confirming`, and the
+    webhook records the payment). 10 per address per hour."""
     _limit(rate_limit.public_pay, request)
     response.headers["Cache-Control"] = "no-store"
     response.headers["Referrer-Policy"] = "no-referrer"
     started = await start_card_payment(
         pool, gateway, tenant_id, public_token, request.headers.get("origin", "")
     )
+    if started.confirming:
+        return PayNowOut(confirming=True)
     if started.checkout_url is None:
         code, detail = _PAY_REFUSED[started.refused or "stripe"]
         raise HTTPException(code, detail)

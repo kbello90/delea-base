@@ -434,6 +434,36 @@ def test_pay_now_after_a_deposit_charges_the_balance(
     assert request.amount_cents == TOTAL - 5000  # the balance, never the total
 
 
+def test_pay_now_on_a_session_already_paid_at_stripe_says_confirming(
+    client: TestClient, shop, db, fake: FakeStripeGateway
+) -> None:
+    """Paid on Stripe's page, the webhook not here yet: Pay now asks Stripe and answers
+    "confirming" instead of reopening the session; nothing is marked paid until the webhook.
+    If Stripe can't say, the session's link comes back as before."""
+    origin = {"Origin": shop["origin"]}
+    placed = place(client, shop)
+    url = f"/api/v1/public/orders/{placed['public_token']}/pay"
+    inv = invoice(db, placed["public_token"])
+    _, session_id, _, _ = pending(db, inv["id"])
+    open_again = client.post(url, headers=origin).json()
+    assert open_again == {"checkout_url": placed["checkout_url"], "confirming": False}
+
+    fake.pay_session(session_id)
+    fake.fail.add("checkout_session_status")  # Stripe can't say: as before
+    assert client.post(url, headers=origin).json()["checkout_url"] == placed["checkout_url"]
+    confirming = client.post(url, headers=origin)
+    assert confirming.status_code == 200
+    assert confirming.json() == {"checkout_url": None, "confirming": True}
+    assert pending(db, inv["id"])[3] == "pending"  # nothing marked paid
+    inv = invoice(db, placed["public_token"])
+    assert (inv["status"], inv["paid"]) == ("quote", 0)
+    assert len(calls(fake, "create_checkout_session")) == 1  # no second session
+
+    deliver(client, session_completed(db, shop, placed["public_token"]))
+    paid = client.post(url, headers=origin)
+    assert paid.status_code == 409 and paid.json()["detail"] == "This order is already paid."
+
+
 def test_pay_now_refusals(client: TestClient, shop, db, fake: FakeStripeGateway) -> None:
     origin = {"Origin": shop["origin"]}
     placed = place(client, shop, choice="bank_transfer")

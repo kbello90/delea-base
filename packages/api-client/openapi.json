@@ -4158,7 +4158,7 @@
           "public"
         ],
         "summary": "Pay Now",
-        "description": "Pay the order's balance by card: Stripe's hosted Checkout (an open session for the same\nbalance is reused). 10 per address per hour.",
+        "description": "Pay the order's balance by card: Stripe's hosted Checkout (an open session for the same\nbalance is reused, unless Stripe says it was already paid: then `confirming`, and the\nwebhook records the payment). 10 per address per hour.",
         "operationId": "pay_now_api_v1_public_orders__public_token__pay_post",
         "parameters": [
           {
@@ -8242,14 +8242,23 @@
       "PayNowOut": {
         "properties": {
           "checkout_url": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Checkout Url"
+          },
+          "confirming": {
+            "type": "boolean",
+            "title": "Confirming",
+            "default": false
           }
         },
         "type": "object",
-        "required": [
-          "checkout_url"
-        ],
         "title": "PayNowOut"
       },
       "PaymentAccountOut": {

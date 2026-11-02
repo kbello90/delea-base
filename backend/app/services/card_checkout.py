@@ -13,6 +13,11 @@ Stripe refuses a session and the configuration turns out to be unusable (the own
 off or turned card off in their Stripe Dashboard), a new one is made and the session is tried
 once more.
 
+Pay now on a session that is still open in DELEA first asks Stripe for its status: if the
+shopper already paid it and the webhook hasn't arrived yet, the answer is "confirming" (the
+page says so and keeps checking; it never marks anything paid). If Stripe can't say, the
+session's link is returned as before.
+
 The webhook (app/api/v1/stripe_webhooks.py) records what Stripe says happened.
 """
 
@@ -30,11 +35,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class CardStart:
-    """`checkout_url` when a session is ready; otherwise `refused` says why: not_found,
+    """`checkout_url` when a session is ready; `confirming` when the open session was already
+    paid at Stripe and the webhook is on its way; otherwise `refused` says why: not_found,
     closed, card_off, paid, too_small or stripe (Stripe couldn't be reached)."""
 
     checkout_url: str | None = None
     refused: str | None = None
+    confirming: bool = False
 
 
 async def start_card_payment(
@@ -52,6 +59,8 @@ async def start_card_payment(
         )
         (started,) = await cur.fetchone()
     if started["status"] == "reuse":
+        if await _already_paid(pool, gateway, tenant_id, started["checkout_url"]):
+            return CardStart(confirming=True)
         return CardStart(checkout_url=started["checkout_url"])
     if started["status"] != "start":
         return CardStart(refused=started["status"])
@@ -111,6 +120,29 @@ async def start_card_payment(
             (tenant_id, payment_id, session.id, session.url, session.expires_at),
         )
     return CardStart(checkout_url=session.url)
+
+
+async def _already_paid(
+    pool: AsyncConnectionPool, gateway: StripeGateway, tenant_id: str, checkout_url: str
+) -> bool:
+    """Whether Stripe says the open session behind this link was paid. False when it can't
+    say (the link is then offered as before: Stripe's own page tells a shopper it's done)."""
+    async with service_session(pool) as conn:
+        cur = await conn.execute(
+            "select p.external_ref, a.external_account_id from public.payments p "
+            "join public.payment_accounts a on a.tenant_id = p.tenant_id and a.provider = 'stripe' "
+            "where p.tenant_id = %s and p.provider = 'stripe' and p.status = 'pending' "
+            "and p.checkout_url = %s and p.external_ref is not null",
+            (tenant_id, checkout_url),
+        )
+        row = await cur.fetchone()
+    if row is None:
+        return False
+    session_id, account_id = row
+    try:
+        return await gateway.checkout_session_status(account_id, session_id) == "complete"
+    except StripeUnavailable:
+        return False
 
 
 async def card_config(

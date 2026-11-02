@@ -98,6 +98,8 @@ class StripeGateway(Protocol):
 
     async def expire_checkout_session(self, account_id: str, session_id: str) -> None: ...
 
+    async def checkout_session_status(self, account_id: str, session_id: str) -> str: ...
+
 
 # The four controller settings that make a connected account the Standard equivalent (K1):
 # the shop's own full Stripe Dashboard, the shop pays Stripe's fees, Stripe covers losses and
@@ -261,6 +263,17 @@ class LiveStripeGateway:
             {"stripe_account": account_id},
         )
 
+    async def checkout_session_status(self, account_id: str, session_id: str) -> str:
+        """Stripe's own status of a session: open, complete or expired."""
+        session = await self._call(
+            "session read",
+            self._client.v1.checkout.sessions.retrieve,
+            session_id,
+            None,
+            {"stripe_account": account_id},
+        )
+        return str(session.status)
+
 
 @dataclass
 class FakeStripeGateway:
@@ -348,6 +361,14 @@ class FakeStripeGateway:
         self._record("expire_checkout_session", account_id=account_id, session_id=session_id)
         if session_id in self.sessions:
             self.sessions[session_id]["status"] = "expired"
+
+    async def checkout_session_status(self, account_id: str, session_id: str) -> str:
+        self._record("checkout_session_status", account_id=account_id, session_id=session_id)
+        return self.sessions[session_id]["status"]
+
+    def pay_session(self, session_id: str) -> None:
+        """What the shopper paying on Stripe's page does (the webhook is a separate step)."""
+        self.sessions[session_id]["status"] = "complete"
 
 
 _fake: FakeStripeGateway | None = None

@@ -65,6 +65,18 @@ describe("dashboard figures", () => {
     expect(metric("Net profit").getByText(/^Loss/)).toBeInTheDocument();
   });
 
+  it("refunds of earlier sales above this period's sales: says so, not that expenses exceed revenue", async () => {
+    const refunded = { revenue_cents: -9800, tax_reserve_cents: -784, expenses_cents: 0, deductible_expenses_cents: 0, net_profit_cents: -9800 };
+    await renderDashboard({
+      "/api/v1/dashboard/summary": () => jsonResponse(200, { ...SUMMARY_RESPONSE, mtd: refunded, ytd: refunded }),
+    });
+    expect(metric("Revenue").getByText("-$98.00")).toBeInTheDocument();
+    expect(metric("Net profit").getByText("Refunds exceed sales this month")).toBeInTheDocument();
+    expect(metric("Net profit").queryByText(/^Loss/)).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("radio", { name: "Year to date" }));
+    expect(metric("Net profit").getByText("Refunds exceed sales this year")).toBeInTheDocument();
+  });
+
   it("the toggle is a radiogroup that switches to year to date", async () => {
     await renderDashboard();
     const group = screen.getByRole("group", { name: "Period" });
