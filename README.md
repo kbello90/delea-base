@@ -109,6 +109,19 @@ Keep the quotes around the event list: in PowerShell an unquoted `a,b,c` becomes
 that reaches the CLI joined with spaces, so it listens for no event at all and nothing is
 forwarded.
 
+When the forwarder stops, events wait at Stripe; DELEA dates card payments and refunds by
+Stripe's own times, so delivering them late changes nothing but the wait:
+
+- *The CLI's login expired.* `stripe listen` (or any `stripe` command) stops with
+  `Authorization failed, status=401 ... expired OAuth token`. Run `stripe login` again, then
+  restart the forwarder. Check that its secret still ends the same as `STRIPE_WEBHOOK_SECRET`
+  (it normally does); never paste the `Ready!` line anywhere.
+- *The forwarder dropped* (the terminal closed, the PC slept): events made meanwhile were never
+  delivered. List them, oldest first, and resend each:
+  `stripe events list --stripe-account <acct_…> --limit 20`, then
+  `stripe events resend <evt_…> --account <acct_…>`. Each answers `200`; one already applied
+  is a no-op.
+
 **Manual checks (they need your sandbox; CI never talks to Stripe):**
 
 A non-demo shop with an owner login for them, on the local stack only (never the seed tenants;
@@ -129,8 +142,8 @@ remove it afterwards with `e2e_shop.py delete <tenant id>`.
 3. *Pay by card.* On that shop's storefront, check out with **Card**; on Stripe's page pay with
    `4242 4242 4242 4242`, any future date, any CVC. You return to the order page, which says the
    payment is being confirmed, then **Paid**. In the admin the invoice is paid, method Card, with
-   one "Card (online)" payment; stock went down once. `stripe listen` shows
-   `checkout.session.completed` answered `200`.
+   one "Card (online)" payment, received at Stripe's time of payment; stock went down once.
+   `stripe listen` shows `checkout.session.completed` answered `200`.
 4. *Pay now.* Place another card order and press back on Stripe's page: the order page offers
    **Pay … by card**; it opens the same session again.
 5. *Refund.* In the Stripe Dashboard (switch to the connected account), refund part of the
@@ -138,8 +151,11 @@ remove it afterwards with `e2e_shop.py delete <tenant id>`.
    is Refunded. The dashboard's revenue goes down in this month. Stock is not put back.
 6. *Replay.* `stripe events resend <evt_… of step 3> --account <acct_…>`: `200`, and nothing in
    the admin changes (no second payment, stock unchanged).
-7. *Expiry.* Start a card checkout and leave it; after it expires (1 hour), the admin shows
-   that payment as Expired and the order page offers Pay now again.
+7. *Expiry.* Start a card checkout and leave it, or expire it at once:
+   `stripe checkout sessions expire <cs_test_… from Stripe's address bar> --stripe-account <acct_…>`.
+   `stripe listen` shows `checkout.session.expired` answered `200`; the admin shows that payment
+   tagged Expired, greyed, with no received date; the order page offers **Pay … by card**, which
+   opens a new card-only page (a different `cs_test_…`) for the same amount.
 
 ### Email (Slice D)
 

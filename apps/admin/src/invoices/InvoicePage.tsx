@@ -465,6 +465,7 @@ function PaymentMethodEditor({ invoice }: { invoice: Invoice }) {
 }
 
 const KIND_LABEL = { payment: "Payment", refund: "Refund" } as const;
+const PAYMENT_STATUS_LABEL = { pending: "Pending", succeeded: "Received", failed: "Failed", expired: "Expired", voided: "Voided" } as const;
 
 /** Record a deposit or the rest. The amount starts at the balance; the API refuses more. */
 function RecordPaymentForm({ invoice, money, onClose }: { invoice: Invoice; money: (cents: number) => string; onClose: () => void }) {
@@ -622,14 +623,16 @@ function PaymentsSection({ invoice, actions, money }: { invoice: Invoice; action
             </thead>
             <tbody>
               {payments.map((p) => {
-                const voided = p.status === "voided";
+                // Only succeeded rows count. Voided money was received, so it keeps its date;
+                // pending, failed and expired rows never received anything.
+                const counts = p.status === "succeeded";
+                const received = counts || p.status === "voided";
                 return (
-                  <tr key={p.id} className={voided ? "payment-row--void" : undefined}>
-                    <td data-label="Received">{formatDateTime(p.received_at)}</td>
+                  <tr key={p.id} className={counts ? undefined : p.status === "pending" ? "payment-row--pending" : "payment-row--void"}>
+                    <td data-label="Received">{received ? formatDateTime(p.received_at) : <span className="muted">—</span>}</td>
                     <td data-label="Payment">
                       {KIND_LABEL[p.kind]} · {p.provider === "stripe" ? "Card (online)" : methodLabel(p.method)}{" "}
-                      {voided && <span className="tag">Voided</span>}
-                      {p.status === "pending" && <span className="tag">Pending</span>}
+                      {!counts && <span className="tag">{PAYMENT_STATUS_LABEL[p.status]}</span>}
                     </td>
                     <td data-label="Amount" className="num">
                       {p.kind === "refund" ? `−${money(p.amount_cents)}` : money(p.amount_cents)}

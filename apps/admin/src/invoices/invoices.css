@@ -269,6 +269,10 @@
 .payment-row--void td:last-child {
   text-decoration: none;
 }
+/* A card payment still at Stripe: not money yet, not crossed out either. */
+.payment-row--pending td {
+  color: var(--text-muted);
+}
 .record-payment {
   margin-top: 1rem;
   max-width: 34rem;

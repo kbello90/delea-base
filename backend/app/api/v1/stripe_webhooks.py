@@ -14,6 +14,9 @@ applied by one function, as payments_writer, in one transaction:
                                            later: DELEA takes card only; recorded, nothing else)
   anything else                            stripe_record_event (recorded, ignored)
 
+A card payment is dated by Stripe (the completion event's created time) and a card refund by
+the refund's created time, not by when the event reached DELEA (it may be retried or resent).
+
 Each function records the event id first (ON CONFLICT DO NOTHING) in that same transaction,
 so a replay changes nothing and a failure rolls the event back for Stripe to retry (any
 non-2xx answer). An event that matches no shop, payment or amount is recorded as no_match
@@ -22,6 +25,7 @@ and answered 200: retrying it would never help. Live-mode events are refused (te
 
 import json
 import logging
+from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -56,6 +60,16 @@ def _uuid(value: Any) -> UUID | None:
         return None
 
 
+def _time(value: Any) -> datetime | None:
+    """A Stripe timestamp (Unix seconds). The database caps it at now() and falls back to now()."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    try:
+        return datetime.fromtimestamp(value, UTC)
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
 def _id(value: Any) -> str | None:
     """A Stripe reference that may be expanded into an object."""
     if isinstance(value, dict):
@@ -71,7 +85,7 @@ async def _apply(conn: AsyncConnection, event: dict[str, Any]) -> str:
     if kind in SESSION_EVENTS:
         metadata = obj.get("metadata") or {}
         cur = await conn.execute(
-            "select public.stripe_apply_session(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "select public.stripe_apply_session(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 event_id,
                 kind,
@@ -84,11 +98,12 @@ async def _apply(conn: AsyncConnection, event: dict[str, Any]) -> str:
                 obj.get("payment_status"),
                 obj.get("amount_total"),
                 obj.get("currency"),
+                _time(event.get("created")),  # when Stripe completed the session
             ),
         )
     elif kind in REFUND_EVENTS:
         cur = await conn.execute(
-            "select public.stripe_apply_refund(%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "select public.stripe_apply_refund(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 event_id,
                 kind,
@@ -99,6 +114,7 @@ async def _apply(conn: AsyncConnection, event: dict[str, Any]) -> str:
                 obj.get("amount"),
                 obj.get("currency"),
                 obj.get("status"),
+                _time(obj.get("created")),
             ),
         )
     elif kind == "account.updated":

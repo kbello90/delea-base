@@ -44,7 +44,8 @@ as $$ select pg_temp.as_role('payments_writer', p_sql); $$;
 -- checkout.session.<kind> for the pending row of an invoice, with optional overrides.
 create function pg_temp.session_event(
   p_event text, p_kind text, p_payment uuid, p_account text default 'acct_ShopA',
-  p_amount bigint default null, p_live boolean default false, p_status text default 'paid')
+  p_amount bigint default null, p_live boolean default false, p_status text default 'paid',
+  p_at timestamptz default null)
 returns text
 language plpgsql
 as $$
@@ -53,23 +54,23 @@ declare
 begin
   select tenant_id, external_ref, amount_cents into pay from public.payments where id = p_payment;
   return pg_temp.writer(format(
-    'select public.stripe_apply_session(%L, %L, %L, %L, %L, %L, %L, %L, %L, %s, %L)',
+    'select public.stripe_apply_session(%L, %L, %L, %L, %L, %L, %L, %L, %L, %s, %L, %L)',
     p_event, 'checkout.session.' || p_kind, p_account, p_live, pay.tenant_id, p_payment,
     pay.external_ref, 'pi_' || replace(p_payment::text, '-', ''), p_status,
-    coalesce(p_amount, pay.amount_cents), 'usd'));
+    coalesce(p_amount, pay.amount_cents), 'usd', p_at));
 end;
 $$;
 
 create function pg_temp.refund_event(
   p_event text, p_kind text, p_refund text, p_payment uuid, p_amount bigint, p_status text,
-  p_account text default 'acct_ShopA')
+  p_account text default 'acct_ShopA', p_at timestamptz default null)
 returns text
 language sql
 as $$
   select pg_temp.writer(format(
-    'select public.stripe_apply_refund(%L, %L, %L, false, %L, %L, %s, %L, %L)',
+    'select public.stripe_apply_refund(%L, %L, %L, false, %L, %L, %s, %L, %L, %L)',
     p_event, 'refund.' || p_kind, p_account, p_refund,
-    'pi_' || replace(p_payment::text, '-', ''), p_amount, 'usd', p_status));
+    'pi_' || replace(p_payment::text, '-', ''), p_amount, 'usd', p_status, p_at));
 $$;
 
 -- A storefront order in tenant A paying by card: p_qty of PAY-CARD (1000 + 8% tax).
@@ -127,9 +128,9 @@ values ('e4000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-1111111
 -- 1. Who may run what
 -- ---------------------------------------------------------------------------
 select ok(has_function_privilege('payments_writer',
-          'public.stripe_apply_session(text, text, text, boolean, uuid, uuid, text, text, text, bigint, text)', 'execute'),
+          'public.stripe_apply_session(text, text, text, boolean, uuid, uuid, text, text, text, bigint, text, timestamptz)', 'execute'),
           'payments_writer executes stripe_apply_session');
-select ok(not has_function_privilege(r, 'public.stripe_apply_session(text, text, text, boolean, uuid, uuid, text, text, text, bigint, text)', 'execute'),
+select ok(not has_function_privilege(r, 'public.stripe_apply_session(text, text, text, boolean, uuid, uuid, text, text, text, bigint, text, timestamptz)', 'execute'),
           r || ' cannot execute stripe_apply_session')
   from unnest(array['anon', 'authenticated', 'service_role', 'storefront_writer', 'storefront_reader']) r;
 select ok(not has_function_privilege(r, 'public.stripe_link_account(uuid, text)', 'execute'),
@@ -323,6 +324,52 @@ insert into public.payments (tenant_id, invoice_id, kind, provider, method, stat
 values ('11111111-1111-1111-1111-111111111111', 'e5000000-0000-0000-0000-000000000006', 'refund', 'stripe', 'card', 'succeeded', 500, 'USD', 're_test_deposit6');
 select lives_ok($q$update public.invoices set cancelled_at = now() where id = 'e5000000-0000-0000-0000-000000000006'$q$,
                 'once the refund is recorded, cancel works as before');
+
+-- ---------------------------------------------------------------------------
+-- 5c. Stripe's times: card payments and refunds are dated by Stripe, not by arrival
+-- ---------------------------------------------------------------------------
+-- (now() is this test's transaction start.)
+select is((select received_at from public.payments where external_ref = 'cs_test_A1'), now(),
+          'an event without a time is dated on arrival');
+update public.products set stock_qty = stock_qty + 3 where id = 'e4000000-0000-0000-0000-000000000001';
+select pg_temp.order_('e5000000-0000-0000-0000-000000000007');
+select pg_temp.start('e5000000-0000-0000-0000-000000000007', 'cs_test_Late');
+select is(pg_temp.session_event('evt_paid_late', 'completed', (select id from public.payments where external_ref = 'cs_test_Late'),
+                                p_at => now() - interval '2 hours'),
+          'applied', 'a completion event arriving two hours late');
+select is((select received_at from public.payments where external_ref = 'cs_test_Late'), now() - interval '2 hours',
+          'the payment is dated when Stripe completed it');
+select is((select paid_at from public.invoices where id = 'e5000000-0000-0000-0000-000000000007'), now() - interval '2 hours',
+          'and so is the invoice''s paid date');
+select is(pg_temp.refund_event('evt_r_late', 'created', 're_late', (select id from public.payments where external_ref = 'cs_test_Late'),
+                               1080, 'succeeded', p_at => now() - interval '1 hour'),
+          'applied', 'a refund made in Stripe an hour ago');
+select is((select received_at from public.payments where external_id = 're_late'), now() - interval '1 hour',
+          'is dated when Stripe created it');
+select is((select refunded_at from public.invoices where id = 'e5000000-0000-0000-0000-000000000007'), now() - interval '1 hour',
+          'the invoice is refunded at the last refund''s time');
+select ok((select r.received_at >= i.paid_at from public.payments r join public.invoices i on i.id = r.invoice_id
+            where r.external_id = 're_late'),
+          'the refund is on or after the paid date, so the dashboard counts it against revenue');
+
+select pg_temp.order_('e5000000-0000-0000-0000-000000000008');
+select pg_temp.start('e5000000-0000-0000-0000-000000000008', 'cs_test_Ahead');
+select pg_temp.session_event('evt_paid_ahead', 'completed', (select id from public.payments where external_ref = 'cs_test_Ahead'),
+                             p_at => now() + interval '1 day');
+select is((select received_at from public.payments where external_ref = 'cs_test_Ahead') || '/' ||
+          (select paid_at from public.invoices where id = 'e5000000-0000-0000-0000-000000000008'),
+          now() || '/' || now(), 'a time ahead of the clock is capped at now');
+
+-- A card deposit two hours ago, the balance in cash now: paid when the balance came in.
+select pg_temp.order_('e5000000-0000-0000-0000-000000000009');
+insert into public.payments (tenant_id, invoice_id, kind, provider, method, status, amount_cents, currency, external_id, received_at)
+values ('11111111-1111-1111-1111-111111111111', 'e5000000-0000-0000-0000-000000000009', 'payment', 'stripe', 'card', 'succeeded', 500, 'USD',
+        'pi_test_deposit9', now() - interval '2 hours');
+insert into public.payments (tenant_id, invoice_id, kind, method, amount_cents, currency)
+values ('11111111-1111-1111-1111-111111111111', 'e5000000-0000-0000-0000-000000000009', 'payment', 'cash', 580, 'USD');
+select is(public.invoice_settle('e5000000-0000-0000-0000-000000000009'), 'completed', 'the cash balance completes it');
+select is((select paid_at from public.invoices where id = 'e5000000-0000-0000-0000-000000000009'), now(),
+          'paid when the last payment came in');
 
 -- ---------------------------------------------------------------------------
 -- 6. Accounts and other events

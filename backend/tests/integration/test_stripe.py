@@ -685,6 +685,66 @@ def test_refunds_from_the_stripe_dashboard(client: TestClient, shop, db, fake) -
     assert stock(db, shop) == 2  # a refund never restocks
 
 
+def test_card_payments_and_refunds_are_dated_by_stripe_not_by_arrival(
+    client: TestClient, shop, db, fake
+) -> None:
+    """The completion event arrives two hours late (a resend), after a refund was made in
+    Stripe: the payment and the invoice are dated when Stripe completed it, the refund when
+    Stripe created it, so the refund is on or after the invoice's paid date (the dashboard's
+    rule for refunds that undo revenue). A time ahead of the database's clock is capped."""
+    token = place(client, shop)["public_token"]
+    now = int(time.time())
+    paid = session_completed(db, shop, token)
+    paid["created"] = now - 7200
+    deliver(client, paid)
+    inv = invoice(db, token)
+    intent = paid["data"]["object"]["payment_intent"]
+    refund = event(
+        "refund.created",
+        {
+            "id": "re_it_dated",
+            "object": "refund",
+            "amount": 5000,
+            "currency": "usd",
+            "payment_intent": intent,
+            "status": "succeeded",
+            "created": now - 3600,
+        },
+        shop["account"],
+    )
+    deliver(client, refund)
+    rows = db.execute(
+        "select p.kind::text, extract(epoch from p.received_at)::bigint, "
+        "extract(epoch from i.paid_at)::bigint from public.payments p "
+        "join public.invoices i on i.id = p.invoice_id "
+        "where p.invoice_id = %s and p.status = 'succeeded' order by p.received_at",
+        (inv["id"],),
+    ).fetchall()
+    assert rows == [("payment", now - 7200, now - 7200), ("refund", now - 3600, now - 7200)]
+    # The rest, refunded with a time ahead of the clock: capped at now, and the invoice is
+    # refunded at the last refund's time.
+    deliver(
+        client,
+        event(
+            "refund.created",
+            {
+                **refund["data"]["object"],
+                "id": "re_it_ahead",
+                "amount": TOTAL - 5000,
+                "created": now + 86400,
+            },
+            shop["account"],
+        ),
+    )
+    ahead, refunded = db.execute(
+        "select extract(epoch from p.received_at)::bigint, "
+        "extract(epoch from i.refunded_at)::bigint from public.payments p "
+        "join public.invoices i on i.id = p.invoice_id "
+        "where p.external_id = 're_it_ahead'",
+    ).fetchone()
+    assert now <= ahead <= int(time.time()) + 1 and refunded == ahead
+
+
 def test_account_events(client: TestClient, shop, db, fake) -> None:
     origin = {"Origin": shop["origin"]}
     deliver(

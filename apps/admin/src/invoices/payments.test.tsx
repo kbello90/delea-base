@@ -188,6 +188,36 @@ describe("an invoice's payments", () => {
     expect(screen.getByText(/refunded in your Stripe Dashboard/)).toBeInTheDocument();
   });
 
+  it("each row says what it is: failed, expired and pending card attempts show no date and count for nothing", async () => {
+    const card = paidInvoice({
+      quote_number: "QTE-2026-062",
+      items: [line],
+      payments: [
+        makePayment({ provider: "stripe", method: "card", status: "failed", amount_cents: 10800, received_at: "2026-10-30T09:00:00Z" }),
+        makePayment({ provider: "stripe", method: "card", status: "expired", amount_cents: 10800, received_at: "2026-10-30T10:00:00Z" }),
+        makePayment({ provider: "stripe", method: "card", status: "pending", amount_cents: 10800, received_at: "2026-10-30T11:00:00Z" }),
+        makePayment({ provider: "stripe", method: "card", amount_cents: 10800, received_at: "2026-10-30T12:00:00Z" }),
+      ],
+    });
+    setup(`/invoices/${card.id}`, { invoices: [card] });
+    const table = within(await screen.findByRole("table", { name: "Payments on INV-2026-062" }));
+    const rows = table.getAllByRole("row").slice(1);
+    const [failed, expired, open, paid] = rows;
+    for (const [row, label, style] of [
+      [failed, "Failed", "payment-row--void"],
+      [expired, "Expired", "payment-row--void"],
+      [open, "Pending", "payment-row--pending"],
+    ] as const) {
+      expect(within(row).getByText(label)).toHaveClass("tag");
+      expect(row).toHaveClass(style);
+      expect(row.firstElementChild).toHaveTextContent(/^—$/);
+    }
+    expect(paid).not.toHaveClass("payment-row--void");
+    expect(paid.firstElementChild).not.toHaveTextContent("—");
+    expect(within(paid).queryByText(/Failed|Expired|Pending|Voided/)).not.toBeInTheDocument();
+    await waitFor(() => expect(paidAndDue().getByText("Paid so far").nextSibling).toHaveTextContent("$108.00"));
+  });
+
   it("card money held: no Cancel, the reason instead; once refunded in Stripe, Cancel is back", async () => {
     const card = paidInvoice({ quote_number: "QTE-2026-062", items: [line], payments: [makePayment({ provider: "stripe", method: "card", amount_cents: 10800 })] });
     const { unmount } = setup(`/invoices/${card.id}`, { invoices: [card] });
