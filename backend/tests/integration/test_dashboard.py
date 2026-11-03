@@ -281,6 +281,48 @@ async def test_refunds_come_off_revenue_in_their_month_and_deposits_are_held(
     assert after["deposits_held_count"] - before["deposits_held_count"] == 2
 
 
+@pytest.mark.anyio
+async def test_shipping_is_revenue_tax_is_not_and_refunds_take_both_back_pro_rata(
+    settings: Settings,
+) -> None:
+    """R1 as amended 2026-11-02: revenue is subtotal + shipping; tax stays in the tax reserve.
+    A refund's revenue share is amount x (subtotal + shipping) / total, so a full refund
+    removes exactly the subtotal and the shipping, and its tax share exactly the tax."""
+    owner = TokenClaims(sub=str(uuid.uuid4()), tenant_id=TENANT_A, app_role="owner")
+    async with await psycopg.AsyncConnection.connect(
+        settings.database_url, autocommit=True
+    ) as aconn:
+        async with aconn.transaction(force_rollback=True):
+            await aconn.execute("alter table public.invoices disable trigger invoices_30_numbering")
+            now = (await (await aconn.execute("select now()")).fetchone())[0]
+            await apply_user_scope(aconn, owner)
+            before = await fetch_summary(aconn, TENANT_A)
+            months_before = await fetch_monthly(aconn, TENANT_A)
+
+            await aconn.execute("reset role")
+            await aconn.execute("select set_config('request.jwt.claims', '', true)")
+            rows = _Rows(aconn)
+            # 98.00 + 6.00 shipping + 7.84 tax = 111.84, paid today: the W-7DFS3CDZ shape.
+            kept = await rows.invoice(TENANT_A, 9800, 784, "paid", now, shipping=600)
+            # Half of it (55.92) refunded: 52.00 revenue and 3.92 tax come off.
+            await rows.payment(TENANT_A, kept, 5592, None, kind="refund")
+            # The same order refunded in full: nothing of it stays.
+            await rows.invoice(TENANT_A, 9800, 784, "paid", now, refunded=True, shipping=600)
+
+            await apply_user_scope(aconn, owner)
+            after = await fetch_summary(aconn, TENANT_A)
+            months_after = await fetch_monthly(aconn, TENANT_A)
+
+    for period in ("mtd", "ytd"):
+        revenue = after[period]["revenue_cents"] - before[period]["revenue_cents"]
+        tax = after[period]["tax_reserve_cents"] - before[period]["tax_reserve_cents"]
+        assert (revenue, tax) == (10400 - 5200, 784 - 392), period
+    trend = (
+        months_after["months"][-1]["revenue_cents"] - months_before["months"][-1]["revenue_cents"]
+    )
+    assert trend == 10400 - 5200
+
+
 class _Rows:
     """Inserts the test rows on the test's own connection (inside its rolled-back transaction)."""
 
@@ -288,14 +330,22 @@ class _Rows:
         self.conn = conn
 
     async def invoice(
-        self, tenant, subtotal, tax, status, paid_at=None, refunded=False, cancelled=False
+        self,
+        tenant,
+        subtotal,
+        tax,
+        status,
+        paid_at=None,
+        refunded=False,
+        cancelled=False,
+        shipping=0,
     ) -> str:
         cur = await self.conn.execute(
             """
             insert into public.invoices
-              (tenant_id, customer_name, order_status, subtotal_cents, tax_cents, total_cents,
-               paid_at, refunded_at, cancelled_at)
-            values (%s, %s, %s, %s, %s, %s, %s,
+              (tenant_id, customer_name, order_status, subtotal_cents, tax_cents,
+               shipping_cents, total_cents, paid_at, refunded_at, cancelled_at)
+            values (%s, %s, %s, %s, %s, %s, %s, %s,
                     case when %s then now() end, case when %s then now() end)
             returning id
             """,
@@ -305,7 +355,8 @@ class _Rows:
                 status,
                 subtotal,
                 tax,
-                subtotal + tax,
+                shipping,
+                subtotal + tax + shipping,
                 paid_at,
                 refunded,
                 cancelled,
@@ -314,9 +365,11 @@ class _Rows:
         (invoice_id,) = await cur.fetchone()
         # The ledger behind it (Slice B1): paid in full, and a refund of it all when refunded.
         if paid_at is not None and not cancelled:
-            await self.payment(tenant, invoice_id, subtotal + tax, paid_at)
+            await self.payment(tenant, invoice_id, subtotal + tax + shipping, paid_at)
             if refunded:
-                await self.payment(tenant, invoice_id, subtotal + tax, None, kind="refund")
+                await self.payment(
+                    tenant, invoice_id, subtotal + tax + shipping, None, kind="refund"
+                )
         return invoice_id
 
     async def payment(self, tenant, invoice_id, cents, received_at, kind="payment") -> None:

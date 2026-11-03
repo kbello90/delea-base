@@ -67,7 +67,7 @@ function Figures({ summary, period, currency }: { summary: Summary; period: Peri
         </p>
       )}
       <div className="metrics">
-        <Metric id="revenue" label="Revenue" value={money(p.revenue_cents)} note="Net of refunds. Paid invoices, before tax" />
+        <Metric id="revenue" label="Revenue" value={money(p.revenue_cents)} note="Net of refunds. Paid invoices with shipping, before tax" />
         <Metric id="tax" label="Tax reserve" value={money(p.tax_reserve_cents)} note="Sales tax collected, not revenue" />
         <Metric
           id="expenses"

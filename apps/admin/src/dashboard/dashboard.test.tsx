@@ -41,7 +41,7 @@ describe("deposits and refunds (Slice B1)", () => {
     await renderDashboard({
       "/api/v1/dashboard/summary": () => jsonResponse(200, { ...SUMMARY_RESPONSE, deposits_held_cents: 125000, deposits_held_count: 3 }),
     });
-    expect(metric("Revenue").getByText("Net of refunds. Paid invoices, before tax")).toBeInTheDocument();
+    expect(metric("Revenue").getByText("Net of refunds. Paid invoices with shipping, before tax")).toBeInTheDocument();
     expect(metric("Customer deposits held").getByText("$1,250.00")).toBeInTheDocument();
     expect(metric("Customer deposits held").getByText("On 3 open quotes. Not revenue until paid in full")).toBeInTheDocument();
   });

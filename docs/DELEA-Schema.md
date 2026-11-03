@@ -342,13 +342,13 @@ create view ai.inventory_status as
   select ... from public.products  where tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid;
 create view ai.materials_status as
   select ... from public.materials where tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid;
-create view ai.sales_summary as    -- MTD/YTD revenue by status
+create view ai.sales_summary as    -- per state: count, face total, paid, balance due, MTD/YTD revenue (§9: 20261102000200)
   select ... from public.invoices  where tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid;
 create view ai.expense_summary as  -- expenses by month and category, with deductible totals
   select ... from public.expenses  where tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid;
-create view ai.tax_summary as      -- tax collected on paid invoices by month (the "tax reserve" figure in the demo)
+create view ai.tax_summary as      -- per UTC month: sold, refunded, revenue and tax reserve (§9: 20261102000200)
   select ... from public.invoices  where tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid
-                                     and paid_at is not null and refunded_at is null and cancelled_at is null;
+                                     and paid_at is not null and cancelled_at is null;
 
 grant select on all tables in schema ai to ai_readonly;   -- SELECT on views only. No INSERT/UPDATE/DELETE/EXECUTE grants exist.
 ```
@@ -454,6 +454,7 @@ The migrations in `supabase/migrations/` are now the source of truth. Where the 
   - **Roles and functions:** `storefront_writer` also executes `storefront_card_payment_start`, `_attach` and `_failed`. `payments_writer` (nologin, no table grants; K4) executes `stripe_apply_session`, `stripe_apply_refund`, `stripe_apply_account`, `stripe_record_event`, `stripe_link_account` and `stripe_close_session`, each SECURITY DEFINER with `search_path = ''`, EXECUTE revoked from `public`, `anon`, `authenticated` and `service_role`.
   - **Card only (migration 20261029000400):** `payment_accounts.card_config_id` (`pmc_…`, nullable): the card-only payment method configuration DELEA makes on the shop's account at its first card checkout (API version `2026-09-30.endive` refuses `payment_method_types`; TRD §6.14). `stripe_events.outcome` also takes `unsupported` (the `checkout.session.async_payment_*` events of methods that confirm later). `payments_writer` also executes `stripe_card_config` (read the stored one), `stripe_set_card_config` (compare-and-set against the one it replaces) and `stripe_record_unsupported`, same rules.
   - **Stripe's times (migration 20261102000100):** `stripe_apply_session` takes `p_completed_at` (the event's created time) and `stripe_apply_refund` takes `p_created_at` (the refund's): a card payment's and a card refund's `received_at` are Stripe's times, capped at `now()`, `now()` when missing. `invoices_assign_numbers` sets `paid_at` to the latest succeeded payment's `received_at` when the invoice has a succeeded Stripe payment (otherwise `now()`, as before); the invoice number's year follows it. A Stripe-refunded invoice's `refunded_at` is its last succeeded refund's time.
+- **AI revenue views (migration 20261102000200, R1 amended):** `ai.sales_summary` and `ai.tax_summary` are recreated (new columns) on the dashboard's rules: revenue = subtotal + shipping by paid date minus refund shares (`amount × (subtotal + shipping) / total`) by refund date; tax reserve likewise. `sales_summary`: `order_status` (or `refunded`), `invoice_count`, `total_cents`, `amount_paid_cents`, `balance_due_cents` (quotes), `mtd_revenue_cents`, `ytd_revenue_cents`. `tax_summary`: `month`, `invoice_count`, `subtotal_cents`, `shipping_cents`, `tax_cents`, `total_cents`, `refunded_cents`, `revenue_cents`, `tax_reserve_cents`. They read `payments` directly; still owner-rights views, select for `ai_readonly` only.
 - **Email (migrations 20261029000100 and 20261029000200, Slice D1).**
   - **Triggers:** `automation_trigger` adds `production_started` (emitted when `production_started_at` is set) and `deposit_received` (a succeeded payment that leaves a balance).
   - **`email_settings`**: per shop, the three owner alerts on or off, the sender name, the reply-to address (`reply_to_email` + `reply_to_confirmed_at`, set only by `email_confirm_reply_to`; a pending address and the SHA-256 of its one-time token while waiting). Owner reads and changes the switches and name; a signed-in user's write to the reply-to columns is refused.

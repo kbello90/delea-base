@@ -3,13 +3,14 @@
 Approved formulas (all money in integer cents; periods are UTC calendar month / year to date,
 since tenants have no timezone setting yet):
 
-- revenue:     net of refunds. sum(subtotal_cents) of invoices paid in the period (paid_at),
+- revenue:     net of refunds (decision R1, amended 2026-11-02: shipping counts, tax doesn't).
+               sum(subtotal_cents + shipping_cents) of invoices paid in the period (paid_at),
                excluding cancelled invoices, minus the revenue share of every refund given in
                the period (received_at), in whatever month the invoice was paid. A refund's
-               share is its amount x subtotal / total, rounded half away from zero, so a full
-               refund removes exactly the subtotal. Only refunds of paid invoices count, given
-               on or after they were paid: returning a deposit is not a sale undone. Tax is not
-               revenue. A refund doesn't restock.
+               share is its amount x (subtotal + shipping) / total, rounded half away from
+               zero, so a full refund removes exactly the subtotal and shipping. Only refunds
+               of paid invoices count, given on or after they were paid: returning a deposit
+               is not a sale undone. Tax is not revenue. A refund doesn't restock.
 - tax_reserve: sum(tax_cents) of the same invoices, minus the tax share of the same refunds
                (amount x tax / total).
 - deposits held: money received on open quotes (not cancelled): customer deposits, a
@@ -34,7 +35,8 @@ from psycopg.rows import dict_row
 # Each refund of a paid invoice, given on or after it was paid, with its revenue and tax shares.
 REFUND_SHARES = """
     select p.received_at,
-           round(p.amount_cents::numeric * i.subtotal_cents / i.total_cents)::bigint as revenue,
+           round(p.amount_cents::numeric * (i.subtotal_cents + i.shipping_cents)
+                 / i.total_cents)::bigint as revenue,
            round(p.amount_cents::numeric * i.tax_cents / i.total_cents)::bigint as tax
     from public.payments p
     join public.invoices i on i.id = p.invoice_id and i.tenant_id = p.tenant_id
@@ -58,8 +60,9 @@ with bounds as (
 ),
 sales as (
   select
-    coalesce(sum(i.subtotal_cents) filter (where i.paid_at >= b.month_start), 0) as mtd_revenue,
-    coalesce(sum(i.subtotal_cents), 0) as ytd_revenue,
+    coalesce(sum(i.subtotal_cents + i.shipping_cents) filter (where i.paid_at >= b.month_start), 0)
+      as mtd_revenue,
+    coalesce(sum(i.subtotal_cents + i.shipping_cents), 0) as ytd_revenue,
     coalesce(sum(i.tax_cents) filter (where i.paid_at >= b.month_start), 0) as mtd_tax,
     coalesce(sum(i.tax_cents), 0) as ytd_tax
   from bounds b
@@ -196,7 +199,7 @@ months as (
 select
   m.month_start::date as month_start,
   coalesce((
-    select sum(i.subtotal_cents)
+    select sum(i.subtotal_cents + i.shipping_cents)
     from public.invoices i
     where i.tenant_id = %(tenant_id)s
       and i.paid_at >= m.month_start at time zone 'UTC'

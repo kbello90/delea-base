@@ -152,6 +152,79 @@ select is(pg_temp.count_as('ai_readonly', 'select sum(deductible_cents)::bigint 
 select is(pg_temp.count_as('ai_readonly', 'select count(*) from ai.inventory_status where is_low'),
           1::bigint, 'inventory_status flags the Engagement Ring (2 < 3) as low');
 
+-- ---------------------------------------------------------------------------
+-- Revenue follows the dashboard (R1 amended 2026-11-02): subtotal + shipping, tax apart,
+-- refunds pro rata in their month, unpaid quotes never revenue, cancelled ones left out.
+-- ---------------------------------------------------------------------------
+create temp table ai_before as
+  select pg_temp.count_as('ai_readonly', 'select coalesce(sum(mtd_revenue_cents), 0)::bigint from ai.sales_summary') as mtd,
+         pg_temp.count_as('ai_readonly', 'select coalesce(sum(ytd_revenue_cents), 0)::bigint from ai.sales_summary') as ytd,
+         pg_temp.count_as('ai_readonly', $$select coalesce(sum(revenue_cents), 0)::bigint from ai.tax_summary
+                                           where month = date_trunc('month', now() at time zone 'UTC')::date$$) as month_revenue,
+         pg_temp.count_as('ai_readonly', $$select coalesce(sum(tax_reserve_cents), 0)::bigint from ai.tax_summary
+                                           where month = date_trunc('month', now() at time zone 'UTC')::date$$) as month_tax;
+select set_config('request.jwt.claims', '', true);
+-- A paid order: 98.00 + 6.00 shipping + 7.84 tax = 111.84, then half refunded (55.92).
+-- The same order refunded in full. A paid order cancelled. A quote holding a 30.00 deposit.
+create function pg_temp.ai_order(p_id uuid, p_state text)
+returns void
+language plpgsql
+as $$
+begin
+  insert into public.invoices (id, tenant_id, customer_name, subtotal_cents, shipping_cents, tax_rate_bps,
+                               tax_cents, total_cents)
+  values (p_id, '11111111-1111-1111-1111-111111111111', 'AI revenue', 9800, 600, 800, 784, 11184);
+  if p_state = 'quote' then
+    insert into public.payments (tenant_id, invoice_id, kind, method, amount_cents, currency)
+    values ('11111111-1111-1111-1111-111111111111', p_id, 'payment', 'cash', 3000, 'USD');
+    return;
+  end if;
+  insert into public.payments (tenant_id, invoice_id, kind, method, amount_cents, currency)
+  values ('11111111-1111-1111-1111-111111111111', p_id, 'payment', 'cash', 11184, 'USD');
+  update public.invoices set order_status = 'paid' where id = p_id;
+  if p_state in ('half', 'full') then
+    insert into public.payments (tenant_id, invoice_id, kind, method, amount_cents, currency)
+    values ('11111111-1111-1111-1111-111111111111', p_id, 'refund', 'cash',
+            case p_state when 'half' then 5592 else 11184 end, 'USD');
+  end if;
+  if p_state = 'full' then
+    update public.invoices set refunded_at = now() where id = p_id;
+  elsif p_state = 'cancelled' then
+    insert into public.payments (tenant_id, invoice_id, kind, method, amount_cents, currency)
+    values ('11111111-1111-1111-1111-111111111111', p_id, 'refund', 'cash', 11184, 'USD');
+    update public.invoices set cancelled_at = now() where id = p_id;
+  end if;
+end;
+$$;
+select pg_temp.ai_order('a1000000-0000-0000-0000-00000000000a', 'half');
+select pg_temp.ai_order('a1000000-0000-0000-0000-00000000000b', 'full');
+select pg_temp.ai_order('a1000000-0000-0000-0000-00000000000c', 'cancelled');
+select pg_temp.ai_order('a1000000-0000-0000-0000-00000000000d', 'quote');
+
+select is(pg_temp.count_as('ai_readonly', 'select coalesce(sum(mtd_revenue_cents), 0)::bigint from ai.sales_summary')
+            - (select mtd from ai_before), 5200::bigint,
+          'sales_summary: 104.00 sold twice, 52.00 and 104.00 refunded: 52.00 of revenue this month');
+select is(pg_temp.count_as('ai_readonly', 'select coalesce(sum(ytd_revenue_cents), 0)::bigint from ai.sales_summary')
+            - (select ytd from ai_before), 5200::bigint, 'and this year');
+select is(pg_temp.count_as('ai_readonly', $$select mtd_revenue_cents + ytd_revenue_cents from ai.sales_summary where order_status = 'quote'$$),
+          0::bigint, 'an unpaid quote is never revenue, whatever its creation date');
+select is(pg_temp.count_as('ai_readonly', $$select balance_due_cents from ai.sales_summary where order_status = 'quote'$$),
+          (18900 + 11184 - 3000)::bigint, 'quotes: what is still owed, net of the deposit');
+select is(pg_temp.count_as('ai_readonly', $$select invoice_count::bigint * 100000 + mtd_revenue_cents
+                                            from ai.sales_summary where order_status = 'refunded'$$),
+          100000::bigint, 'the order refunded in full has its own row and nets to nothing');
+select is(pg_temp.count_as('ai_readonly', $$select count(*) from ai.sales_summary s
+                                            where s.order_status = 'paid' and s.invoice_count = 0$$),
+          0::bigint, 'the cancelled order is left out');
+select is(pg_temp.count_as('ai_readonly', $$select coalesce(sum(revenue_cents), 0)::bigint from ai.tax_summary
+                                            where month = date_trunc('month', now() at time zone 'UTC')::date$$)
+            - (select month_revenue from ai_before), 5200::bigint,
+          'tax_summary: the same revenue for this month');
+select is(pg_temp.count_as('ai_readonly', $$select coalesce(sum(tax_reserve_cents), 0)::bigint from ai.tax_summary
+                                            where month = date_trunc('month', now() at time zone 'UTC')::date$$)
+            - (select month_tax from ai_before), 392::bigint,
+          'tax_summary: tax reserve 7.84 twice, minus 3.92 and 7.84 refunded');
+
 -- Switching the context switches the tenant.
 select set_config('app.tenant_id', '22222222-2222-2222-2222-222222222222', true);
 select is(pg_temp.count_as('ai_readonly', 'select count(*) from ai.inventory_status'), 2::bigint,
