@@ -267,6 +267,11 @@ Settings come from environment variables or `backend/.env` (gitignored). Copy
 [`backend/README.md`](backend/README.md) for the DB session model, the error mapping, the
 integration test setup and known limitations.
 
+The integration tests run against the local stack only: if `DATABASE_URL` or `SUPABASE_URL`
+points anywhere but this machine (a hosted Supabase project, for example), the run stops before
+connecting. Their cleanup resets every shop's quote and invoice counters and deletes test rows,
+so don't use the app on a local shop while they run either.
+
 Docker:
 
 ```sh

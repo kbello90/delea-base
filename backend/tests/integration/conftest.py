@@ -1,5 +1,10 @@
 """Fixtures for integration tests against the local Supabase stack.
 
+They never run against anything else: if DATABASE_URL or SUPABASE_URL points anywhere but
+this machine (127.0.0.1, localhost, ::1), the whole run stops before connecting, with or
+without DELEA_REQUIRE_INTEGRATION. Their cleanup resets every shop's document counters and
+deletes rows, which would damage a hosted project.
+
 Everything here is skipped, with a message saying how to start the stack, when the database
 or Auth is unreachable or the local keys are missing from backend/.env. A plain `pytest`
 therefore passes without Docker (and in CI).
@@ -28,6 +33,7 @@ from .support import (
     TEST_SKU_PREFIX,
     TestUser,
     ThrowawayTenant,
+    remote_targets,
     run_async,
     sign_in,
 )
@@ -43,6 +49,15 @@ def _unavailable(message: str) -> None:
 @pytest.fixture(scope="session")
 def settings() -> Settings:
     s = get_settings()
+    remote = remote_targets(s.database_url, s.supabase_url)
+    if remote:
+        pytest.exit(
+            f"Integration tests refused: {' and '.join(remote)} "
+            f"{'point' if len(remote) > 1 else 'points'} to another machine. They run against "
+            "the local Supabase stack only (their cleanup resets every shop's document counters "
+            "and deletes rows).",
+            returncode=3,
+        )
     missing = [
         name
         for name, value in (
