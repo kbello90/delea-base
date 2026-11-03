@@ -17,6 +17,7 @@ INVOICES = "/api/v1/invoices"
 COMPANY = "/api/v1/settings/company"
 BRAND = "/api/v1/settings/brand"
 CURRENCY = "/api/v1/settings/currency"
+RECEIPT = "/api/v1/settings/receipt"
 STOREFRONT = "/api/v1/settings/storefront"
 
 _COMPANY_COLS = (
@@ -26,6 +27,8 @@ _COMPANY_COLS = (
     "default_language",
     "enabled_languages",
     "default_tax_rate_bps",
+    "receipt_layout",
+    "receipt_footer",
     "next_quote_number",
     "next_invoice_number",
 )
@@ -525,3 +528,53 @@ def test_paying_on_pickup_needs_pickup(client: TestClient, users) -> None:
 )
 def test_storefront_checkout_option_validation(client: TestClient, users, bad: dict) -> None:
     assert client.patch(STOREFRONT, json=bad, headers=users["owner_a"].headers).status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Receipts (Slice C1): the shop's default paper and footer; staff read them to print
+# ---------------------------------------------------------------------------
+def test_receipt_settings_default_to_letter_and_staff_can_read_them(
+    client: TestClient, users: dict[str, TestUser]
+) -> None:
+    assert_access(client, users, "GET", RECEIPT, {"owner_a": 200, "staff_a": 200, "owner_b": 200})
+    owner = users["owner_a"]
+    seen = client.get(RECEIPT, headers=users["staff_a"].headers).json()
+    assert seen["receipt_layout"] == "letter"  # the default: a letter-size office printer
+    assert seen["business_name"]  # the brand name heads the receipt
+
+    for layout in ("80mm", "58mm", "letter"):
+        response = client.patch(COMPANY, json={"receipt_layout": layout}, headers=owner.headers)
+        assert response.status_code == 200, response.text
+        assert client.get(RECEIPT, headers=users["staff_a"].headers).json()["receipt_layout"] == (
+            layout
+        )
+
+    footer = client.patch(
+        COMPANY,
+        json={"receipt_footer": "  Thank you!\r\nExchanges within 30 days.  "},
+        headers=owner.headers,
+    )
+    assert footer.status_code == 200, footer.text
+    assert footer.json()["receipt_footer"] == "Thank you!\nExchanges within 30 days."
+    assert client.get(RECEIPT, headers=owner.headers).json()["receipt_footer"] == (
+        "Thank you!\nExchanges within 30 days."
+    )
+    # Tenant B still reads its own (default) settings.
+    assert client.get(RECEIPT, headers=users["owner_b"].headers).json()["receipt_footer"] is None
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"receipt_layout": "a4"},
+        {"receipt_layout": None},
+        {"receipt_footer": ""},
+        {"receipt_footer": "tab\there"},
+        {"receipt_footer": "x" * 301},
+    ],
+)
+def test_receipt_settings_validation(
+    client: TestClient, users: dict[str, TestUser], bad: dict
+) -> None:
+    response = client.patch(COMPANY, json=bad, headers=users["owner_a"].headers)
+    assert response.status_code == 422, response.text

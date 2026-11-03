@@ -47,17 +47,18 @@ export interface InvoiceFilters {
   dateFrom: string | null; // YYYY-MM-DD, UTC
   dateTo: string | null;
   q: string;
-  /** admin: made in the admin; storefront: placed on the website */
+  /** admin: made in the admin; storefront: placed on the website; in_store: sold at the counter */
   source: InvoiceSource | null;
   /** website orders still waiting for payment (not cancelled) */
   awaiting: boolean;
   page: number; // 1-based
 }
 
-export type InvoiceSource = "admin" | "storefront";
+export type InvoiceSource = "admin" | "storefront" | "in_store";
 export const SOURCES: { value: InvoiceSource; label: string }[] = [
   { value: "admin", label: "Admin" },
   { value: "storefront", label: "Website" },
+  { value: "in_store", label: "In store" },
 ];
 
 const keys = {
@@ -80,10 +81,11 @@ function listQuery(f: InvoiceFilters) {
 }
 
 /** One page, plus whether a next page exists (asks for one extra row). */
-export function useInvoiceList(filters: InvoiceFilters) {
+export function useInvoiceList(filters: InvoiceFilters, enabled = true) {
   const api = useApi();
   return useQuery({
     queryKey: keys.list(filters),
+    enabled,
     placeholderData: keepPreviousData,
     queryFn: async () => {
       const rows = await unwrap(

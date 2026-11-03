@@ -135,6 +135,8 @@ function InvoiceRow({ invoice, currency }: { invoice: Invoice; currency: string 
             <span className="tag tag--web">Website</span>
             {invoice.order_ref && <span className="muted customer-contact">{invoice.order_ref}</span>}
           </>
+        ) : invoice.source === "in_store" ? (
+          <span className="tag tag--store">In store</span>
         ) : (
           <span className="tag">Admin</span>
         )}

@@ -381,8 +381,8 @@ describe("new quote", () => {
     expect(server.last("POST", "/api/v1/invoices/preview")!.body).toEqual({
       customer_id: WILLOW.id,
       items: [
-        { product_id: RING.id, qty: 1 },
-        { product_id: CHARM.id, qty: 3 },
+        { product_id: RING.id, qty: 1, personalization: {} },
+        { product_id: CHARM.id, qty: 3, personalization: {} },
       ],
       tax_rate_bps: null,
     });
@@ -431,13 +431,14 @@ describe("new quote", () => {
     expect(server.last("POST", "/api/v1/invoices")!.body).toEqual({
       customer_id: null,
       items: [
-        { product_id: RING.id, qty: 1 },
-        { product_id: CHARM.id, qty: 3 },
+        { product_id: RING.id, qty: 1, personalization: {} },
+        { product_id: CHARM.id, qty: 3, personalization: {} },
       ],
       tax_rate_bps: null,
       notes: "Engrave M",
       due_date: null,
       pay_now: false,
+      source: "admin",
     });
     // The saved quote's page; the form's own "Walk-in" label could match while the route switches.
     expect(await screen.findByText("Walk-in", { selector: ".facts .tag" })).toBeInTheDocument();
@@ -473,10 +474,10 @@ describe("edit quote lines", () => {
     const { server, location, user } = setup(`/invoices/${quote.id}/edit`, { role: "staff", invoices: [quote] });
     await user.click(await screen.findByRole("button", { name: "One more Heart Ring" }));
     expect(within(await screen.findByLabelText("Totals")).getByText("$194.40")).toBeInTheDocument();
-    expect(server.last("POST", `/api/v1/invoices/${quote.id}/items/preview`)!.body).toEqual({ items: [{ product_id: RING.id, qty: 2 }] });
+    expect(server.last("POST", `/api/v1/invoices/${quote.id}/items/preview`)!.body).toEqual({ items: [{ product_id: RING.id, qty: 2, personalization: {} }] });
     await user.click(screen.getByRole("button", { name: "Save lines" }));
     await waitFor(() => expect(location.pathname).toBe(`/invoices/${quote.id}`));
-    expect(server.last("PUT", `/api/v1/invoices/${quote.id}/items`)!.body).toEqual({ items: [{ product_id: RING.id, qty: 2 }] });
+    expect(server.last("PUT", `/api/v1/invoices/${quote.id}/items`)!.body).toEqual({ items: [{ product_id: RING.id, qty: 2, personalization: {} }] });
   });
 });
 
@@ -497,9 +498,10 @@ describe("in-store sale", () => {
     expect(await screen.findByText("Handed over: marked delivered.")).toBeInTheDocument();
     expect(server.last("POST", "/api/v1/invoices")!.body).toEqual({
       customer_id: null,
-      items: [{ product_id: RING.id, qty: 1 }],
+      items: [{ product_id: RING.id, qty: 1, personalization: {} }],
       pay_now: true,
       payment_method: "cash",
+      source: "in_store",
     });
     const created = [...server.invoices.values()][0];
     expect(server.last("POST", `/api/v1/invoices/${created.id}/status`)!.body).toEqual({ status: "delivered", payment_method: null });

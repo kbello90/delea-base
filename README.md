@@ -194,6 +194,40 @@ tenant B, and `http://showcase.localhost:5174` the showcase (after `load_showcas
 send `*.localhost` to this machine. Any other name shows "This shop isn't available". To map
 another one, see `infra/scripts/storefront-domain.md` (local equivalent).
 
+### Selling in the shop: receipts and scanner (Slice C1, manual checks)
+
+The automated tests check each receipt layout's content and its `@page` rule, but not what a
+real printer does with it. Do these once per printer, signed in as owner or staff, after a sale
+on **New sale** (or on any paid invoice: **Print receipt**). The shop's default paper is
+**Letter**; change it in Settings › Receipts. The cashier can pick another paper in the print
+dialog for one receipt.
+
+1. **Letter (8.5 × 11 in), the default.** Print receipt → Letter is already chosen, no thermal
+   note shows → Print. In the browser's dialog pick the office printer, paper Letter, default
+   margins and scale. Expect one page: the shop's name and address, "Receipt", the invoice
+   number, date and time with the zone, a table of items (with personalization answers under
+   the item), subtotal, tax, total, "Paid · <method>", and the footer.
+2. **80 mm roll.** Pick "80 mm roll"; the dialog says "Thermal printer: in the print dialog
+   choose Margins: None and Scale: 100%". Print → choose the thermal printer, **Margins: None**,
+   **Scale: 100%** (Chrome: More settings; it remembers them per printer). Expect one narrow
+   column the full width of the roll, nothing cut off on the right, and the paper cut after the
+   footer (not a full page of blank paper).
+3. **58 mm roll.** Same as 80 mm with the 58 mm printer: the column is narrower, long item
+   names wrap, prices stay on the right.
+4. **Deposit receipt.** On New sale choose **Take a deposit**, enter less than the total, take
+   it, then **Print deposit receipt** on each paper: "Deposit receipt", **"Not a sales
+   receipt"**, the quote number (QTE-…), the deposit and "Balance due".
+5. **Scanner.** Set the scanner to keyboard (HID) mode with an **Enter** suffix. Click "Find a
+   product" on New sale and scan a label whose barcode is a product's SKU (Code 128): one is
+   added and the box clears; scan it again: the quantity becomes 2; scan a label that isn't a
+   SKU: "No product with SKU …" and nothing is added. Use uppercase SKUs without spaces;
+   labels aren't printed by DELEA.
+
+If a thermal receipt prints tiny in the middle of the paper or with a wide left margin, the
+print dialog's margins or scale weren't set; if it prints a full page, the printer driver's
+paper size is a page instead of the roll (set it to the roll width in the printer's own
+preferences).
+
 ### Local dev users (manual testing)
 
 With the local stack running and `backend/.env` written (see Backend), create three users in

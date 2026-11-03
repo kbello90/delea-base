@@ -131,6 +131,26 @@
             }
           },
           {
+            "name": "sku",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "exact SKU, any case (barcode scans)",
+              "title": "Sku"
+            },
+            "description": "exact SKU, any case (barcode scans)"
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -1420,7 +1440,8 @@
                 {
                   "enum": [
                     "admin",
-                    "storefront"
+                    "storefront",
+                    "in_store"
                   ],
                   "type": "string"
                 },
@@ -1482,7 +1503,7 @@
           "invoices"
         ],
         "summary": "Create Invoice",
-        "description": "Create a quote and its lines in one transaction; `pay_now` also moves it to paid.\n\nIf anything fails (including insufficient stock on pay_now), nothing is kept: no invoice,\nno lines, no document number used. `pay_now` needs a payment method; a quote has none.",
+        "description": "Create a quote and its lines in one transaction; `pay_now` also moves it to paid, and\n`deposit_cents` records a deposit on the quote (Slice C1).\n\nIf anything fails (including insufficient stock on pay_now), nothing is kept: no invoice,\nno lines, no payment, no document number used. `pay_now` and a deposit need a payment\nmethod; a plain quote has none. A deposit is less than the total.",
         "operationId": "create_invoice_api_v1_invoices_post",
         "security": [
           {
@@ -1631,7 +1652,8 @@
                 {
                   "enum": [
                     "admin",
-                    "storefront"
+                    "storefront",
+                    "in_store"
                   ],
                   "type": "string"
                 },
@@ -3471,6 +3493,32 @@
         ]
       }
     },
+    "/api/v1/settings/receipt": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get Receipt Settings",
+        "operationId": "get_receipt_settings_api_v1_settings_receipt_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptSettingsOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/settings/currency": {
       "get": {
         "tags": [
@@ -5051,6 +5099,20 @@
             "type": "integer",
             "title": "Default Tax Rate Bps"
           },
+          "receipt_layout": {
+            "$ref": "#/components/schemas/ReceiptLayout"
+          },
+          "receipt_footer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Footer"
+          },
           "next_quote_number": {
             "type": "integer",
             "title": "Next Quote Number"
@@ -5075,6 +5137,8 @@
           "default_language",
           "enabled_languages",
           "default_tax_rate_bps",
+          "receipt_layout",
+          "receipt_footer",
           "next_quote_number",
           "next_invoice_number",
           "updated_at"
@@ -5159,6 +5223,27 @@
               }
             ],
             "title": "Default Tax Rate Bps"
+          },
+          "receipt_layout": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReceiptLayout"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "receipt_footer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Footer"
           }
         },
         "additionalProperties": false,
@@ -6640,6 +6725,19 @@
             "title": "Pay Now",
             "default": false
           },
+          "deposit_cents": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100000000000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deposit Cents"
+          },
           "payment_method": {
             "anyOf": [
               {
@@ -6649,6 +6747,15 @@
                 "type": "null"
               }
             ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "in_store"
+            ],
+            "title": "Source",
+            "default": "admin"
           }
         },
         "additionalProperties": false,
@@ -7261,6 +7368,19 @@
             "maximum": 999.0,
             "minimum": 1.0,
             "title": "Qty"
+          },
+          "personalization": {
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "propertyNames": {
+              "format": "uuid"
+            },
+            "type": "object",
+            "maxProperties": 5,
+            "title": "Personalization",
+            "default": {}
           }
         },
         "additionalProperties": false,
@@ -9721,6 +9841,16 @@
         ],
         "title": "QuoteRequest"
       },
+      "ReceiptLayout": {
+        "type": "string",
+        "enum": [
+          "letter",
+          "80mm",
+          "58mm"
+        ],
+        "title": "ReceiptLayout",
+        "description": "The receipt's paper (company_settings.receipt_layout): the shop's default, and the\ncashier can pick another per receipt (Slice C1)."
+      },
       "ReceiptLink": {
         "properties": {
           "url": {
@@ -9761,6 +9891,48 @@
           "content_type"
         ],
         "title": "ReceiptRegister"
+      },
+      "ReceiptSettingsOut": {
+        "properties": {
+          "business_name": {
+            "type": "string",
+            "title": "Business Name"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "receipt_layout": {
+            "$ref": "#/components/schemas/ReceiptLayout"
+          },
+          "receipt_footer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Footer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "business_name",
+          "address",
+          "receipt_layout",
+          "receipt_footer"
+        ],
+        "title": "ReceiptSettingsOut",
+        "description": "What a receipt prints at the top and bottom; owner and staff (public.receipt_settings)."
       },
       "ReceiptType": {
         "type": "string",

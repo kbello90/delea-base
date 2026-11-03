@@ -300,3 +300,44 @@
   gap: 12px;
   margin-top: 12px;
 }
+
+/* ---------- Slice C1: selling in the shop ---------- */
+.tag--store {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.scan-status {
+  min-height: 1.4em;
+  margin: 0.25rem 0 0.5rem;
+}
+.line-fields {
+  border: 0;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.line-fields__field {
+  display: grid;
+  gap: 0.15rem;
+  max-width: 16rem;
+}
+.line-fields__field label {
+  font-size: 0.85rem;
+}
+.deposit-field {
+  max-width: 14rem;
+  margin-top: 0.5rem;
+}
+.find-order summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.find-order__results {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  display: grid;
+  gap: 0.35rem;
+}

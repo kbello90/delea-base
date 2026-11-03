@@ -51,7 +51,11 @@ export function useUpdateCompany() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: CompanyUpdate) => unwrap(api.PATCH("/api/v1/settings/company", { body })),
-    onSuccess: (company) => client.setQueryData(companyKey, company),
+    onSuccess: (company) => {
+      client.setQueryData(companyKey, company);
+      // The receipt's address, paper and footer come from here too.
+      void client.invalidateQueries({ queryKey: ["settings", "receipt"] });
+    },
   });
 }
 

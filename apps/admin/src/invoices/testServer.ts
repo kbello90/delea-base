@@ -9,6 +9,14 @@ type Invoice = Schemas["InvoiceOut"];
 type Preview = Schemas["InvoicePreviewOut"];
 type Item = Schemas["LineItemIn"];
 type Payment = Schemas["PaymentOut"];
+type ReceiptSettings = Schemas["ReceiptSettingsOut"];
+
+export const RECEIPT_SETTINGS: ReceiptSettings = {
+  business_name: "DELEA Jewelry",
+  address: "12 Main St\nAustin, TX 78701",
+  receipt_layout: "letter",
+  receipt_footer: "Thank you!\nExchanges within 30 days.",
+};
 
 export { makeCustomer };
 
@@ -149,7 +157,8 @@ export function invoiceServer({
   customers = [],
   invoices = [],
   taxRateBps = 800,
-}: { products?: Product[]; customers?: Customer[]; invoices?: Invoice[]; taxRateBps?: number } = {}) {
+  receipt = RECEIPT_SETTINGS,
+}: { products?: Product[]; customers?: Customer[]; invoices?: Invoice[]; taxRateBps?: number; receipt?: ReceiptSettings } = {}) {
   const productMap = new Map(products.map((p) => [p.id, structuredClone(p)]));
   const customerMap = new Map(customers.map((c) => [c.id, structuredClone(c)]));
   const invoiceMap = new Map(invoices.map((i) => [i.id, structuredClone(i)]));
@@ -201,7 +210,7 @@ export function invoiceServer({
     for (const item of items) needed.set(item.product_id, (needed.get(item.product_id) ?? 0) + item.qty);
     const stock_shortages = [...needed]
       .map(([id, qty]) => ({ product: productMap.get(id)!, qty }))
-      .filter(({ product, qty }) => product.stock_qty < qty)
+      .filter(({ product, qty }) => !product.made_to_order && product.stock_qty < qty) // made to order is never short
       .map(({ product, qty }) => ({ product_id: product.id, sku: product.sku, available: product.stock_qty, needed: qty }));
     return { lines, subtotal_cents: subtotal, tax_rate_bps: rate, tax_cents: tax, total_cents: subtotal + tax, stock_shortages };
   }
@@ -214,7 +223,7 @@ export function invoiceServer({
   function pay(invoice: Invoice): Response | null {
     const needed = new Map<string, number>();
     for (const line of invoice.items ?? []) {
-      if (line.product_id) needed.set(line.product_id, (needed.get(line.product_id) ?? 0) + line.qty);
+      if (line.product_id && !productMap.get(line.product_id)?.made_to_order) needed.set(line.product_id, (needed.get(line.product_id) ?? 0) + line.qty);
     }
     for (const [id, qty] of needed) {
       const p = productMap.get(id)!;
@@ -265,11 +274,20 @@ export function invoiceServer({
     if (path === "/api/v1/settings/currency") return jsonResponse(200, { currency: "USD" });
     if (path === "/api/v1/settings/brand") return jsonResponse(200, DEFAULT_BRAND_RESPONSE);
     const writer = role === "owner" || role === "staff";
+    if (path === "/api/v1/settings/receipt") return writer ? jsonResponse(200, receipt) : jsonResponse(403, { detail: "Insufficient role" });
 
     if (path === "/api/v1/products" && method === "GET") {
       const q = query.get("q")?.toLowerCase();
-      const rows = [...productMap.values()].filter((p) => !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q));
+      const sku = query.get("sku")?.trim().toLowerCase();
+      const rows = [...productMap.values()].filter(
+        (p) => (!q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)) && (!sku || p.sku.toLowerCase() === sku),
+      );
       return jsonResponse(200, rows.slice(0, Number(query.get("limit") ?? 50)));
+    }
+    const productMatch = /^\/api\/v1\/products\/([^/]+)$/.exec(path);
+    if (productMatch && method === "GET") {
+      const p = productMap.get(productMatch[1]);
+      return p ? jsonResponse(200, p) : jsonResponse(404, { detail: "Product not found" });
     }
     if (path === "/api/v1/customers" && method === "GET") {
       const q = query.get("q")?.toLowerCase();
@@ -316,8 +334,24 @@ export function invoiceServer({
       const b = body as Schemas["InvoiceCreate"];
       const customer = b.customer_id ? customerMap.get(b.customer_id) : undefined;
       const priced = price(b.items, customer, b.tax_rate_bps ?? null);
-      if (b.pay_now && !b.payment_method) return jsonResponse(422, { detail: "a payment method is required to take payment" });
+      if ((b.pay_now || b.deposit_cents) && !b.payment_method) return jsonResponse(422, { detail: "a payment method is required to take payment" });
+      if (b.deposit_cents && b.deposit_cents >= priced.total_cents) {
+        return jsonResponse(422, { detail: "A deposit is less than the total. To take it all, pay in full." });
+      }
+      // Answers stored as the database does: label/value in field order, blanks left out.
+      const answers = (item: Item) => {
+        const fields = productMap.get(item.product_id)?.personalization ?? [];
+        const given = item.personalization ?? {};
+        const missing = fields.find((f) => f.required && !given[f.id]?.trim());
+        if (missing) return { error: `${productMap.get(item.product_id)!.name}: ${missing.label} is required.` };
+        const snapshot = fields.filter((f) => given[f.id]?.trim()).map((f) => ({ label: f.label, value: given[f.id].trim() }));
+        return { snapshot: snapshot.length ? snapshot : null };
+      };
+      const checked = b.items.map(answers);
+      const problem = checked.find((c) => "error" in c);
+      if (problem && "error" in problem) return jsonResponse(422, { detail: problem.error });
       const invoice = makeInvoice({
+        source: b.source ?? "admin",
         customer_id: customer?.id ?? null,
         customer_name: customer ? `${customer.first_name} ${customer.last_name ?? ""}`.trim() : "Walk-in customer",
         subtotal_cents: priced.subtotal_cents,
@@ -326,8 +360,15 @@ export function invoiceServer({
         total_cents: priced.total_cents,
         notes: b.notes ?? null,
         due_date: b.due_date ?? null,
-        items: priced.lines.map((l, n) => ({ id: `line-${n}-${next()}`, ...l })),
+        items: priced.lines.map((l, n) => {
+          const c = checked[n];
+          return { id: `line-${n}-${next()}`, ...l, personalization: "snapshot" in c ? c.snapshot : null };
+        }),
       });
+      if (b.deposit_cents && b.payment_method) {
+        invoice.payments = [makePayment({ amount_cents: b.deposit_cents, method: b.payment_method, received_at: "2026-10-22T15:30:00Z" })];
+        recount(invoice);
+      }
       if (b.pay_now) {
         const refused = pay(invoice);
         if (refused) return refused; // nothing kept

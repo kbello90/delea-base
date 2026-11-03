@@ -33,6 +33,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
 from psycopg import AsyncConnection
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 
 from app.api.deps import CurrentClaims, DbConn, get_pool, require_role
@@ -244,14 +245,54 @@ async def _price(
     return quote, clock["today"]
 
 
+_ANSWER_PROBLEMS = {
+    "required": "{label} is required",
+    "choice": "{label} must be one of its choices",
+    "length": "{label} is too long",
+    "characters": "{label} has characters that can't be used",
+}
+
+
+async def _answers(
+    conn: AsyncConnection, items: Sequence[LineItemIn], quote: PricedQuote
+) -> list[Jsonb | None]:
+    """Each line's personalization answers, checked as on the website (Slice C1): only the
+    product's fields, required ones answered, choices from the list, text within its length.
+    Returns the snapshot to store per line ([{label, value}] or None); 422 names the problem."""
+    snapshots: list[Jsonb | None] = []
+    for item, line in zip(items, quote.lines, strict=True):
+        cur = await conn.execute(
+            "select public.personalization_snapshot(%s, %s)",
+            (item.product_id, Jsonb({str(k): v for k, v in item.personalization.items()})),
+        )
+        (result,) = await cur.fetchone()
+        if not result["ok"]:
+            problem = _ANSWER_PROBLEMS.get(result["reason"])
+            detail = (
+                problem.format(label=result["label"])
+                if problem
+                else "these answers don't match the product's personalization"
+            )
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, f"{line.description}: {detail}."
+            )
+        snapshots.append(Jsonb(result["snapshot"]) if result["snapshot"] else None)
+    return snapshots
+
+
 async def _insert_lines(
-    conn: AsyncConnection, claims: TokenClaims, invoice_id: UUID, quote: PricedQuote
+    conn: AsyncConnection,
+    claims: TokenClaims,
+    invoice_id: UUID,
+    quote: PricedQuote,
+    answers: Sequence[Jsonb | None],
 ) -> None:
     async with conn.cursor() as cur:
         await cur.executemany(
             "insert into public.invoice_line_items "
             "(invoice_id, tenant_id, product_id, description, qty, unit_price_cents, "
-            "line_total_cents, position) values (%s, %s, %s, %s, %s, %s, %s, %s)",
+            "line_total_cents, position, personalization) "
+            "values (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
             [
                 (
                     invoice_id,
@@ -262,8 +303,11 @@ async def _insert_lines(
                     line.unit_price_cents,
                     line.line_total_cents,
                     position,
+                    snapshot,
                 )
-                for position, line in enumerate(quote.lines, start=1)
+                for position, (line, snapshot) in enumerate(
+                    zip(quote.lines, answers, strict=True), start=1
+                )
             ],
         )
 
@@ -396,7 +440,7 @@ class InvoiceFilters:
     date_from: date | None
     date_to: date | None
     q: str | None
-    source: Literal["admin", "storefront"] | None
+    source: Literal["admin", "storefront", "in_store"] | None
     awaiting_payment: bool | None
 
 
@@ -406,7 +450,7 @@ def invoice_filters(
     date_from: date | None = None,
     date_to: date | None = None,
     q: Annotated[str | None, Query(min_length=1, max_length=50)] = None,
-    source: Literal["admin", "storefront"] | None = None,
+    source: Literal["admin", "storefront", "in_store"] | None = None,
     awaiting_payment: Annotated[
         bool | None,
         Query(description="true: storefront orders still waiting for payment (not cancelled)"),
@@ -569,27 +613,44 @@ async def get_invoice(invoice_id: UUID, claims: CurrentClaims, conn: DbConn) -> 
     "", response_model=InvoiceOut, status_code=status.HTTP_201_CREATED, dependencies=[Writers]
 )
 async def create_invoice(body: InvoiceCreate, claims: CurrentClaims, conn: DbConn) -> InvoiceOut:
-    """Create a quote and its lines in one transaction; `pay_now` also moves it to paid.
+    """Create a quote and its lines in one transaction; `pay_now` also moves it to paid, and
+    `deposit_cents` records a deposit on the quote (Slice C1).
 
     If anything fails (including insufficient stock on pay_now), nothing is kept: no invoice,
-    no lines, no document number used. `pay_now` needs a payment method; a quote has none.
+    no lines, no payment, no document number used. `pay_now` and a deposit need a payment
+    method; a plain quote has none. A deposit is less than the total.
     """
     _refuse_override_unless_owner(claims, body.tax_rate_bps)
-    _check_payment_method(paying=body.pay_now, payment_method=body.payment_method)
+    if body.pay_now and body.deposit_cents is not None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Take a deposit or the whole total, not both.",
+        )
+    _check_payment_method(
+        paying=body.pay_now or body.deposit_cents is not None,
+        payment_method=body.payment_method,
+    )
 
     customer = await _customer(conn, claims, body.customer_id)
     default_rate = await _default_rate(conn, body.tax_rate_bps)
     quote, today = await _price(conn, claims, customer, body.items, default_rate, body.tax_rate_bps)
+    answers = await _answers(conn, body.items, quote)
+    if body.deposit_cents is not None and body.deposit_cents >= quote.total_cents:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "A deposit is less than the total. To take it all, pay in full.",
+        )
 
     due_date = body.due_date or due_date_for(customer and customer["payment_terms"], today)
     cur = await conn.execute(
         "insert into public.invoices (tenant_id, customer_id, customer_name, source, "
         "subtotal_cents, tax_rate_bps, tax_cents, total_cents, due_date, notes) "
-        "values (%s, %s, %s, 'admin', %s, %s, %s, %s, %s, %s) returning id",
+        "values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) returning id",
         (
             claims.tenant_id,
             body.customer_id,
             customer_display_name(customer),
+            body.source,
             quote.subtotal_cents,
             quote.tax_rate_bps,
             quote.tax_cents,
@@ -599,8 +660,13 @@ async def create_invoice(body: InvoiceCreate, claims: CurrentClaims, conn: DbCon
         ),
     )
     (invoice_id,) = await cur.fetchone()
-    await _insert_lines(conn, claims, invoice_id, quote)
+    await _insert_lines(conn, claims, invoice_id, quote, answers)
 
+    if body.deposit_cents is not None and body.payment_method is not None:
+        # Held on the quote (a liability) until the rest is paid; stock is untouched.
+        await _insert_payment(
+            conn, claims, invoice_id, "payment", body.deposit_cents, body.payment_method, None
+        )
     if body.pay_now:
         # Paid in full now; the database assigns the invoice number and decrements stock (or
         # refuses: 409, and the payment goes too).
@@ -650,12 +716,13 @@ async def replace_items(
     if invoice["customer_id"] is not None:
         customer = await _customer(conn, claims, invoice["customer_id"])
     quote, _ = await _price(conn, claims, customer, body.items, invoice["tax_rate_bps"], None)
+    answers = await _answers(conn, body.items, quote)
 
     await conn.execute(
         "delete from public.invoice_line_items where invoice_id = %s and tenant_id = %s",
         (invoice_id, claims.tenant_id),
     )
-    await _insert_lines(conn, claims, invoice_id, quote)
+    await _insert_lines(conn, claims, invoice_id, quote, answers)
     await conn.execute(
         "update public.invoices set subtotal_cents = %s, tax_rate_bps = %s, tax_cents = %s, "
         "total_cents = %s where id = %s and tenant_id = %s",

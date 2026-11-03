@@ -28,6 +28,7 @@ describe("invoiceActions", () => {
       refund: false,
       cancel: true,
       deleteQuote: true,
+      printReceipt: false,
     });
     expect(invoiceActions(state("quote"), "staff")).toEqual({
       markPaid: true,
@@ -39,6 +40,7 @@ describe("invoiceActions", () => {
       refund: false,
       cancel: false,
       deleteQuote: false,
+      printReceipt: false,
     });
   });
 
@@ -56,7 +58,8 @@ describe("invoiceActions", () => {
   it("cancelled or refunded: no status moves, refunds or cancels; notes stay editable", () => {
     for (const closed of [{ cancelled_at: PAID_AT }, { refunded_at: PAID_AT }]) {
       const owner = invoiceActions(state("paid", closed), "owner");
-      expect(owner).toEqual({ ...NO_ACTIONS, editNotes: true, correctPaymentMethod: true });
+      // A refunded sale can still be reprinted (marked Refunded); a cancelled one can't.
+      expect(owner).toEqual({ ...NO_ACTIONS, editNotes: true, correctPaymentMethod: true, printReceipt: "refunded_at" in closed });
     }
     const cancelledQuote = invoiceActions(state("quote", { cancelled_at: PAID_AT }), "owner");
     expect(cancelledQuote).toEqual({ ...NO_ACTIONS, editNotes: true, editDueDate: true, deleteQuote: true });

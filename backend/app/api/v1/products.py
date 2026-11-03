@@ -101,6 +101,10 @@ async def list_products(
         bool | None, Query(description="true: stock below the low-stock threshold")
     ] = None,
     q: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
+    sku: Annotated[
+        str | None,
+        Query(min_length=1, max_length=100, description="exact SKU, any case (barcode scans)"),
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[ProductOut]:
@@ -115,6 +119,7 @@ async def list_products(
                     or (p.stock_qty < p.low_stock_threshold) = %(low)s)
                and (%(pattern)s::text is null
                     or p.name ilike %(pattern)s or p.sku ilike %(pattern)s)
+               and (%(sku)s::text is null or lower(p.sku) = lower(%(sku)s))
              order by p.sort_order, p.name, p.id
              limit %(limit)s offset %(offset)s
             """,
@@ -124,6 +129,7 @@ async def list_products(
                 "metal": metal.value if metal else None,
                 "low": low_stock,
                 "pattern": like_pattern(q) if q else None,
+                "sku": sku.strip() if sku else None,
                 "limit": limit,
                 "offset": offset,
             },

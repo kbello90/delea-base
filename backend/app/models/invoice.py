@@ -33,11 +33,17 @@ class PaymentMethod(StrEnum):
     other = "other"
 
 
+AnswerText = Annotated[str, Field(max_length=200)]
+
+
 class LineItemIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     product_id: UUID
     qty: Annotated[int, Field(ge=1, le=999)]
+    # field id -> answer, checked against the product's fields as on the website
+    # (public.personalization_snapshot). Ignored by the previews: answers don't change prices.
+    personalization: Annotated[dict[UUID, AnswerText], Field(max_length=5)] = {}
 
 
 Items = Annotated[list[LineItemIn], Field(min_length=1, max_length=100)]
@@ -52,7 +58,13 @@ class InvoiceCreate(BaseModel):
     due_date: date | None = None  # default: from the customer's payment terms
     tax_rate_bps: Annotated[int, Field(ge=0, le=10000)] | None = None  # owner-only override
     pay_now: bool = False  # in-store sale: move to paid in the same transaction
-    payment_method: PaymentMethod | None = None  # required with pay_now, refused without
+    # A deposit taken now (Slice C1): the quote is created holding this payment. Less than
+    # the total (paying it all is pay_now); not with pay_now.
+    deposit_cents: Annotated[int, Field(ge=1, le=100_000_000_000)] | None = None
+    # Required with pay_now or a deposit, refused otherwise.
+    payment_method: PaymentMethod | None = None
+    # admin: made in the admin (quotes); in_store: a sale or deposit at the counter (New sale)
+    source: Literal["admin", "in_store"] = "admin"
 
 
 class InvoicePreview(BaseModel):
@@ -119,7 +131,7 @@ class InvoiceLineOut(BaseModel):
     qty: int
     unit_price_cents: int
     line_total_cents: int
-    personalization: list[AnswerOut] | None = None  # storefront orders only
+    personalization: list[AnswerOut] | None = None  # the answers, when the product asks
 
 
 class OrderContactOut(BaseModel):

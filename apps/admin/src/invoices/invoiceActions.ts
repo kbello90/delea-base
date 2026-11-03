@@ -14,6 +14,8 @@ export interface InvoiceActions {
   refund: boolean;
   cancel: boolean;
   deleteQuote: boolean;
+  /** A receipt for money taken: a sale, or a deposit receipt while it is a quote (Slice C1). */
+  printReceipt: boolean;
 }
 
 export const NO_ACTIONS: InvoiceActions = {
@@ -26,6 +28,7 @@ export const NO_ACTIONS: InvoiceActions = {
   refund: false,
   cancel: false,
   deleteQuote: false,
+  printReceipt: false,
 };
 
 // The ledger fields are optional: an invoice without them holds no payments.
@@ -61,6 +64,7 @@ export function invoiceActions(invoice: InvoiceState, role: AppRole | undefined)
     refund: owner && (invoice.paid_at !== null || held) && !closed && !card,
     cancel: owner && !closed && !(quote && held) && !cardHeld,
     deleteQuote: owner && quote && !website && !hasPayments,
+    printReceipt: (invoice.paid_at !== null || held) && invoice.cancelled_at === null,
   };
 }
 

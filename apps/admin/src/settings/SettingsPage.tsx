@@ -8,6 +8,7 @@ import { Field } from "../components/Field";
 import { Loading } from "../components/Loading";
 import { PageHeader } from "../components/PageHeader";
 import { useToast } from "../components/toastContext";
+import { isThermal, RECEIPT_LAYOUTS, type ReceiptLayout } from "../receipts/api";
 import { isAllowedLogoUrl } from "../theme/brand";
 import {
   CORNER_STYLES,
@@ -141,6 +142,61 @@ function BusinessCard({ company }: { company: CompanySettings }) {
       <div className="form-actions">
         <Button type="submit" disabled={update.isPending}>
           {update.isPending ? "Saving…" : "Save business details"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+export const FOOTER_MAX = 300;
+
+/** The shop's default receipt paper and footer (Slice C1); the cashier can pick another paper per receipt. */
+function ReceiptsCard({ company }: { company: CompanySettings }) {
+  const toast = useToast();
+  const update = useUpdateCompany();
+  const [layout, setLayout] = useState<ReceiptLayout>(company.receipt_layout);
+  const [footer, setFooter] = useState(company.receipt_footer ?? "");
+  const trimmed = footer.trim();
+  // eslint-disable-next-line no-control-regex
+  const footerError = trimmed.length > FOOTER_MAX ? `Use at most ${FOOTER_MAX} characters.` : /[\u0000-\u0009\u000b-\u001f\u007f]/.test(trimmed) ? "Remove the special characters." : undefined;
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (footerError) return;
+    const body: { receipt_layout?: ReceiptLayout; receipt_footer?: string | null } = {};
+    if (layout !== company.receipt_layout) body.receipt_layout = layout;
+    if ((trimmed || null) !== company.receipt_footer) body.receipt_footer = trimmed || null;
+    if (Object.keys(body).length === 0) return toast({ title: "Nothing to save" });
+    update.mutate(body, { onSuccess: () => toast({ title: "Receipt settings saved", variant: "success" }) });
+  }
+
+  return (
+    <form className="record-form settings-card" onSubmit={submit} noValidate aria-labelledby="receipts-heading">
+      <h2 id="receipts-heading">Receipts</h2>
+      {update.isError && (
+        <p className="form-error" role="alert">
+          {message(update.error)}
+        </p>
+      )}
+      <fieldset>
+        <legend>Default paper</legend>
+        <p className="field-hint">Chosen first when a receipt is printed; the cashier can pick another for each receipt.</p>
+        <div className="choice-row">
+          {RECEIPT_LAYOUTS.map((l) => (
+            <label key={l.value} className="check">
+              <input type="radio" name="receipt-layout" value={l.value} checked={layout === l.value} onChange={() => setLayout(l.value)} disabled={update.isPending} />
+              {l.label}
+            </label>
+          ))}
+        </div>
+        {isThermal(layout) && <p className="field-hint">Thermal printer: in the print dialog choose Margins: None and Scale: 100% (once; the browser remembers it).</p>}
+      </fieldset>
+      <Field id="receipt-footer" label="Receipt footer (optional)" error={footerError} hint="Printed at the bottom of every receipt, for example your return policy.">
+        <textarea id="receipt-footer" rows={3} value={footer} onChange={(e) => setFooter(e.target.value)} disabled={update.isPending} aria-invalid={Boolean(footerError)} aria-describedby={describedBy("receipt-footer", footerError, true)} />
+      </Field>
+      <div className="form-actions">
+        <Button type="submit" disabled={update.isPending}>
+          {update.isPending ? "Saving…" : "Save receipt settings"}
         </Button>
       </div>
     </form>
@@ -565,6 +621,7 @@ export function SettingsPage() {
       {company.isPending && <Loading label="Loading business details…" />}
       {company.isError && <ErrorState title="Business details couldn't be loaded" error={company.error} onRetry={() => void company.refetch()} />}
       {company.data && <BusinessCard key={company.data.updated_at} company={company.data} />}
+      {company.data && <ReceiptsCard key={`receipts-${company.data.updated_at}`} company={company.data} />}
       {brand.isPending && <Loading label="Loading brand…" />}
       {brand.isError && <ErrorState title="Brand couldn't be loaded" error={brand.error} onRetry={() => void brand.refetch()} />}
       {brand.data && <BrandCard brand={brand.data} />}

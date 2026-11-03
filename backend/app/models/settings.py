@@ -62,6 +62,16 @@ def _hero_link(value: str) -> str:
     return value
 
 
+def _receipt_footer(value: str) -> str:
+    """Line breaks allowed (as \n), no other control characters (the database checks the same)."""
+    value = value.replace("\r\n", "\n").strip()
+    if not 1 <= len(value) <= 300:
+        raise ValueError("must be 1 to 300 characters")
+    if re.search(r"[\x00-\x09\x0b-\x1f\x7f]", value):
+        raise ValueError("must not contain control characters other than line breaks")
+    return value
+
+
 def _email(value: str) -> str:
     if len(value) > 254 or not _EMAIL.fullmatch(value):
         raise ValueError("must be an email address")
@@ -106,6 +116,18 @@ def language_rule_errors(row: dict[str, Any]) -> list[str]:
     return []
 
 
+class ReceiptLayout(StrEnum):
+    """The receipt's paper (company_settings.receipt_layout): the shop's default, and the
+    cashier can pick another per receipt (Slice C1)."""
+
+    letter = "letter"  # 8.5 x 11 in, any office printer
+    mm80 = "80mm"  # thermal roll
+    mm58 = "58mm"  # thermal roll
+
+
+ReceiptFooter = Annotated[str, AfterValidator(_receipt_footer)]
+
+
 class CompanySettingsUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -115,9 +137,11 @@ class CompanySettingsUpdate(BaseModel):
     default_language: Language | None = None
     enabled_languages: Languages | None = None
     default_tax_rate_bps: TaxRateBps | None = None
+    receipt_layout: ReceiptLayout | None = None
+    receipt_footer: ReceiptFooter | None = None  # printed at the bottom of every receipt
 
 
-COMPANY_NULLABLE = frozenset({"legal_name", "ein", "address"})
+COMPANY_NULLABLE = frozenset({"legal_name", "ein", "address", "receipt_footer"})
 
 
 class CompanySettingsOut(BaseModel):
@@ -129,9 +153,20 @@ class CompanySettingsOut(BaseModel):
     default_language: Language
     enabled_languages: list[str]
     default_tax_rate_bps: int
+    receipt_layout: ReceiptLayout
+    receipt_footer: str | None
     next_quote_number: int  # read-only
     next_invoice_number: int  # read-only
     updated_at: datetime
+
+
+class ReceiptSettingsOut(BaseModel):
+    """What a receipt prints at the top and bottom; owner and staff (public.receipt_settings)."""
+
+    business_name: str
+    address: str | None
+    receipt_layout: ReceiptLayout  # the shop's default paper
+    receipt_footer: str | None
 
 
 class BrandConfigUpdate(BaseModel):

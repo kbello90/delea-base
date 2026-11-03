@@ -1,5 +1,6 @@
-import { ApiError } from "@delea/api-client";
+import { ApiError, unwrap } from "@delea/api-client";
 import { Button } from "@delea/ui";
+import { useQueries } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/authContext";
@@ -8,6 +9,8 @@ import { Field } from "../components/Field";
 import { Loading } from "../components/Loading";
 import { PageHeader } from "../components/PageHeader";
 import { useToast } from "../components/toastContext";
+import { useApi } from "../lib/api";
+import type { Product } from "../products/api";
 import {
   documentNumber,
   statusLabel,
@@ -19,7 +22,7 @@ import {
   type PreviewRequest,
 } from "./api";
 import { CartTable, ProductPicker, StockShortages, Totals } from "./Cart";
-import { taxOverride, useCart, type CartLine } from "./cartState";
+import { lineKey, taxOverride, useCart, type CartLine } from "./cartState";
 import { CustomerPicker, type PickedCustomer } from "./CustomerPicker";
 import { invoiceActions } from "./invoiceActions";
 import "./invoices.css";
@@ -39,16 +42,16 @@ export function NewQuotePage() {
   const tax = taxOverride(taxRaw);
   const request: PreviewRequest | null =
     cart.valid && !tax.error
-      ? { customer_id: customer?.id ?? null, items: cart.items, tax_rate_bps: isOwner ? tax.bps : null }
+      ? { customer_id: customer?.id ?? null, items: cart.priceItems, tax_rate_bps: isOwner ? tax.bps : null }
       : null;
   const preview = usePreview(request);
   const create = useCreateInvoice();
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (!request) return;
+    if (!request || !cart.answered) return;
     create.mutate(
-      { ...request, notes: notes.trim() ? notes : null, due_date: dueDate || null, pay_now: false },
+      { ...request, items: cart.items, notes: notes.trim() ? notes : null, due_date: dueDate || null, pay_now: false, source: "admin" },
       {
         onSuccess: (quote) => {
           toast({ title: `${documentNumber(quote)} was created`, variant: "success" });
@@ -117,7 +120,7 @@ export function NewQuotePage() {
           </Field>
         </fieldset>
         <div className="form-actions">
-          <Button type="submit" disabled={!request || create.isPending}>
+          <Button type="submit" disabled={!request || !cart.answered || create.isPending}>
             {create.isPending ? "Saving…" : "Save quote"}
           </Button>
           <Link to="/invoices" className="btn-text">
@@ -129,30 +132,46 @@ export function NewQuotePage() {
   );
 }
 
-function linesOf(invoice: Invoice): CartLine[] {
-  const merged = new Map<string, CartLine>();
+/**
+ * The quote's lines as a cart. Lines of a product without personalization merge; a
+ * personalized line keeps its own answers, matched back to the product's fields by label.
+ */
+function linesOf(invoice: Invoice, products: Map<string, Product>): CartLine[] {
+  const lines: CartLine[] = [];
   for (const line of invoice.items ?? []) {
     if (!line.product_id) continue;
-    const seen = merged.get(line.product_id);
-    if (seen) seen.qty += line.qty;
-    else merged.set(line.product_id, { product: { id: line.product_id, name: line.description, sku: "" }, qty: line.qty });
+    const product = products.get(line.product_id);
+    const fields = product?.personalization ?? [];
+    const base = product ?? { id: line.product_id, name: line.description, sku: "" };
+    if (fields.length === 0) {
+      const seen = lines.find((l) => l.product.id === line.product_id);
+      if (seen) seen.qty += line.qty;
+      else lines.push({ key: lineKey(), product: base, qty: line.qty, answers: {} });
+      continue;
+    }
+    const answers: Record<string, string> = {};
+    for (const a of line.personalization ?? []) {
+      const field = fields.find((f) => f.label.toLowerCase() === a.label.toLowerCase());
+      if (field) answers[field.id] = a.value;
+    }
+    lines.push({ key: lineKey(), product: base, qty: line.qty, answers });
   }
-  return [...merged.values()];
+  return lines;
 }
 
-function EditLines({ invoice }: { invoice: Invoice }) {
+function EditLines({ invoice, products }: { invoice: Invoice; products: Map<string, Product> }) {
   const navigate = useNavigate();
   const toast = useToast();
-  const cart = useCart(linesOf(invoice));
-  const request: PreviewRequest | null = cart.valid ? { items: cart.items } : null;
+  const cart = useCart(linesOf(invoice, products));
+  const request: PreviewRequest | null = cart.valid ? { items: cart.priceItems } : null;
   const preview = usePreview(request, invoice.id);
   const replace = useReplaceItems(invoice.id);
   const number = documentNumber(invoice);
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (!request) return;
-    replace.mutate(request.items, {
+    if (!request || !cart.answered) return;
+    replace.mutate(cart.items, {
       onSuccess: () => {
         toast({ title: `${number} was updated`, variant: "success" });
         navigate(`/invoices/${invoice.id}`);
@@ -182,7 +201,7 @@ function EditLines({ invoice }: { invoice: Invoice }) {
           <StockShortages preview={preview.data} />
         </fieldset>
         <div className="form-actions">
-          <Button type="submit" disabled={!request || replace.isPending}>
+          <Button type="submit" disabled={!request || !cart.answered || replace.isPending}>
             {replace.isPending ? "Saving…" : "Save lines"}
           </Button>
           <Link to={`/invoices/${invoice.id}`} className="btn-text">
@@ -199,6 +218,7 @@ export function EditQuoteLinesPage() {
   const { state } = useAuth();
   const role = state.status === "signedIn" ? state.claims?.appRole : undefined;
   const invoice = useInvoice(invoiceId);
+  const products = useLineProducts(invoice.data);
 
   if (invoice.isPending) return <Loading label="Loading quote…" />;
   if (invoice.isError) {
@@ -222,5 +242,22 @@ export function EditQuoteLinesPage() {
       </>
     );
   }
-  return <EditLines invoice={data} />;
+  if (products.pending) return <Loading label="Loading quote…" />;
+  return <EditLines invoice={data} products={products.byId} />;
+}
+
+/** The quote's products, for their personalization questions (a deleted one is left out). */
+function useLineProducts(invoice: Invoice | undefined) {
+  const api = useApi();
+  const ids = [...new Set((invoice?.items ?? []).flatMap((l) => (l.product_id ? [l.product_id] : [])))];
+  const results = useQueries({
+    queries: ids.map((id) => ({
+      queryKey: ["products", "detail", id],
+      queryFn: () => unwrap(api.GET("/api/v1/products/{product_id}", { params: { path: { product_id: id } } })),
+      retry: false,
+    })),
+  });
+  const byId = new Map<string, Product>();
+  for (const r of results) if (r.data) byId.set(r.data.id, r.data);
+  return { pending: results.some((r) => r.isPending), byId };
 }

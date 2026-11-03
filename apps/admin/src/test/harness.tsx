@@ -198,6 +198,8 @@ export const COMPANY_RESPONSE: Schemas["CompanySettingsOut"] = {
   default_language: "en",
   enabled_languages: ["en"],
   default_tax_rate_bps: 800,
+  receipt_layout: "letter",
+  receipt_footer: null,
   next_quote_number: 41,
   next_invoice_number: 89,
   updated_at: "2026-10-20T00:00:00Z",

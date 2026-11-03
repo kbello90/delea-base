@@ -103,6 +103,8 @@ create table company_settings (
   enabled_languages text[] not null default '{en}',
   default_tax_rate_bps integer not null default 0,   -- basis points; see §8 item 3
   stripe_account_id text,                            -- see §8 item 2
+  receipt_layout text not null default 'letter',     -- 'letter' | '80mm' | '58mm' (migration 20261102000300)
+  receipt_footer text,                               -- 1..300 chars, trimmed, line breaks allowed
   next_quote_number integer not null default 1,
   next_invoice_number integer not null default 1,
   updated_at timestamptz not null default now()
@@ -201,7 +203,7 @@ create table invoices (
   quote_number text,                                         -- e.g. QTE-2026-042, assigned at creation
   invoice_number text,                                       -- e.g. INV-2026-089, assigned when status becomes 'paid'
   order_status order_status not null default 'quote',        -- locked, PRD Q1
-  source text not null default 'admin' check (source in ('admin', 'storefront')),
+  source text not null default 'admin' check (source in ('admin', 'storefront', 'in_store')),  -- in_store: Slice C1
   subtotal_cents bigint not null default 0,
   tax_rate_bps integer not null default 0,                   -- snapshot of the rate used
   tax_cents bigint not null default 0,
@@ -397,6 +399,11 @@ The migrations in `supabase/migrations/` are now the source of truth. Where the 
   - **Invoices inserted directly as paid** (service role only) have no lines at insert time, so they never decrement stock. Those paths must create the quote, add the lines, then advance it.
 - **Tax rate for staff.** `current_tax_rate_bps()` (SECURITY DEFINER, `search_path = ''`) returns `default_tax_rate_bps` for the caller's tenant (from the JWT) when `app_role` is owner or staff. It raises 42501 for anyone else, cpa included. `EXECUTE` is granted to `authenticated` only. Staff get the rate without access to `company_settings`.
 - **Currency for every role (migration 20261020001400).** `current_tenant_currency()` (SECURITY DEFINER, `search_path = ''`) returns `company_settings.currency` for the caller's tenant to owner, staff and cpa. It also checks that a `tenant_members` row exists for (token user, tenant, role), so a removed member's still-valid token is refused (42501), as are a missing or malformed `tenant_id`. `EXECUTE` is granted to `authenticated` only.
+- **Selling in the shop (migration 20261102000300, Slice C1).**
+  - `invoices.source` takes `in_store` (New sale). Existing invoices are unchanged.
+  - `company_settings.receipt_layout` (`letter` default, `80mm`, `58mm`) and `receipt_footer` (1..300 characters, trimmed, line breaks allowed, no other control characters).
+  - `receipt_settings()` (SECURITY DEFINER, `search_path = ''`) returns the business name, address, layout and footer to owner and staff of the token's tenant, with the same membership check as `current_tenant_currency()`; the CPA and anyone else get 42501. `EXECUTE` to `authenticated` only.
+  - `personalization_snapshot(product_id, answers)` (security invoker, `search_path = ''`) applies the storefront's personalization checks to one line and returns `{"ok": true, "snapshot": [...] | null}` or `{"ok": false, "label", "reason"}`. It reads the fields with the caller's rights, so another shop's fields are never matched. `EXECUTE` to `authenticated` only. Admin-made lines store the snapshot in `invoice_line_items.personalization` as storefront orders do.
 - **Product images (migration 20261020001500).** `products.image_urls` is dropped; images live in `product_images` (tenant, product, position, `is_primary`, the two object paths and the large variant's size).
   - **Paths only:** the table stores object paths in the public `product-images` bucket, constrained to `{tenant_id}/{product_id}/{id}-1200.webp` and `-400.webp`. Public URLs are built by the backend from a setting.
   - **Rules:** one primary image per product; positions unique per product (deferrable, so a reorder can swap); at most 10 images per product (deferred constraint trigger, P0001); composite FK to `products (tenant_id, id)` with cascade.

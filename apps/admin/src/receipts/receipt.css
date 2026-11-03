@@ -1,0 +1,206 @@
+/* Receipts (Slice C1): Letter, 80 mm and 58 mm. On screen, the preview in the print dialog;
+   when printing, only the receipt (see .receipt-print-root and PAGE_RULES in api.ts). */
+
+.receipt-dialog {
+  width: min(640px, calc(100vw - 2rem));
+}
+.receipt-paper {
+  border: 0;
+  padding: 0;
+  margin: 0 0 0.75rem;
+  display: grid;
+  gap: 0.35rem;
+}
+.receipt-paper legend {
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+.receipt-preview {
+  background: var(--surface-2);
+  padding: 1rem;
+  max-height: 50vh;
+  overflow: auto;
+  border-radius: 6px;
+}
+.receipt-preview .receipt-doc {
+  margin: 0 auto;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+/* The receipt itself: black on white whatever the admin's theme. */
+.receipt-doc {
+  box-sizing: border-box;
+  color: #000;
+  background: #fff;
+  font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  line-height: 1.35;
+}
+.receipt-doc h1,
+.receipt-doc p,
+.receipt-doc dl {
+  margin: 0;
+}
+.receipt-doc dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5em;
+}
+.receipt-doc dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.receipt-doc__name {
+  font-weight: 700;
+}
+.receipt-doc__address,
+.receipt-doc__footer {
+  white-space: pre-line;
+}
+.receipt-doc__warning {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.receipt-doc__total {
+  font-weight: 700;
+}
+.receipt-doc__answers {
+  list-style: none;
+  margin: 0.1em 0 0;
+  padding: 0 0 0 0.75em;
+  font-size: 0.9em;
+}
+.receipt-doc__lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.receipt-doc__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5em;
+}
+.receipt-doc__row > span:last-child {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.receipt-doc__each {
+  font-size: 0.9em;
+  padding-left: 0.75em;
+}
+
+/* Letter: 8.5 x 11 in with 0.5 in margins, so 7.5 in of content. */
+.receipt-doc--letter {
+  width: 7.5in;
+  max-width: 100%;
+  padding: 0.3in;
+  font-size: 11pt;
+}
+.receipt-doc--letter .receipt-doc__shop {
+  margin-bottom: 0.3in;
+}
+.receipt-doc--letter .receipt-doc__name {
+  font-size: 16pt;
+}
+.receipt-doc--letter h1 {
+  font-size: 20pt;
+  margin-bottom: 0.1in;
+}
+.receipt-doc--letter .receipt-doc__facts {
+  max-width: 3.5in;
+  margin-bottom: 0.25in;
+}
+.receipt-doc__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0.2in;
+}
+.receipt-doc__table th,
+.receipt-doc__table td {
+  text-align: left;
+  padding: 6px 4px;
+  border-bottom: 1px solid #999;
+  vertical-align: top;
+}
+.receipt-doc__table .num {
+  text-align: right;
+  white-space: nowrap;
+}
+.receipt-doc--letter .receipt-doc__totals,
+.receipt-doc--letter .receipt-doc__payments {
+  max-width: 3in;
+  margin-left: auto;
+  margin-bottom: 0.15in;
+}
+.receipt-doc--letter .receipt-doc__footer {
+  margin-top: 0.4in;
+  text-align: center;
+}
+
+/* Thermal rolls: one narrow column. About 72 mm prints on 80 mm paper, 48 mm on 58 mm. */
+.receipt-doc--80mm {
+  width: 80mm;
+  padding: 3mm 4mm;
+  font-size: 10pt;
+}
+.receipt-doc--58mm {
+  width: 58mm;
+  padding: 3mm 5mm;
+  font-size: 8pt;
+}
+.receipt-doc--80mm .receipt-doc__shop,
+.receipt-doc--58mm .receipt-doc__shop,
+.receipt-doc--80mm .receipt-doc__heading,
+.receipt-doc--58mm .receipt-doc__heading,
+.receipt-doc--80mm .receipt-doc__footer,
+.receipt-doc--58mm .receipt-doc__footer {
+  text-align: center;
+}
+.receipt-doc--80mm h1,
+.receipt-doc--58mm h1 {
+  font-size: 1.25em;
+  margin-top: 0.5em;
+}
+.receipt-doc--80mm .receipt-doc__facts,
+.receipt-doc--58mm .receipt-doc__facts,
+.receipt-doc--80mm .receipt-doc__lines,
+.receipt-doc--58mm .receipt-doc__lines,
+.receipt-doc--80mm .receipt-doc__totals,
+.receipt-doc--58mm .receipt-doc__totals,
+.receipt-doc--80mm .receipt-doc__payments,
+.receipt-doc--58mm .receipt-doc__payments {
+  text-align: left;
+  border-top: 1px dashed #000;
+  margin-top: 0.5em;
+  padding-top: 0.5em;
+}
+.receipt-doc--80mm .receipt-doc__lines li + li,
+.receipt-doc--58mm .receipt-doc__lines li + li {
+  margin-top: 0.35em;
+}
+.receipt-doc--80mm .receipt-doc__footer,
+.receipt-doc--58mm .receipt-doc__footer {
+  margin-top: 0.75em;
+}
+
+/* Printing: only the receipt. */
+.receipt-print-root {
+  display: none;
+}
+@media print {
+  body.printing-receipt {
+    background: #fff;
+    margin: 0;
+  }
+  body.printing-receipt > :not(.receipt-print-root) {
+    display: none !important;
+  }
+  body.printing-receipt > .receipt-print-root {
+    display: block;
+  }
+  .receipt-print-root .receipt-doc--letter {
+    width: auto;
+    padding: 0;
+  }
+}

@@ -9,6 +9,8 @@ storefront_settings: owner only here (everything in it is public on the storefro
 on/off switch, the contact email and the pages).
 currency: read by owner, staff and cpa through current_tenant_currency() (SECURITY DEFINER),
 so staff and cpa learn the currency without reading company_settings.
+receipt: the receipt's header and footer and the default paper, read by owner and staff
+through receipt_settings() (SECURITY DEFINER) for the same reason (Slice C1).
 require_role gives a clear 403 up front, but RLS (user session as `authenticated`) is the
 enforcement. Every query also filters on the caller's tenant.
 
@@ -53,6 +55,7 @@ from app.models.settings import (
     LogoType,
     LogoUploadRequest,
     LogoUploadTicket,
+    ReceiptSettingsOut,
     StorefrontSettingsOut,
     StorefrontSettingsUpdate,
     WebsiteOut,
@@ -72,8 +75,8 @@ AnyMember = Depends(require_role("owner", "staff", "cpa"))
 
 _COMPANY_COLUMNS = (
     "tenant_id, legal_name, ein, address, currency::text as currency, default_language, "
-    "enabled_languages, default_tax_rate_bps, next_quote_number, next_invoice_number, "
-    "updated_at"
+    "enabled_languages, default_tax_rate_bps, receipt_layout, receipt_footer, "
+    "next_quote_number, next_invoice_number, updated_at"
 )
 _BRAND_COLUMNS = (
     "tenant_id, business_name, tagline, primary_color, accent_color, logo_path, hero_title, "
@@ -247,6 +250,19 @@ async def update_storefront_settings(
     if row is None:
         raise NotFoundError("Storefront settings not found")
     return StorefrontSettingsOut.model_validate(row)
+
+
+@router.get("/receipt", response_model=ReceiptSettingsOut, dependencies=[OwnerOrStaff])
+async def get_receipt_settings(conn: DbConn) -> ReceiptSettingsOut:
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            "select business_name, address, receipt_layout, receipt_footer "
+            "from public.receipt_settings()"
+        )
+        row = await cur.fetchone()
+    if row is None:
+        raise NotFoundError("Company settings not found")
+    return ReceiptSettingsOut.model_validate(row)
 
 
 @router.get("/currency", response_model=CurrencyOut, dependencies=[AnyMember])

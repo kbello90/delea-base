@@ -12,6 +12,7 @@ import { useToast } from "../components/toastContext";
 import { formatMoney } from "../lib/money";
 import { centsToInput, parseMoneyInput } from "../lib/moneyInput";
 import { useCurrency } from "../lib/useCurrency";
+import { PrintReceiptButton } from "../receipts/PrintReceipt";
 import {
   documentNumber,
   invoiceMethodLabel,
@@ -850,10 +851,15 @@ function InvoiceView({
         title={number}
         description={<StatusTags invoice={invoice} />}
         actions={
-          actions.editLines ? (
-            <Link to={`/invoices/${invoice.id}/edit`} className="dl-button">
-              Edit lines
-            </Link>
+          actions.editLines || actions.printReceipt ? (
+            <>
+              {actions.printReceipt && <PrintReceiptButton invoice={invoice} />}
+              {actions.editLines && (
+                <Link to={`/invoices/${invoice.id}/edit`} className="dl-button">
+                  Edit lines
+                </Link>
+              )}
+            </>
           ) : undefined
         }
       />
@@ -889,6 +895,14 @@ function InvoiceView({
               <dt>Website order</dt>
               <dd>
                 <span className="tag tag--web">Website</span> {invoice.order_ref}
+              </dd>
+            </div>
+          )}
+          {invoice.source === "in_store" && (
+            <div>
+              <dt>Source</dt>
+              <dd>
+                <span className="tag tag--store">In store</span>
               </dd>
             </div>
           )}

@@ -270,10 +270,12 @@ export interface paths {
         put?: never;
         /**
          * Create Invoice
-         * @description Create a quote and its lines in one transaction; `pay_now` also moves it to paid.
+         * @description Create a quote and its lines in one transaction; `pay_now` also moves it to paid, and
+         *     `deposit_cents` records a deposit on the quote (Slice C1).
          *
          *     If anything fails (including insufficient stock on pay_now), nothing is kept: no invoice,
-         *     no lines, no document number used. `pay_now` needs a payment method; a quote has none.
+         *     no lines, no payment, no document number used. `pay_now` and a deposit need a payment
+         *     method; a plain quote has none. A deposit is less than the total.
          */
         post: operations["create_invoice_api_v1_invoices_post"];
         delete?: never;
@@ -769,6 +771,23 @@ export interface paths {
          *     customer emails link to) and whether the storefront is switched on.
          */
         get: operations["get_website_api_v1_settings_website_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Receipt Settings */
+        get: operations["get_receipt_settings_api_v1_settings_receipt_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1408,6 +1427,9 @@ export interface components {
             enabled_languages: string[];
             /** Default Tax Rate Bps */
             default_tax_rate_bps: number;
+            receipt_layout: components["schemas"]["ReceiptLayout"];
+            /** Receipt Footer */
+            receipt_footer: string | null;
             /** Next Quote Number */
             next_quote_number: number;
             /** Next Invoice Number */
@@ -1431,6 +1453,9 @@ export interface components {
             enabled_languages?: components["schemas"]["Language"][] | null;
             /** Default Tax Rate Bps */
             default_tax_rate_bps?: number | null;
+            receipt_layout?: components["schemas"]["ReceiptLayout"] | null;
+            /** Receipt Footer */
+            receipt_footer?: string | null;
         };
         /** ContactIn */
         ContactIn: {
@@ -1897,7 +1922,15 @@ export interface components {
              * @default false
              */
             pay_now: boolean;
+            /** Deposit Cents */
+            deposit_cents?: number | null;
             payment_method?: components["schemas"]["PaymentMethod"] | null;
+            /**
+             * Source
+             * @default admin
+             * @enum {string}
+             */
+            source: "admin" | "in_store";
         };
         /** InvoiceItemsReplace */
         InvoiceItemsReplace: {
@@ -2066,6 +2099,13 @@ export interface components {
             product_id: string;
             /** Qty */
             qty: number;
+            /**
+             * Personalization
+             * @default {}
+             */
+            personalization: {
+                [key: string]: string;
+            };
         };
         /** LogoRegister */
         LogoRegister: {
@@ -2881,6 +2921,13 @@ export interface components {
             /** Fulfillment */
             fulfillment?: ("ship" | "pickup") | null;
         };
+        /**
+         * ReceiptLayout
+         * @description The receipt's paper (company_settings.receipt_layout): the shop's default, and the
+         *     cashier can pick another per receipt (Slice C1).
+         * @enum {string}
+         */
+        ReceiptLayout: "letter" | "80mm" | "58mm";
         /** ReceiptLink */
         ReceiptLink: {
             /** Url */
@@ -2897,6 +2944,19 @@ export interface components {
              */
             upload_id: string;
             content_type: components["schemas"]["ReceiptType"];
+        };
+        /**
+         * ReceiptSettingsOut
+         * @description What a receipt prints at the top and bottom; owner and staff (public.receipt_settings).
+         */
+        ReceiptSettingsOut: {
+            /** Business Name */
+            business_name: string;
+            /** Address */
+            address: string | null;
+            receipt_layout: components["schemas"]["ReceiptLayout"];
+            /** Receipt Footer */
+            receipt_footer: string | null;
         };
         /**
          * ReceiptType
@@ -3229,6 +3289,8 @@ export interface operations {
                 /** @description true: stock below the low-stock threshold */
                 low_stock?: boolean | null;
                 q?: string | null;
+                /** @description exact SKU, any case (barcode scans) */
+                sku?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -3924,7 +3986,7 @@ export interface operations {
                 date_from?: string | null;
                 date_to?: string | null;
                 q?: string | null;
-                source?: ("admin" | "storefront") | null;
+                source?: ("admin" | "storefront" | "in_store") | null;
                 /** @description true: storefront orders still waiting for payment (not cancelled) */
                 awaiting_payment?: boolean | null;
             };
@@ -3995,7 +4057,7 @@ export interface operations {
                 date_from?: string | null;
                 date_to?: string | null;
                 q?: string | null;
-                source?: ("admin" | "storefront") | null;
+                source?: ("admin" | "storefront" | "in_store") | null;
                 /** @description true: storefront orders still waiting for payment (not cancelled) */
                 awaiting_payment?: boolean | null;
             };
@@ -5042,6 +5104,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WebsiteOut"];
+                };
+            };
+        };
+    };
+    get_receipt_settings_api_v1_settings_receipt_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReceiptSettingsOut"];
                 };
             };
         };
