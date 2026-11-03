@@ -26,7 +26,7 @@ SEED_PRODUCT_A = "a1000000-0000-0000-0000-000000000001"
 
 
 async def _connect(settings):
-    return await psycopg.AsyncConnection.connect(settings.database_url, autocommit=True)
+    return await psycopg.AsyncConnection.connect(settings.admin_dsn, autocommit=True)
 
 
 async def _provision(settings, spec: TenantSpec) -> uuid.UUID:

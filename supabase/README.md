@@ -72,13 +72,13 @@ length 10, Site URL = the admin app's URL, the invite and recovery templates fro
 
 ## Notes for the backend
 
-**1. The AI read path must not run as `postgres` in production.** The FastAPI backend must
-connect as a **dedicated non-superuser login role that is granted `ai_readonly`**. For example:
+**1. The API never runs as `postgres`.** It connects as `delea_api` (migration
+20261103000100, TRD §6.6): `NOINHERIT`, no table privilege, a member of `ai_readonly` and the
+five other roles its sessions switch into. The migration creates it without a password; on a
+hosted project the owner sets one in the SQL editor:
 
 ```sql
-create role delea_api login password '...' noinherit;
-grant ai_readonly to delea_api;
--- plus whatever the backend's normal (tenant-scoped) path needs
+alter role delea_api with login password '<their own secret>';
 ```
 
 For each `/api/v1/ai/query` request, it runs these inside one transaction:

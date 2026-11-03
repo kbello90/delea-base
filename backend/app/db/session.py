@@ -10,7 +10,10 @@ each one transaction:
   resolved from the request's Origin host, never from request input).
 - checkout_session: the public checkout. As `storefront_writer`, which can only execute the
   storefront checkout functions (SECURITY DEFINER, tenant re-checked inside).
-- service_session: no role switch. Stripe webhooks, the automation worker, password reset.
+- service_session: no role switch: the API's own login. Hosted (and locally since the
+  least-privilege login, TRD §6.6) that is `delea_api`, which holds no table privilege: it may
+  only execute is_current_member() and the api_* functions (password reset, the owner's test
+  address, open card sessions; migration 20261103000100).
 - ai_session: the AI assistant. Runs as `ai_readonly`, scoped by `app.tenant_id` (TRD §3.2).
 
 Schema is owned by supabase/migrations/, never by the backend.
@@ -181,9 +184,9 @@ async def email_session(pool: AsyncConnectionPool) -> AsyncIterator[AsyncConnect
 async def service_session(pool: AsyncConnectionPool) -> AsyncIterator[AsyncConnection]:
     """One transaction with NO role switch: the connection's own role, RLS not applied.
 
-    Only for public storefront endpoints, Stripe webhooks and the automation worker. Never use
-    it for a request made by a signed-in user. In production the pool must connect as a
-    dedicated non-superuser role, never as `postgres`.
+    Only for the api_* functions (password reset, the owner's test address, open card sessions):
+    `delea_api` can do nothing else here. Never use it for a request made by a signed-in user.
+    The pool connects as `delea_api`, never as `postgres` (TRD §6.6).
     """
     async with pool.connection() as conn, conn.transaction():
         yield conn

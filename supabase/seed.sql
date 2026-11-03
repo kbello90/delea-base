@@ -233,3 +233,11 @@ insert into public.reorder_list (tenant_id, material_id, product_id, created_by_
 insert into public.stripe_events (event_id, tenant_id) values
   ('evt_seed_demo_0001', '11111111-1111-1111-1111-111111111111'),
   ('evt_seed_aurora_0001', '22222222-2222-2222-2222-222222222222');
+
+-- ---------------------------------------------------------------------------
+-- The API's least-privilege login (migration 20261103000100, TRD §6.6): LOCAL ONLY.
+-- The password is public and works only against the local stack (backend/.env's
+-- DATABASE_URL, written by backend/scripts/write_local_env.py). A hosted project never runs
+-- this seed: the project's owner sets their own password there.
+-- ---------------------------------------------------------------------------
+alter role delea_api with login password 'delea-api-local';

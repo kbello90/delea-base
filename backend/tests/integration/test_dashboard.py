@@ -70,9 +70,7 @@ def test_api_matches_the_service_and_is_per_tenant(
 @pytest.mark.anyio
 async def test_formulas(settings: Settings) -> None:
     owner = TokenClaims(sub=str(uuid.uuid4()), tenant_id=TENANT_A, app_role="owner")
-    async with await psycopg.AsyncConnection.connect(
-        settings.database_url, autocommit=True
-    ) as aconn:
+    async with await psycopg.AsyncConnection.connect(settings.admin_dsn, autocommit=True) as aconn:
         async with aconn.transaction(force_rollback=True):
             # As the table owner: let the test set paid_at itself (rolled back with the rest).
             await aconn.execute("alter table public.invoices disable trigger invoices_30_numbering")
@@ -171,9 +169,7 @@ async def test_formulas(settings: Settings) -> None:
 @pytest.mark.anyio
 async def test_monthly_formulas(settings: Settings) -> None:
     owner = TokenClaims(sub=str(uuid.uuid4()), tenant_id=TENANT_A, app_role="owner")
-    async with await psycopg.AsyncConnection.connect(
-        settings.database_url, autocommit=True
-    ) as aconn:
+    async with await psycopg.AsyncConnection.connect(settings.admin_dsn, autocommit=True) as aconn:
         async with aconn.transaction(force_rollback=True):
             await aconn.execute("alter table public.invoices disable trigger invoices_30_numbering")
             now = (await (await aconn.execute("select now()")).fetchone())[0]
@@ -224,9 +220,7 @@ async def test_refunds_come_off_revenue_in_their_month_and_deposits_are_held(
     invoice's subtotal and tax; the month the invoice was paid keeps its sale. Money on open
     quotes is held for the customer, not revenue, and returning it isn't a refund of a sale."""
     owner = TokenClaims(sub=str(uuid.uuid4()), tenant_id=TENANT_A, app_role="owner")
-    async with await psycopg.AsyncConnection.connect(
-        settings.database_url, autocommit=True
-    ) as aconn:
+    async with await psycopg.AsyncConnection.connect(settings.admin_dsn, autocommit=True) as aconn:
         async with aconn.transaction(force_rollback=True):
             await aconn.execute("alter table public.invoices disable trigger invoices_30_numbering")
             await apply_user_scope(aconn, owner)
@@ -289,9 +283,7 @@ async def test_shipping_is_revenue_tax_is_not_and_refunds_take_both_back_pro_rat
     A refund's revenue share is amount x (subtotal + shipping) / total, so a full refund
     removes exactly the subtotal and the shipping, and its tax share exactly the tax."""
     owner = TokenClaims(sub=str(uuid.uuid4()), tenant_id=TENANT_A, app_role="owner")
-    async with await psycopg.AsyncConnection.connect(
-        settings.database_url, autocommit=True
-    ) as aconn:
+    async with await psycopg.AsyncConnection.connect(settings.admin_dsn, autocommit=True) as aconn:
         async with aconn.transaction(force_rollback=True):
             await aconn.execute("alter table public.invoices disable trigger invoices_30_numbering")
             now = (await (await aconn.execute("select now()")).fetchone())[0]

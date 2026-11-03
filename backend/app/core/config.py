@@ -22,7 +22,11 @@ class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_anon_key: str = ""
     supabase_service_role_key: str = ""
+    # The API's own login: delea_api, least privilege (TRD §6.6, migration 20261103000100).
     database_url: str = ""
+    # An administrative login (postgres) for local scripts and the integration tests' setup;
+    # never used by the API. Empty: DATABASE_URL (an older local .env).
+    admin_database_url: str = ""
     db_pool_min_size: int = 1
     db_pool_max_size: int = 10
 
@@ -69,6 +73,11 @@ class Settings(BaseSettings):
         if "*" in value:
             raise ValueError("CORS_ORIGINS must list exact origins; '*' is not allowed")
         return value
+
+    @property
+    def admin_dsn(self) -> str:
+        """The administrative connection for scripts and test setup (never the API's pool)."""
+        return self.admin_database_url or self.database_url
 
     @property
     def is_dev_environment(self) -> bool:

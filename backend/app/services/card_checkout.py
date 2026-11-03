@@ -129,10 +129,7 @@ async def _already_paid(
     say (the link is then offered as before: Stripe's own page tells a shopper it's done)."""
     async with service_session(pool) as conn:
         cur = await conn.execute(
-            "select p.external_ref, a.external_account_id from public.payments p "
-            "join public.payment_accounts a on a.tenant_id = p.tenant_id and a.provider = 'stripe' "
-            "where p.tenant_id = %s and p.provider = 'stripe' and p.status = 'pending' "
-            "and p.checkout_url = %s and p.external_ref is not null",
+            "select session_id, account_id from public.api_card_session_for_link(%s, %s)",
             (tenant_id, checkout_url),
         )
         row = await cur.fetchone()
@@ -189,10 +186,7 @@ async def close_open_card_sessions(
     Stripe, so the shopper can't also pay by card. Raises CardSessionOpen if one can't be."""
     async with service_session(pool) as conn:
         cur = await conn.execute(
-            "select p.external_ref, a.external_account_id from public.payments p "
-            "join public.payment_accounts a on a.tenant_id = p.tenant_id and a.provider = 'stripe' "
-            "where p.tenant_id = %s and p.invoice_id = %s and p.provider = 'stripe' "
-            "and p.status = 'pending' and p.external_ref is not null",
+            "select session_id, account_id from public.api_open_card_sessions(%s, %s)",
             (tenant_id, invoice_id),
         )
         open_sessions = await cur.fetchall()

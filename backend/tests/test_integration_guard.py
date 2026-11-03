@@ -47,3 +47,9 @@ def test_anything_else_is_refused_by_name(
     names = remote_targets(database_url, supabase_url)
     assert names == refused
     assert all("pw" not in n and "supabase.co" not in n for n in names)  # never the URL
+
+
+def test_the_admin_login_is_checked_too() -> None:
+    hosted = "postgresql://postgres:pw@db.abcd.supabase.co:5432/postgres"
+    assert remote_targets(LOCAL_DB, LOCAL_API, hosted) == ["ADMIN_DATABASE_URL"]
+    assert remote_targets(LOCAL_DB, LOCAL_API, LOCAL_DB) == []

@@ -211,9 +211,7 @@ def test_failed_request_leaves_no_partial_writes(
 # ---------------------------------------------------------------------------
 @pytest.mark.anyio
 async def test_ai_scope_reads_views_for_its_tenant_only(settings: Settings) -> None:
-    async with await psycopg.AsyncConnection.connect(
-        settings.database_url, autocommit=True
-    ) as conn:
+    async with await psycopg.AsyncConnection.connect(settings.admin_dsn, autocommit=True) as conn:
         async with conn.transaction(force_rollback=True):
             await conn.execute("grant ai_readonly to current_user")
             await apply_ai_scope(conn, owner_claims())
@@ -241,9 +239,7 @@ async def test_ai_scope_reads_views_for_its_tenant_only(settings: Settings) -> N
 
 @pytest.mark.anyio
 async def test_ai_role_without_tenant_returns_no_rows(settings: Settings) -> None:
-    async with await psycopg.AsyncConnection.connect(
-        settings.database_url, autocommit=True
-    ) as conn:
+    async with await psycopg.AsyncConnection.connect(settings.admin_dsn, autocommit=True) as conn:
         async with conn.transaction(force_rollback=True):
             await conn.execute("grant ai_readonly to current_user")
             await conn.execute("set local role ai_readonly")  # no app.tenant_id set
@@ -261,9 +257,7 @@ async def test_ai_role_without_tenant_returns_no_rows(settings: Settings) -> Non
 @pytest.mark.anyio
 async def test_ai_scope_needs_the_grant(settings: Settings) -> None:
     # Without `grant ai_readonly to <connection role>` the switch itself is refused.
-    async with await psycopg.AsyncConnection.connect(
-        settings.database_url, autocommit=True
-    ) as conn:
+    async with await psycopg.AsyncConnection.connect(settings.admin_dsn, autocommit=True) as conn:
         with pytest.raises(errors.InsufficientPrivilege):
             async with conn.transaction(force_rollback=True):
                 await apply_ai_scope(conn, owner_claims())
@@ -285,9 +279,7 @@ def test_trigger_message_is_surfaced_for_backward_status(db) -> None:
 @pytest.mark.anyio
 async def test_staff_guard_message_is_surfaced(settings: Settings) -> None:
     staff = TokenClaims(sub=str(uuid.uuid4()), tenant_id=TENANT_A, app_role="staff")
-    async with await psycopg.AsyncConnection.connect(
-        settings.database_url, autocommit=True
-    ) as conn:
+    async with await psycopg.AsyncConnection.connect(settings.admin_dsn, autocommit=True) as conn:
         with pytest.raises(errors.InsufficientPrivilege) as info:
             async with conn.transaction(force_rollback=True):
                 await apply_user_scope(conn, staff)

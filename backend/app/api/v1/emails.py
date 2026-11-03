@@ -243,9 +243,7 @@ async def send_test(
     a customer."""
     async with service_session(pool) as service:
         cur = await service.execute(
-            "select u.email from auth.users u join public.tenant_members m on m.user_id = u.id "
-            "where u.id = %s and m.tenant_id = %s and m.app_role = 'owner'",
-            (claims.sub, claims.tenant_id),
+            "select public.api_owner_sign_in_email(%s, %s)", (claims.sub, claims.tenant_id)
         )
         row = await cur.fetchone()
     if row is None or not row[0]:

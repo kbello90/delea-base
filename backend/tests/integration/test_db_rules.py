@@ -111,7 +111,7 @@ def last_unit(db: psycopg.Connection) -> Iterator[dict]:
 
 
 async def _wait_until_blocked(settings: Settings, pid: int) -> None:
-    async with await psycopg.AsyncConnection.connect(settings.database_url, autocommit=True) as w:
+    async with await psycopg.AsyncConnection.connect(settings.admin_dsn, autocommit=True) as w:
         for _ in range(200):
             cur = await w.execute(
                 "select wait_event_type from pg_stat_activity where pid = %s", (pid,)
@@ -126,7 +126,7 @@ async def _wait_until_blocked(settings: Settings, pid: int) -> None:
 @pytest.mark.anyio
 async def test_concurrent_sales_cannot_oversell(settings: Settings, db, last_unit: dict) -> None:
     first, second = last_unit["invoices"]
-    url = settings.database_url
+    url = settings.admin_dsn
     async with (
         await psycopg.AsyncConnection.connect(url, autocommit=True) as c1,
         await psycopg.AsyncConnection.connect(url, autocommit=True) as c2,
@@ -181,7 +181,7 @@ async def test_sale_waits_for_a_concurrent_stock_change(
     is the case where the decrement's FOR UPDATE lock is what keeps stock from going negative.
     """
     sale = last_unit["invoices"][0]
-    url = settings.database_url
+    url = settings.admin_dsn
     async with (
         await psycopg.AsyncConnection.connect(url, autocommit=True) as adjust,
         await psycopg.AsyncConnection.connect(url, autocommit=True) as seller,

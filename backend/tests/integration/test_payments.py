@@ -395,7 +395,7 @@ def test_correcting_the_method_corrects_its_single_payment(
 # Two payments racing for the same balance
 # ---------------------------------------------------------------------------
 async def _wait_until_blocked(settings: Settings, pid: int) -> None:
-    async with await psycopg.AsyncConnection.connect(settings.database_url, autocommit=True) as w:
+    async with await psycopg.AsyncConnection.connect(settings.admin_dsn, autocommit=True) as w:
         for _ in range(200):
             cur = await w.execute(
                 "select wait_event_type from pg_stat_activity where pid = %s", (pid,)
@@ -425,8 +425,8 @@ async def test_two_payments_cannot_overpay(
         )
 
     async with (
-        await psycopg.AsyncConnection.connect(settings.database_url, autocommit=True) as c1,
-        await psycopg.AsyncConnection.connect(settings.database_url, autocommit=True) as c2,
+        await psycopg.AsyncConnection.connect(settings.admin_dsn, autocommit=True) as c1,
+        await psycopg.AsyncConnection.connect(settings.admin_dsn, autocommit=True) as c2,
     ):
         second: dict = {}
 

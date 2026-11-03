@@ -35,7 +35,7 @@ from showcase.config import is_local_url  # noqa: E402
 def database_url(env, settings, *, allow_remote: bool) -> tuple[str, bool]:
     """(url, is_local). Remote needs --allow-remote and its own ADMIN_DATABASE_URL."""
     admin_url = env.get("ADMIN_DATABASE_URL", "").strip()
-    url = admin_url or settings.database_url
+    url = admin_url or settings.admin_dsn
     if not url:
         raise DomainRefused("set ADMIN_DATABASE_URL (or DATABASE_URL locally)")
     if is_local_url(url):

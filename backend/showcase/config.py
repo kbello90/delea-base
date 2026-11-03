@@ -59,12 +59,10 @@ def build_config(
         raise ConfigRefused("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
 
     database_url = env.get("SHOWCASE_DATABASE_URL", "").strip()
-    local = is_local_url(settings.supabase_url) and is_local_url(
-        database_url or settings.database_url
-    )
+    local = is_local_url(settings.supabase_url) and is_local_url(database_url or settings.admin_dsn)
     if not local:
         if not allow_remote:
-            targets = (settings.supabase_url, database_url or settings.database_url)
+            targets = (settings.supabase_url, database_url or settings.admin_dsn)
             hosts = sorted({str(urlsplit(u).hostname) for u in targets if not is_local_url(u)})
             raise ConfigRefused(
                 f"refusing a non-local database or Storage target ({', '.join(hosts)}); "
@@ -75,7 +73,7 @@ def build_config(
                 "on a non-local target, set SHOWCASE_DATABASE_URL to the loader's own "
                 "administrative connection (the API's DATABASE_URL is never used there)"
             )
-    database_url = database_url or settings.database_url
+    database_url = database_url or settings.admin_dsn
     if not database_url:
         raise ConfigRefused("set SHOWCASE_DATABASE_URL (or DATABASE_URL locally)")
 

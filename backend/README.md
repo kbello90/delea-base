@@ -8,7 +8,7 @@ FastAPI backend for DELEA. It talks to Postgres directly through a psycopg async
 | `user_session` | every authenticated request (via the `DbConn` dependency) | `authenticated`, with the caller's verified JWT claims, so RLS enforces access |
 | `storefront_session` | public storefront reads (`/api/v1/public/...`) | `storefront_reader`, read-only, scoped by `app.tenant_id` from the request's Origin host (TRD §6.11) |
 | `checkout_session` | the public checkout (`POST /api/v1/public/orders`) | `storefront_writer`: executes the storefront checkout functions only (TRD §6.12) |
-| `service_session` | Stripe webhooks, the automation worker, password reset | the connection role (no RLS); must be a dedicated non-superuser role in production |
+| `service_session` | password reset, the owner's test-email address, open card sessions | the API's own login, `delea_api`: no table privilege, only `is_current_member()` and the `api_*` functions (TRD §6.6) |
 | `ai_session` | the AI assistant | `ai_readonly`, scoped by `app.tenant_id` from the verified token |
 
 Each session is one transaction. It commits when the endpoint returns, before the response is
@@ -203,19 +203,17 @@ stay generic.
   by matching the message text. **Milestone B** (not implemented yet): a stable `code` field
   on every error response (for example `duplicate_value`, `in_use`), and the frontend
   switches on `code` instead of message text.
-- **The API logs into Postgres as `postgres`.** User and AI sessions switch role, but
-  `service_session` keeps that administrative login. **Required before the public demo is
-  deployed** (not implemented yet): a least-privilege runtime login, separate from the one
-  migrations and the showcase loader use. It needs `grant storefront_reader to <login>` for
-  the public storefront reads, and `grant storefront_writer to <login>` for the checkout.
+- **The API logs into Postgres as `delea_api`** (done; migration 20261103000100, TRD §6.6):
+  no superuser, no RLS bypass, `NOINHERIT`, no table privilege; it switches into the six roles
+  the sessions above use. `postgres` (`ADMIN_DATABASE_URL`) is for migrations, the showcase
+  loader, local scripts and the integration tests' setup, never the API.
 - **Turnstile:** `TURNSTILE_SECRET_KEY` must be set wherever `ENVIRONMENT` isn't `local` or
   `test`, or the storefront has no checkout (it fails closed). Never commit a real key.
 - **Storefront host lookups are cached for 60 seconds** per API instance (unknown hosts too),
   so a new domain, a switched-off store or an inactive tenant takes up to a minute to show.
 - **Demo deployment.** A public demo lets visitors edit and upload. **Milestone B** (not
   implemented yet): a scheduled reset that re-runs the showcase loader, and upload and rate
-  limits for `is_demo` tenants. The least-privilege runtime login above is required
-  before that deployment too. See `showcase/README.md` and TRD §6.7 (provisioning, the demo
+  limits for `is_demo` tenants. See `showcase/README.md` and TRD §6.7 (provisioning, the demo
   tenant, and the worker contract: skip `is_demo` tenants and processed events).
 - **Two-decimal currencies only (v1).** Every amount is integer hundredths of the major unit
   (`*_cents`). `company_settings.currency` accepts only USD, CAD, EUR, GBP, MXN, AUD, NZD and

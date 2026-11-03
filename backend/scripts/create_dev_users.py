@@ -42,7 +42,7 @@ def _local_settings() -> Settings | None:
     settings = Settings(_env_file=BACKEND / ".env")
     values = {
         "SUPABASE_URL": settings.supabase_url,
-        "DATABASE_URL": settings.database_url,
+        "DATABASE_URL": settings.admin_dsn,  # ADMIN_DATABASE_URL, else DATABASE_URL
         "SUPABASE_SERVICE_ROLE_KEY": settings.supabase_service_role_key,
     }
     missing = [name for name, value in values.items() if not value]
@@ -74,7 +74,7 @@ def main() -> int:
         return 1
 
     users = asyncio.run(_ensure_users(settings))
-    with psycopg.connect(settings.database_url, autocommit=True) as db:
+    with psycopg.connect(settings.admin_dsn, autocommit=True) as db:
         for email, role, user_id, action in users:
             # The access token hook reads tenant_members, so the role shows up at next sign-in.
             db.execute(

@@ -48,7 +48,9 @@ class TestUser:
         return TokenClaims(sub=self.user_id, tenant_id=self.tenant_id, app_role=self.app_role)
 
 
-def remote_targets(database_url: str | None, supabase_url: str | None) -> list[str]:
+def remote_targets(
+    database_url: str | None, supabase_url: str | None, admin_database_url: str | None = None
+) -> list[str]:
     """The settings that point anywhere but this machine. The integration tests change data as
     they go (their cleanup resets every shop's document counters, deletes IT- rows and creates
     and deletes Auth users), so they run against the local stack only. Names only: the
@@ -57,7 +59,11 @@ def remote_targets(database_url: str | None, supabase_url: str | None) -> list[s
 
     return [
         name
-        for name, url in (("DATABASE_URL", database_url), ("SUPABASE_URL", supabase_url))
+        for name, url in (
+            ("DATABASE_URL", database_url),
+            ("SUPABASE_URL", supabase_url),
+            ("ADMIN_DATABASE_URL", admin_database_url),
+        )
         if url and not is_local_url(url)
     ]
 

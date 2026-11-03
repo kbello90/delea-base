@@ -112,7 +112,7 @@ def photos(tmp_path_factory) -> Path:
 def showcase(settings, photos) -> dict:
     run = uuid.uuid4().hex[:8]
     config = ShowcaseConfig(
-        database_url=settings.database_url,
+        database_url=settings.admin_dsn,
         settings=settings,
         catalog_path=photos / "products.yaml",
         photos_dir=photos,
@@ -429,7 +429,7 @@ async def _check_with(settings, tid: str, sabotage: str | list[str], check) -> l
     """Apply `sabotage` (one statement or several) inside a transaction, run `check`, roll
     back."""
     statements = [sabotage] if isinstance(sabotage, str) else sabotage
-    async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+    async with await psycopg.AsyncConnection.connect(settings.admin_dsn) as conn:
         try:
             for statement in statements:
                 await conn.execute(statement, {"t": tid} if "%(t)s" in statement else None)

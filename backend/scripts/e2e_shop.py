@@ -49,7 +49,7 @@ from showcase.config import is_local_url  # noqa: E402
 
 
 def _refuse_remote(settings) -> None:
-    if not (is_local_url(settings.database_url) and is_local_url(settings.supabase_url)):
+    if not (is_local_url(settings.admin_dsn) and is_local_url(settings.supabase_url)):
         sys.exit("e2e_shop.py only runs against the local stack")
 
 
@@ -63,7 +63,7 @@ async def create(port: int) -> dict:
     owner_id = await admin.ensure_user(email, password)
     domain = f"e2e-{run}.localhost:{port}"
     tenant_id = uuid.uuid4()
-    async with await AsyncConnection.connect(settings.database_url, autocommit=True) as conn:
+    async with await AsyncConnection.connect(settings.admin_dsn, autocommit=True) as conn:
         await provision_tenant(
             conn,
             TenantSpec(
@@ -129,7 +129,7 @@ async def delete(tenant_id: str) -> None:
     settings = get_settings()
     _refuse_remote(settings)
     admin = AuthAdmin(settings.supabase_url, settings.supabase_service_role_key)
-    async with await AsyncConnection.connect(settings.database_url, autocommit=True) as conn:
+    async with await AsyncConnection.connect(settings.admin_dsn, autocommit=True) as conn:
         cur = await conn.execute(
             "select user_id::text from public.tenant_members where tenant_id = %s", (tenant_id,)
         )
@@ -144,7 +144,7 @@ async def card_paid(tenant_id: str, order_ref: str, api: str) -> str:
     settings = get_settings()
     _refuse_remote(settings)
     secret = os.environ["E2E_STRIPE_WEBHOOK_SECRET"]
-    async with await AsyncConnection.connect(settings.database_url, autocommit=True) as conn:
+    async with await AsyncConnection.connect(settings.admin_dsn, autocommit=True) as conn:
         cur = await conn.execute(
             "select p.id, p.external_ref, p.amount_cents, p.currency, a.external_account_id "
             "from public.payments p join public.invoices i on i.id = p.invoice_id "

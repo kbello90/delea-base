@@ -263,7 +263,16 @@ python -m venv .venv
 
 Settings come from environment variables or `backend/.env` (gitignored). Copy
 [`backend/.env.example`](backend/.env.example). Local keys come from
-`npx supabase@2.121.0 status -o env`. Never commit real values. See
+`npx supabase@2.121.0 status -o env`. Never commit real values.
+
+Two database logins (TRD §6.6): `DATABASE_URL` is the API's own least-privilege login,
+`delea_api` (locally `postgresql://delea_api:delea-api-local@127.0.0.1:<db port>/postgres`; the
+password is set by `supabase/seed.sql` and is public, local only). `ADMIN_DATABASE_URL` is the
+stack's `postgres` login, used only by the local scripts and the integration tests' setup.
+`write_local_env.py` writes both, but it rewrites the whole file: in an existing `backend/.env`
+that holds other keys (Stripe, Resend), add the two lines by hand instead. Without a
+`delea_api` password locally (a stack started before this migration), run once
+`alter role delea_api with login password 'delea-api-local';` in the local SQL editor. See
 [`backend/README.md`](backend/README.md) for the DB session model, the error mapping, the
 integration test setup and known limitations.
 

@@ -49,7 +49,7 @@ def _unavailable(message: str) -> None:
 @pytest.fixture(scope="session")
 def settings() -> Settings:
     s = get_settings()
-    remote = remote_targets(s.database_url, s.supabase_url)
+    remote = remote_targets(s.database_url, s.supabase_url, s.admin_database_url)
     if remote:
         pytest.exit(
             f"Integration tests refused: {' and '.join(remote)} "
@@ -72,10 +72,10 @@ def settings() -> Settings:
         _unavailable(f"Integration tests need {', '.join(missing)} in backend/.env; {START_HINT}")
 
     try:
-        with psycopg.connect(s.database_url, connect_timeout=3) as conn:
+        with psycopg.connect(s.admin_dsn, connect_timeout=3) as conn:
             conn.execute("select 1")
     except psycopg.OperationalError:
-        _unavailable(f"Local Supabase database not reachable at {s.database_url}; {START_HINT}")
+        _unavailable(f"Local Supabase database not reachable; {START_HINT}")
 
     try:
         httpx.get(
@@ -88,8 +88,10 @@ def settings() -> Settings:
 
 @pytest.fixture(scope="session")
 def db(settings: Settings) -> Iterator[psycopg.Connection]:
-    """Direct connection as the local connection role (bypasses RLS). Setup/checks only."""
-    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+    """Direct connection as the local administrative login (ADMIN_DATABASE_URL, postgres;
+    bypasses RLS). Setup and checks only: the API under test connects with DATABASE_URL, the
+    least-privilege delea_api login (TRD §6.6)."""
+    with psycopg.connect(settings.admin_dsn, autocommit=True) as conn:
         yield conn
 
 
@@ -257,7 +259,7 @@ def make_tenant(settings: Settings, db: psycopg.Connection) -> Iterator:
 
     async def provision(spec: TenantSpec) -> uuid.UUID:
         async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
+            settings.admin_dsn, autocommit=True
         ) as conn:
             return await provision_tenant(conn, spec)
 

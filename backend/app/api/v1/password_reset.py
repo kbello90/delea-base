@@ -50,15 +50,9 @@ async def send_password_reset(pool: AsyncConnectionPool, admin: AuthAdmin, email
     """Background task: email a reset link if the account exists and isn't a demo account."""
     try:
         async with service_session(pool) as conn:
-            cur = await conn.execute(
-                "select exists (select 1 from public.tenant_members m "
-                "join public.tenants t on t.id = m.tenant_id "
-                "where m.user_id = u.id and t.is_demo) "
-                "from auth.users u where lower(u.email) = %s",
-                (email,),
-            )
-            row = await cur.fetchone()
-        if row is None or row[0]:
+            cur = await conn.execute("select public.api_account_is_demo(%s)", (email,))
+            (is_demo,) = await cur.fetchone()
+        if is_demo is None or is_demo:  # no account, or a demo account
             return
         await admin.send_recovery(email)
     except Exception:  # a background task has no caller to report to
@@ -80,26 +74,16 @@ async def request_password_reset(
     email_hash = _hash(body.email)
     ip_hash = _hash(request.client.host if request.client else "unknown")
     async with service_session(pool) as conn:
-        # One check at a time per IP, so parallel requests can't slip past the limit.
-        await conn.execute("select pg_advisory_xact_lock(hashtext(%s))", (ip_hash,))
+        # One check at a time per IP, so parallel requests can't slip past the limit
+        # (public.api_password_reset_attempt: lock, count, cooldown, insert, clean-up).
         cur = await conn.execute(
-            "select "
-            "(select count(*) from public.password_reset_attempts "
-            " where ip_hash = %s and created_at > now() - %s), "
-            "exists (select 1 from public.password_reset_attempts "
-            " where email_hash = %s and created_at > now() - %s)",
-            (ip_hash, IP_WINDOW, email_hash, EMAIL_COOLDOWN),
+            "select public.api_password_reset_attempt(%s, %s, %s, %s, %s, %s)",
+            (email_hash, ip_hash, IP_LIMIT, IP_WINDOW, EMAIL_COOLDOWN, KEEP),
         )
-        ip_count, cooling_down = await cur.fetchone()
-        if ip_count >= IP_LIMIT:
-            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, TOO_MANY)
-        await conn.execute(
-            "insert into public.password_reset_attempts (email_hash, ip_hash) values (%s, %s)",
-            (email_hash, ip_hash),
-        )
-        await conn.execute(
-            "delete from public.password_reset_attempts where created_at < now() - %s", (KEEP,)
-        )
+        (outcome,) = await cur.fetchone()
+    if outcome == "too_many":
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, TOO_MANY)
+    cooling_down = outcome == "cooling_down"
     if not cooling_down:
         background.add_task(send_password_reset, pool, admin, body.email)
     return PasswordResetAccepted(detail=ACCEPTED)
