@@ -58,7 +58,10 @@ create table tenant_members (
 create table tenant_domains (
   domain text primary key,
   tenant_id uuid not null references tenants(id) on delete cascade,
-  kind text not null check (kind in ('storefront', 'admin'))
+  kind text not null check (kind in ('storefront', 'admin')),
+  is_primary boolean not null default false,  -- the shop's website address (migration 20261103000200)
+  check (not is_primary or kind = 'storefront'),
+  exclude using btree (tenant_id with =) where (is_primary) deferrable initially immediate
 );
 
 create table brand_config (
@@ -423,6 +426,7 @@ The migrations in `supabase/migrations/` are now the source of truth. Where the 
   - Inserting an invoice fails if the tenant has no `company_settings` row.
 - **Stock events.** "Low" means strictly below the threshold. `stock_low` and `material_low` fire only when an update crosses the threshold, never on insert.
 - **Domains.** `tenant_domains.domain` includes the port (for example `localhost:5173`), because the Host header carries it.
+- **Primary domain (migration 20261103000200).** At most one primary per shop (exclusion constraint, checked at the end of each statement so a one-statement move passes), and only a storefront domain. Trigger `tenant_domains_primary_before` makes a shop's first storefront domain primary and refuses turning the primary into an admin domain while other storefront domains exist; `tenant_domains_primary_after` refuses removing or unsetting it in that case (SQLSTATE 23514). Backfill: each shop's first storefront domain alphabetically. Move it with `update tenant_domains set is_primary = (domain = '<new>') where tenant_id = '<shop>' and kind = 'storefront'` (what `add_tenant_domain.py --primary` runs).
 - **Functions.** `EXECUTE` is revoked from `public`, `anon` and `authenticated` on every function in `public`, so `ai_readonly` holds no execute grants. The `grant ai_readonly to postgres` needed by the local tests is made inside each test transaction and is not in any migration, so it cannot reach production.
 - **No direct data API.** Neither `public` nor `ai` is exposed through the Supabase Data API. Locally, `supabase/config.toml` sets `[api] schemas = ["graphql_public"]` and `extra_search_path = ["extensions"]`. Every read and write goes through FastAPI (TRD §1.3).
   - **REST:** `/rest/v1` returns 404 for every table.
@@ -471,7 +475,7 @@ The migrations in `supabase/migrations/` are now the source of truth. Where the 
 - **Customer emails (migration 20261029000300, Slice D2).**
   - **`invoices`** adds `carrier` (1-40 characters, no `<`, `>` or control characters) and `tracking_number` (letters, digits, spaces and hyphens, 3-40), both optional and only on a `shipped` or `delivered` invoice; `storefront.orders` (the tracking page) adds both.
   - **`email_settings`** adds `customer_order_received`, `customer_payment_received`, `customer_deposit_received`, `customer_in_production`, `customer_shipped` (on by default) and an `intro_*` for each (1-300 characters or none).
-  - **`email_customer_context(tenant, invoice)`** (`email_worker` only): what a customer email may say about a website order (the shopper's email and first name, the reference and tracking token, lines, amounts, how to pay, pickup note, carrier and tracking number, the shop's first storefront domain and contact email, the switches and intros). It has no field for the street address, phone, city, ZIP code or the shopper's note, and is null for any invoice that isn't a website order of that shop.
+  - **`email_customer_context(tenant, invoice)`** (`email_worker` only): what a customer email may say about a website order (the shopper's email and first name, the reference and tracking token, lines, amounts, how to pay, pickup note, carrier and tracking number, the shop's primary storefront domain and contact email, the switches and intros). It has no field for the street address, phone, city, ZIP code or the shopper's note, and is null for any invoice that isn't a website order of that shop.
   - **`deposit_received` events** also carry `paid_cents` and `balance_cents` at that moment.
 - **Local ports.** `supabase/config.toml` uses 553xx instead of the CLI defaults (543xx), because Windows reserves 54269–54368. The local API is on 55321, the database on 55322, and Studio on 55323.
 - **Seed.** Tenant A "DELEA Demo" uses 800 bps (8%) tax to match the demo; tenant B "Aurora Gems" is a small second tenant for isolation tests.

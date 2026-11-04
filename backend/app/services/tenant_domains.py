@@ -57,20 +57,35 @@ class DomainResult:
     created: bool  # False: it was already set for this tenant and kind
     tenant_name: str
     storefront_enabled: bool
+    primary: bool = False  # the shop's primary website address (after the run, or would be)
+    previous_primary: str | None = None  # set when the primary moved (or would move) to domain
 
 
 async def add_domain(
-    conn: AsyncConnection, tenant_id: UUID, domain: str, kind: str, *, dry_run: bool = False
+    conn: AsyncConnection,
+    tenant_id: UUID,
+    domain: str,
+    kind: str,
+    *,
+    primary: bool = False,
+    dry_run: bool = False,
 ) -> DomainResult:
     """Map `domain` (already normalized) to the tenant. Refuses an unknown or inactive tenant,
-    and a domain that belongs to another tenant or kind."""
+    and a domain that belongs to another tenant or kind.
+
+    A shop's first storefront domain becomes its primary website address by itself (a
+    database trigger). `primary=True` makes `domain` the primary, also when it was already
+    mapped; the move is one statement, in the same transaction as any insert."""
     if kind not in DOMAIN_KINDS:
         raise DomainRefused(f"kind must be one of {', '.join(DOMAIN_KINDS)}")
+    if primary and kind != "storefront":
+        raise DomainRefused("only a storefront domain can be the shop's primary website address")
     async with conn.transaction():
         cur = await conn.execute(
             "select t.name, t.is_active, coalesce(s.storefront_enabled, false) "
             "from public.tenants t "
-            "left join public.storefront_settings s on s.tenant_id = t.id where t.id = %s",
+            "left join public.storefront_settings s on s.tenant_id = t.id where t.id = %s "
+            "for update of t",
             (tenant_id,),
         )
         row = await cur.fetchone()
@@ -84,13 +99,38 @@ async def add_domain(
             (domain,),
         )
         existing = await cur.fetchone()
-        if existing is not None:
-            if existing[0] != tenant_id or existing[1] != kind:
-                raise DomainRefused(f"{domain} is already used (another tenant or kind)")
-            return DomainResult(domain, False, name, enabled)
-        if not dry_run:
+        if existing is not None and (existing[0] != tenant_id or existing[1] != kind):
+            raise DomainRefused(f"{domain} is already used (another tenant or kind)")
+        cur = await conn.execute(
+            "select domain from public.tenant_domains where tenant_id = %s and is_primary",
+            (tenant_id,),
+        )
+        current = await cur.fetchone()
+        current_primary = current[0] if current else None
+
+        created = existing is None
+        if created and not dry_run:
             await conn.execute(
                 "insert into public.tenant_domains (domain, tenant_id, kind) values (%s, %s, %s)",
                 (domain, tenant_id, kind),
             )
-    return DomainResult(domain, not dry_run, name, enabled)
+        moves = primary and current_primary is not None and current_primary != domain
+        if moves and not dry_run:
+            # One statement: the one-primary rule is checked at its end.
+            await conn.execute(
+                "update public.tenant_domains set is_primary = (domain = %(d)s) "
+                "where tenant_id = %(t)s and kind = 'storefront' "
+                "and is_primary is distinct from (domain = %(d)s)",
+                {"d": domain, "t": tenant_id},
+            )
+        is_primary = kind == "storefront" and (
+            current_primary == domain or current_primary is None or primary
+        )
+    return DomainResult(
+        domain,
+        created and not dry_run,
+        name,
+        enabled,
+        primary=is_primary,
+        previous_primary=current_primary if moves else None,
+    )

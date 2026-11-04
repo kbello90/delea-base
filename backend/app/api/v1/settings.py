@@ -196,12 +196,12 @@ async def get_storefront_settings(claims: CurrentClaims, conn: DbConn) -> Storef
 
 @router.get("/website", response_model=WebsiteOut, dependencies=[OwnerOnly])
 async def get_website(claims: CurrentClaims, conn: DbConn) -> WebsiteOut:
-    """The shop's own website address (its first storefront domain, alphabetically: the one
-    customer emails link to) and whether the storefront is switched on."""
+    """The shop's own website address (its primary storefront domain, the one customer emails
+    link to; null when it has none yet) and whether the storefront is switched on."""
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
             "select (select d.domain from public.tenant_domains d "
-            "where d.tenant_id = %(t)s and d.kind = 'storefront' order by d.domain limit 1) "
+            "where d.tenant_id = %(t)s and d.is_primary) "
             "as domain, coalesce((select s.storefront_enabled from public.storefront_settings s "
             "where s.tenant_id = %(t)s), false) as enabled",
             {"t": claims.tenant_id},

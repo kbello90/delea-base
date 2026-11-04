@@ -291,7 +291,7 @@ class Order:
     pickup_note: str | None
     carrier: str | None
     tracking_number: str | None
-    tracking_url: str
+    tracking_url: str | None  # None: the shop has no website address yet (no order page)
     website_url: str | None
     contact_email: str | None
     intro: str | None = None
@@ -301,7 +301,7 @@ def order_from_context(
     shop: str,
     color: str | None,
     ctx: dict,
-    tracking_url: str,
+    tracking_url: str | None,
     website_url: str | None,
     intro: str | None,
 ) -> Order:
@@ -331,8 +331,21 @@ def order_from_context(
     )
 
 
+NO_WEBSITE = (
+    "This shop has no website address yet, so this email has no link to an order page. "
+    "DELEA adds the shop's domain; once it is set up, the link appears here."
+)
+
+
+def _button(order: Order, label: str) -> tuple[str, str] | None:
+    """The email's button, or none at all when there is no order page to link to: never a
+    made-up or broken address."""
+    return (label, order.tracking_url) if order.tracking_url else None
+
+
 def _customer_footer(order: Order) -> list[str]:
-    lines = [f"You're receiving this because you placed an order with {order.shop}."]
+    lines = [] if order.tracking_url else [NO_WEBSITE]
+    lines.append(f"You're receiving this because you placed an order with {order.shop}.")
     if order.contact_email:
         lines.append(f"Questions? Write to {order.contact_email}.")
     if order.website_url:
@@ -380,19 +393,18 @@ def _total_rows(order: Order) -> Rows:
     return rows
 
 
-def _how_to_pay(order: Order) -> tuple[list[str], tuple[str, str]]:
+def _how_to_pay(order: Order) -> tuple[list[str], tuple[str, str] | None]:
     """What to do about the balance, and the email's button. Pay now opens the tracking page,
     whose own Pay now button starts the payment: a link in an email never charges anything."""
-    track = ("Track your order", order.tracking_url)
+    track = _button(order, "Track your order")
     if order.balance_cents <= 0:
         return ["It's paid. Thank you."], track
     due = _money(order, order.balance_cents)
     if order.payment_choice == "card":
         if order.balance_cents < CARD_MINIMUM_CENTS:
             return [f"{due} is left to pay. Pay the rest with the shop."], track
-        return [f"{due} is left to pay. You can pay it by card on your order page."], (
-            "Pay now",
-            order.tracking_url,
+        return [f"{due} is left to pay. You can pay it by card on your order page."], _button(
+            order, "Pay now"
         )
     if order.payment_choice == "pay_on_pickup":
         lines = [f"You pay {due} when you pick up your order."]
@@ -431,7 +443,7 @@ def payment_received(order: Order) -> Rendered:
             f"Your order {order.ref} is paid in full: {_money(order, order.total_cents)}. "
             "Thank you.",
         ),
-        ("Track your order", order.tracking_url),
+        _button(order, "Track your order"),
         _customer_footer(order),
     )
 
@@ -465,13 +477,13 @@ def in_production(order: Order) -> Rendered:
         order.color,
         "Your order is being made",
         _opening(order, f"Good news: work on your order {order.ref} has started."),
-        ("Track your order", order.tracking_url),
+        _button(order, "Track your order"),
         _customer_footer(order),
     )
 
 
 def shipped(order: Order) -> Rendered:
-    track = ("Track your order", order.tracking_url)
+    track = _button(order, "Track your order")
     if order.fulfillment == "pickup":
         return _render(
             f"Order {order.ref} is ready for pickup",
@@ -522,8 +534,7 @@ def sample_order(
     intro: str | None,
 ) -> Order:
     """The preview's made-up order: a ring with a deposit paid by card, shipped by USPS. No
-    real shopper's data."""
-    base = (website_url or "https://shop.example").rstrip("/")
+    real shopper's data. Without a website address there is no order page, so no link."""
     return Order(
         shop=shop,
         color=color,
@@ -550,7 +561,7 @@ def sample_order(
         pickup_note=None,
         carrier="USPS",
         tracking_number="9400 1000 0000 0000 0000 00",
-        tracking_url=f"{base}/orders/sample",
+        tracking_url=f"{website_url.rstrip('/')}/orders/sample" if website_url else None,
         website_url=website_url,
         contact_email=contact_email,
         intro=intro,

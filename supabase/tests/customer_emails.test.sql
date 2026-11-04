@@ -99,9 +99,9 @@ select is((select (c ->> 'total_cents')::int from ctx), 11184, 'the total');
 select is((select (c ->> 'balance_cents')::int from ctx), 11184, 'nothing paid yet');
 select is((select c -> 'lines' -> 0 ->> 'description' from ctx), 'Custom Initial Necklace', 'the items');
 select is((select c ->> 'storefront_domain' from ctx),
-          (select min(domain) from public.tenant_domains
-            where tenant_id = '11111111-1111-1111-1111-111111111111' and kind = 'storefront'),
-          'the shop''s storefront address');
+          (select domain from public.tenant_domains
+            where tenant_id = '11111111-1111-1111-1111-111111111111' and is_primary),
+          'the shop''s primary storefront address (migration 20261103000200)');
 select is((select c -> 'switches' ->> 'shipped' from ctx), 'true', 'customer emails are on by default');
 select ok((select c::text from ctx) not like '%Harbor%', 'never the street address');
 select ok((select c::text from ctx) not like '%Apt 3%', 'nor its second line');

@@ -13,9 +13,11 @@ pytestmark = pytest.mark.integration
 URL = "/api/v1/settings/website"
 
 
-def test_each_owner_gets_their_own_shop_first_domain_alphabetically(
+def test_each_owner_gets_their_own_shop_primary_domain(
     client, make_tenant, db: psycopg.Connection
 ) -> None:
+    """b- is the shop's first storefront domain, so its primary (step 2: no longer the first
+    alphabetically, a-)."""
     mine = make_tenant(roles=("owner", "staff", "cpa"))
     other = make_tenant()
     tag = uuid.uuid4().hex[:8]
@@ -28,7 +30,7 @@ def test_each_owner_gets_their_own_shop_first_domain_alphabetically(
 
     out = client.get(URL, headers=mine.headers("owner"))
     assert out.status_code == 200, out.text
-    assert out.json() == {"url": f"http://a-{tag}.localhost:5174", "enabled": True}
+    assert out.json() == {"url": f"http://b-{tag}.localhost:5174", "enabled": True}
     theirs = client.get(URL, headers=other.headers("owner")).json()
     assert theirs["url"] == f"http://0-{tag}.localhost:5174"
 

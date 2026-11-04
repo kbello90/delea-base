@@ -767,8 +767,8 @@ export interface paths {
         };
         /**
          * Get Website
-         * @description The shop's own website address (its first storefront domain, alphabetically: the one
-         *     customer emails link to) and whether the storefront is switched on.
+         * @description The shop's own website address (its primary storefront domain, the one customer emails
+         *     link to; null when it has none yet) and whether the storefront is switched on.
          */
         get: operations["get_website_api_v1_settings_website_get"];
         put?: never;

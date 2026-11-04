@@ -3472,7 +3472,7 @@
           "settings"
         ],
         "summary": "Get Website",
-        "description": "The shop's own website address (its first storefront domain, alphabetically: the one\ncustomer emails link to) and whether the storefront is switched on.",
+        "description": "The shop's own website address (its primary storefront domain, the one customer emails\nlink to; null when it has none yet) and whether the storefront is switched on.",
         "operationId": "get_website_api_v1_settings_website_get",
         "responses": {
           "200": {

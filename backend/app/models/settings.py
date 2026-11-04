@@ -268,7 +268,7 @@ def storefront_rule_errors(row: dict[str, Any]) -> list[str]:
 class WebsiteOut(BaseModel):
     """The shop's own website, for the admin's Website page."""
 
-    url: str | None  # its first storefront domain, as customer emails link to; None: no domain yet
+    url: str | None  # its primary storefront domain (customer emails link to it); None: none yet
     enabled: bool  # the storefront is switched on (off: every page says "Store not found")
 
 

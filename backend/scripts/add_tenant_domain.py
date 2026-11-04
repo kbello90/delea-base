@@ -1,13 +1,17 @@
 """Add a storefront (or admin) domain to a tenant. See infra/scripts/storefront-domain.md.
 
     python backend/scripts/add_tenant_domain.py --tenant <uuid> --domain shop.example.com
-        [--kind storefront] [--dry-run] [--allow-remote]
+        [--kind storefront] [--primary] [--dry-run] [--allow-remote]
 
 Local by default: a non-local database is refused unless --allow-remote is given, and then
 ADMIN_DATABASE_URL (an administrative connection, never the API's own login) is required.
 The domain is normalized (lowercase, punycode, no scheme or path); ports and localhost names
 are accepted only on the local stack. A domain that belongs to another tenant is refused.
 The API picks up a new domain within a minute (lookups are cached for 60 seconds).
+
+A shop's first storefront domain becomes its primary website address (the one customer emails
+and the Website page link to). --primary makes this domain the primary instead, whether it is
+new or already mapped; running it again changes nothing.
 """
 
 import argparse
@@ -55,6 +59,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tenant", required=True, help="the tenant's id (uuid)")
     parser.add_argument("--domain", required=True, help="for example shop.example.com")
     parser.add_argument("--kind", choices=DOMAIN_KINDS, default="storefront")
+    parser.add_argument(
+        "--primary",
+        action="store_true",
+        help="make this the shop's primary website address (storefront domains only)",
+    )
     parser.add_argument("--allow-remote", action="store_true", help="allow a hosted database")
     parser.add_argument("--dry-run", action="store_true", help="check everything; write nothing")
     args = parser.parse_args(argv)
@@ -67,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         url, local = database_url(os.environ, get_settings(), allow_remote=args.allow_remote)
         domain = normalize_domain(args.domain, local=local)
-        result = _run(_add(url, tenant_id, domain, args.kind, args.dry_run))
+        result = _run(_add(url, tenant_id, domain, args.kind, args.primary, args.dry_run))
     except DomainRefused as exc:
         print(exc, file=sys.stderr)
         return 2
@@ -76,8 +85,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"OK (dry run): {domain} -> {result.tenant_name} ({args.kind}); nothing was written")
     elif result.created:
         print(f"Added {domain} -> {result.tenant_name} ({args.kind}). Live within a minute.")
-    else:
+    elif result.previous_primary is None:
         print(f"{domain} is already set for {result.tenant_name} ({args.kind}); nothing changed.")
+    else:
+        print(f"{domain} was already set for {result.tenant_name} ({args.kind}).")
+    would = "would be" if args.dry_run else "is"
+    if result.previous_primary:
+        print(
+            f"{domain} {would} the shop's primary website address "
+            f"(was {result.previous_primary}): customer emails and the Website page link to it."
+        )
+    elif result.primary:
+        print(f"{domain} {would} the shop's primary website address.")
     if args.kind == "storefront" and not result.storefront_enabled:
         print(
             "Note: this store is switched off. The owner turns it on in Settings > Storefront "
@@ -86,9 +105,11 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-async def _add(url: str, tenant_id: uuid.UUID, domain: str, kind: str, dry_run: bool):
+async def _add(
+    url: str, tenant_id: uuid.UUID, domain: str, kind: str, primary: bool, dry_run: bool
+):
     async with await AsyncConnection.connect(url, autocommit=True) as conn:
-        return await add_domain(conn, tenant_id, domain, kind, dry_run=dry_run)
+        return await add_domain(conn, tenant_id, domain, kind, primary=primary, dry_run=dry_run)
 
 
 def _run(coro):

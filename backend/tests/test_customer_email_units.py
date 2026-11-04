@@ -208,3 +208,20 @@ def test_one_key_per_order_and_email_and_per_payment_for_a_deposit() -> None:
     first = customer_templates("deposit_received", {"invoice_id": "i", "payment_id": "p1"})
     second = customer_templates("deposit_received", {"invoice_id": "i", "payment_id": "p2"})
     assert first[0][1] != second[0][1]
+
+
+def test_without_a_website_address_no_email_has_a_link() -> None:
+    """Hosted-demo step 2 (c): a shop with no storefront domain has no order page. Its emails
+    (the preview and the test-to-myself) say so and carry no button, never a made-up address."""
+    for o in (
+        order(tracking_url=None, website_url=None),
+        t.sample_order("Aurora", None, None, None, None),
+    ):
+        for out in all_emails(o):
+            assert t.NO_WEBSITE in out.text and "no website address yet" in out.html
+            assert "/orders/" not in out.text + out.html
+            assert "shop.example" not in out.text + out.html
+            assert "Pay now:" not in out.text and "Track your order:" not in out.text
+    sample = t.sample_order("Aurora", None, "https://aurora.example", None, None)
+    assert sample.tracking_url == "https://aurora.example/orders/sample"
+    assert all(t.NO_WEBSITE not in out.text for out in all_emails(sample))

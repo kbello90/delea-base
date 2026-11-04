@@ -110,8 +110,10 @@ async def customer_emails(
     conn: AsyncConnection, settings: Settings, event: dict, report: PassReport
 ) -> None:
     """Website orders only (email_customer_context is null for any other invoice). What the
-    shopper may receive, and whether at all (demo shops, suppressed addresses, daily limits),
-    is still decided by email_enqueue."""
+    shopper may receive, and whether at all (no website address, demo shops, suppressed
+    addresses, daily limits), is still decided by email_enqueue: a shop with no primary
+    storefront domain has no order page, so its emails are written without a link and kept
+    as 'suppressed' ("no website address"), never sent."""
     wanted = customer_templates(event["event_type"], event["payload"])
     if not wanted:
         return
@@ -120,10 +122,11 @@ async def customer_emails(
         (event["tenant_id"], event["payload"]["invoice_id"]),
     )
     (ctx,) = await cur.fetchone()
-    if not ctx or ctx["cancelled"] or not ctx["storefront_domain"]:
+    if not ctx or ctx["cancelled"]:
         return
     shop = event["context"]
-    website = storefront_url(ctx["storefront_domain"], settings.is_dev_environment)
+    domain = ctx["storefront_domain"]
+    website = storefront_url(domain, settings.is_dev_environment) if domain else None
     payload = event["payload"]
     for template, key in wanted:
         if not ctx["switches"].get(template, True):
@@ -140,7 +143,7 @@ async def customer_emails(
             shop["business_name"],
             shop.get("primary_color"),
             facts,
-            f"{website}/orders/{ctx['public_token']}",
+            f"{website}/orders/{ctx['public_token']}" if website else None,
             website,
             ctx["intros"].get(template),
         )

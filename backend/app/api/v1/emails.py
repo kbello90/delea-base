@@ -77,7 +77,7 @@ async def _shop(conn, tenant_id: str) -> dict[str, Any]:
             "es.sender_name, case when es.reply_to_confirmed_at is not null "
             "then es.reply_to_email end as reply_to, es.reply_to_pending, "
             "ss.contact_email, (select d.domain from public.tenant_domains d "
-            "where d.tenant_id = t.id and d.kind = 'storefront' order by d.domain limit 1) "
+            "where d.tenant_id = t.id and d.is_primary) "
             "as storefront_domain "
             "from public.tenants t left join public.brand_config b on b.tenant_id = t.id "
             "left join public.email_settings es on es.tenant_id = t.id "

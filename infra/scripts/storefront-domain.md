@@ -64,6 +64,11 @@ ADMIN_DATABASE_URL="<admin connection string>" \
   --tenant <tenant uuid> --domain shop.theirjewelry.com
 ```
 
+- A shop's first storefront domain becomes its **primary** website address: the one customer
+  emails, the email preview and the owner's Website page link to. To make another domain the
+  primary (for example the apex instead of `www`), add `--primary`; it works for a new domain
+  or one already mapped, and a dry run shows the change first. Point the other domains at the
+  primary with a redirect in the Vercel project (Settings > Domains > Redirect to).
 - The script stores the domain the way browsers send it (lowercase, punycode), refuses
   `https://`, paths, ports and `localhost` names on a hosted database, and refuses a domain
   that belongs to another tenant. Running it twice changes nothing.
@@ -103,6 +108,12 @@ There is no script for removal. On the administrative connection:
 ```sql
 delete from public.tenant_domains where domain = 'shop.theirjewelry.com';
 ```
+
+The shop's primary domain can't be removed while it has other storefront domains: the database
+refuses with "… is this shop's primary website address. Make another storefront domain primary
+first". Run the script with `--primary` for the domain that stays, then remove the old one.
+Removing a shop's last storefront domain is allowed; its emails and Website page then say it
+has no website address yet.
 
 Then remove the domain from the Vercel project and the DNS record from Cloudflare. The API
 stops serving it within a minute. To take a shop offline without touching DNS, switch its
