@@ -6,12 +6,16 @@ Every tier reads the same variables; Enterprise deployments differ only in their
 
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Environments where development shortcuts are allowed: *.localhost storefront hosts and plain
 # http:// storefront origins. Every other value (staging, production, ...) refuses them.
 DEV_ENVIRONMENTS = frozenset({"local", "test"})
+
+# How App Service writes a Key Vault reference it could not resolve (a missing secret, or no
+# permission to read it): the app would otherwise receive the reference text as the value.
+UNRESOLVED_KEY_VAULT_REFERENCE = "@microsoft.keyvault("
 
 
 class Settings(BaseSettings):
@@ -66,6 +70,44 @@ class Settings(BaseSettings):
 
     # Comma-separated list of exact origins. A wildcard is never allowed.
     cors_origins: str = "http://localhost:5173,http://localhost:5174"
+
+    # uvicorn trusts X-Forwarded-For only from these peers (it reads the same variable; TRD
+    # §6.10). Read here only to refuse "*": then the client could choose its own address and
+    # dodge the per-address limits. Hosted, it is the App Service front end's addresses.
+    forwarded_allow_ips: str = ""
+
+    @field_validator("forwarded_allow_ips")
+    @classmethod
+    def _no_wildcard_proxy(cls, value: str) -> str:
+        if "*" in value:
+            raise ValueError(
+                "FORWARDED_ALLOW_IPS must list the proxy's addresses; '*' would let any client "
+                "set its own address"
+            )
+        return value
+
+    # The worker's health endpoint (GET /health on this port; app/worker_health.py). 0: off,
+    # as locally. Hosted, the worker runs as its own App Service app, which must answer HTTP.
+    worker_health_port: int = 0
+
+    @model_validator(mode="after")
+    def _no_unresolved_key_vault_reference(self) -> "Settings":
+        """Refuse to start when App Service passed a Key Vault reference through unresolved:
+        the reference text would be used as a key or a connection string. The error names the
+        setting, never its value."""
+        unresolved = sorted(
+            name.upper()
+            for name, value in self.__dict__.items()
+            if isinstance(value, str)
+            and value.strip().lower().startswith(UNRESOLVED_KEY_VAULT_REFERENCE)
+        )
+        if unresolved:
+            raise ValueError(
+                "unresolved Key Vault reference in "
+                + ", ".join(unresolved)
+                + ": the secret is missing or the app's identity can't read it"
+            )
+        return self
 
     @field_validator("cors_origins")
     @classmethod

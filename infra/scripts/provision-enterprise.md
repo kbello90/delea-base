@@ -24,14 +24,17 @@ backend; only environment values differ.
    `supabase db push --project-ref <ref>`.
    Then seed the customer's brand config. RLS stays enabled even on a single-tenant project.
 
-3. **Run Bicep to create the App Service (+ Redis).**
+3. **Run Bicep to create the API, the worker, the registry and the Key Vault.**
    Copy `infra/bicep/parameters/enterprise.template.bicepparam` to
    `enterprise.<customer>.bicepparam`, set `tenantSlug`, then deploy `infra/bicep/main.bicep`
-   with that parameter file. See `infra/bicep/README.md`.
+   with that parameter file in two phases (first without the apps). See
+   `infra/bicep/README.md` ("Deploy").
 
-4. **Set the App Service environment variables from the new project's keys.**
-   `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`
-   (and Stripe / LLM keys). These are passed to Bicep as secure parameters in step 3.
+4. **Put the new project's secrets into the deployment's Key Vault** (between the two phases).
+   `database-url` (the project's `delea_api` login, after `alter role delea_api with login
+   password '…'`), `supabase-service-role-key`, the Stripe, Resend and Turnstile secrets: the
+   seven names in `infra/bicep/README.md` ("Secrets"). Secrets are never Bicep parameters;
+   `SUPABASE_URL` and the public anon key are ordinary parameters.
 
 5. **Point the customer's Vercel domains at the shared frontend projects.**
    `apps/admin` and `apps/storefront` are not deployed per customer; add the customer's

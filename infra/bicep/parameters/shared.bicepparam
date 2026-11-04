@@ -1,13 +1,20 @@
-// Essential + Professional tiers: one shared deployment.
-// Secrets are read from environment variables at deploy time; never commit them here.
+// Essential + Professional tiers: one shared production deployment. Not deployed yet; the
+// hosted demo is parameters/demo.bicepparam. Secrets are never here: they go into the Key Vault
+// (infra/bicep/README.md).
 using '../main.bicep'
 
 param tier = 'shared'
 param tenantSlug = 'shared'
-param containerImage = readEnvironmentVariable('DELEA_BACKEND_IMAGE', '')
-param deployRedis = false
+param environment = 'production'
+param deployApps = bool(readEnvironmentVariable('DELEA_DEPLOY_APPS', 'false'))
+param imageTag = readEnvironmentVariable('DELEA_IMAGE_TAG', '')
 
-param supabaseUrl = readEnvironmentVariable('SUPABASE_URL', '')
-param supabaseAnonKey = readEnvironmentVariable('SUPABASE_ANON_KEY', '')
-param supabaseServiceRoleKey = readEnvironmentVariable('SUPABASE_SERVICE_ROLE_KEY', '')
-param databaseUrl = readEnvironmentVariable('DATABASE_URL', '')
+param supabaseUrl = readEnvironmentVariable('SUPABASE_URL')
+param supabaseAnonKey = readEnvironmentVariable('SUPABASE_ANON_KEY')
+param adminAppUrl = readEnvironmentVariable('DELEA_ADMIN_APP_URL')
+param corsOrigins = [
+  readEnvironmentVariable('DELEA_ADMIN_APP_URL')
+]
+param emailFromDomain = 'mail.deleajewelry.com'
+param forwardedAllowIps = readEnvironmentVariable('DELEA_FORWARDED_ALLOW_IPS')
+param apiHostName = readEnvironmentVariable('DELEA_API_HOST_NAME', '')

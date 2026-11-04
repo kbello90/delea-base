@@ -43,6 +43,7 @@ from app.services.email_senders import (
     check_email_settings,
     from_address,
 )
+from app.worker_health import Heartbeat, serve_health
 
 logger = logging.getLogger("delea.worker")
 
@@ -300,9 +301,14 @@ async def main(once: bool) -> None:
     pool = create_pool(settings)
     await open_pool(pool)
     worker = Worker(pool, sender, settings)
+    heartbeat = Heartbeat()
+    health = None
+    if settings.worker_health_port and not once:
+        health = await serve_health(heartbeat, settings.worker_health_port)
     try:
         while True:
             report = await worker.run_once()
+            heartbeat.beat()
             if report.events or report.sent or report.retried or report.failed:
                 logger.info(
                     "events %d, queued %d, sent %d, retried %d, failed %d",
@@ -316,6 +322,8 @@ async def main(once: bool) -> None:
                 return
             await asyncio.sleep(1 if (report.events or report.sent) else 5)
     finally:
+        if health is not None:
+            health.close()
         await close_pool(pool)
 
 

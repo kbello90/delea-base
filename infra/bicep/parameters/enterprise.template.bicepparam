@@ -1,14 +1,21 @@
-// Enterprise tier template. Copy to enterprise.<customer>.bicepparam per Enterprise tenant
-// and set tenantSlug. Secrets come from the customer's dedicated Supabase project via
-// environment variables at deploy time; never commit them here.
+// Enterprise tier template. Copy to enterprise.<customer>.bicepparam per Enterprise tenant and
+// set tenantSlug. Its Supabase project is the customer's own; secrets go into this
+// deployment's Key Vault (infra/bicep/README.md), never into this file.
 using '../main.bicep'
 
 param tier = 'enterprise'
-param tenantSlug = 'customer-slug'
-param containerImage = readEnvironmentVariable('DELEA_BACKEND_IMAGE', '')
-param deployRedis = true
+param tenantSlug = 'customer'
+param environment = 'production'
+param deployApps = bool(readEnvironmentVariable('DELEA_DEPLOY_APPS', 'false'))
+param imageTag = readEnvironmentVariable('DELEA_IMAGE_TAG', '')
+param deployRedis = false // the app does not use Redis today
 
-param supabaseUrl = readEnvironmentVariable('SUPABASE_URL', '')
-param supabaseAnonKey = readEnvironmentVariable('SUPABASE_ANON_KEY', '')
-param supabaseServiceRoleKey = readEnvironmentVariable('SUPABASE_SERVICE_ROLE_KEY', '')
-param databaseUrl = readEnvironmentVariable('DATABASE_URL', '')
+param supabaseUrl = readEnvironmentVariable('SUPABASE_URL')
+param supabaseAnonKey = readEnvironmentVariable('SUPABASE_ANON_KEY')
+param adminAppUrl = readEnvironmentVariable('DELEA_ADMIN_APP_URL')
+param corsOrigins = [
+  readEnvironmentVariable('DELEA_ADMIN_APP_URL')
+]
+param emailFromDomain = 'mail.deleajewelry.com'
+param forwardedAllowIps = readEnvironmentVariable('DELEA_FORWARDED_ALLOW_IPS')
+param apiHostName = readEnvironmentVariable('DELEA_API_HOST_NAME', '')

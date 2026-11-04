@@ -51,6 +51,38 @@ jobs:
       - run: ruff check .
       - run: pytest
 
+  infra:
+    name: Infrastructure (Bicep build + lint)
+    runs-on: ubuntu-24.04
+    # Offline: builds and lints the templates; never signs in to Azure or deploys anything.
+    env:
+      BICEP_VERSION: v0.46.1
+      # The parameter files require these; placeholders, nothing real (no secret is ever a
+      # parameter: secrets live in the Key Vault).
+      SUPABASE_URL: https://placeholder.supabase.co
+      SUPABASE_ANON_KEY: placeholder-public-anon-key
+      DELEA_ADMIN_APP_URL: https://admin.placeholder.example
+      DELEA_FORWARDED_ALLOW_IPS: 192.0.2.0/24
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Bicep (pinned)
+        run: |
+          curl -fsSLo bicep "https://github.com/Azure/bicep/releases/download/${BICEP_VERSION}/bicep-linux-x64"
+          chmod +x bicep
+          ./bicep --version
+      # Any warning fails the job, as an error does.
+      - name: Build and lint the templates and every parameter file
+        run: |
+          set -o pipefail
+          {
+            ./bicep build infra/bicep/main.bicep --stdout > /dev/null
+            ./bicep lint infra/bicep/main.bicep
+            for p in infra/bicep/parameters/*.bicepparam; do
+              ./bicep build-params "$p" --stdout > /dev/null
+            done
+          } 2>&1 | tee bicep.log
+          if grep -E "Warning|Error" bicep.log; then exit 1; fi
+
   database:
     name: Database (pgTAP) + backend integration
     runs-on: ubuntu-24.04
