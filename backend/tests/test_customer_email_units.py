@@ -225,3 +225,38 @@ def test_without_a_website_address_no_email_has_a_link() -> None:
     sample = t.sample_order("Aurora", None, "https://aurora.example", None, None)
     assert sample.tracking_url == "https://aurora.example/orders/sample"
     assert all(t.NO_WEBSITE not in out.text for out in all_emails(sample))
+
+
+def test_long_values_wrap_on_a_phone_and_amounts_stay_on_one_line() -> None:
+    """A long tracking number or carrier name (with or without spaces) may wrap, so the email
+    never gets wider than a phone screen; amounts never break. Checked in Chrome at 320 and
+    390 px when this was written: before, the shipped email overflowed by up to 170 px."""
+    import re
+
+    o = order(
+        fulfillment="ship",
+        carrier="Some Regional Courier Express Services",
+        tracking_number="ABCDEFGHIJ0123456789ABCDEFGHIJ012345678",
+        lines=[
+            {
+                "description": "Personalized Engraved Infinity Necklace",
+                "qty": 1,
+                "line_total_cents": 1234500,
+                "personalization": [{"label": "Engraving", "value": "ForeverAndAlwaysYours2026"}],
+            }
+        ],
+    )
+    cell = re.compile(r'<td align="right" style="([^"]*)">([^<]*)</td>')
+    for out in (t.shipped(o), t.order_received(o)):
+        values = cell.findall(out.html)
+        assert values, out.subject
+        for style, value in values:
+            if len(value) > t.NOWRAP_MAX:
+                assert "nowrap" not in style and "overflow-wrap:anywhere" in style, value
+            else:
+                assert "white-space:nowrap" in style, value
+    shipped = t.shipped(o).html
+    assert "ABCDEFGHIJ0123456789ABCDEFGHIJ012345678" in shipped
+    assert "$12,345.00" in t.order_received(o).html  # one line: <= NOWRAP_MAX
+    # Item descriptions (the left column) wrap too, even one long word.
+    assert 'overflow-wrap:anywhere">Personalized' in t.order_received(o).html

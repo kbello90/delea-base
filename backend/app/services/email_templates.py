@@ -57,14 +57,26 @@ def _paragraphs(lines: list[str]) -> str:
     )
 
 
+# A value up to this long (any amount: "-$1,234,567.89") stays on one line; a longer one
+# (a tracking number, a long carrier name) may wrap, even without spaces, so the table never
+# gets wider than a phone screen and nothing is cut off at the right.
+NOWRAP_MAX = 14
+
+
+def _value_style(value: str) -> str:
+    if len(value) <= NOWRAP_MAX:
+        return "white-space:nowrap"
+    return "overflow-wrap:anywhere;word-break:break-word;max-width:60%"
+
+
 def _table(rows: Rows | None) -> str:
     if not rows:
         return ""
     cells = "".join(
-        '<tr><td style="padding:6px 0;border-top:1px solid #ece6de;font-size:15px;color:#1f1a17">'
-        f"{escape(label)}</td>"
+        '<tr><td style="padding:6px 0;border-top:1px solid #ece6de;font-size:15px;color:#1f1a17;'
+        f'overflow-wrap:anywhere">{escape(label)}</td>'
         '<td align="right" style="padding:6px 0 6px 12px;border-top:1px solid #ece6de;'
-        f'font-size:15px;color:#1f1a17;white-space:nowrap">{escape(value)}</td></tr>'
+        f'font-size:15px;color:#1f1a17;{_value_style(value)}">{escape(value)}</td></tr>'
         for label, value in rows
     )
     return (
