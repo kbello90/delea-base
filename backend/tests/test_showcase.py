@@ -112,6 +112,14 @@ def _settings(**overrides) -> Settings:
     return Settings(_env_file=None, **{**LOCAL, **overrides})
 
 
+@pytest.fixture(autouse=True)
+def _no_process_settings(monkeypatch) -> None:
+    """These tests build their own Settings: the shell's (e.g. a second local stack's
+    ADMIN_DATABASE_URL) must not leak in."""
+    for name in ("ADMIN_DATABASE_URL", "DATABASE_URL", "SUPABASE_URL"):
+        monkeypatch.delenv(name, raising=False)
+
+
 ENV = {"SHOWCASE_DIR": "C:/photos"}
 
 

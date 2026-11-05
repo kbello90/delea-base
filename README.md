@@ -293,11 +293,24 @@ docker run --rm -p 8000:8000 --env-file .env delea-backend
 Schema, RLS policies and the `ai_readonly` role live only in `supabase/migrations/`, and
 pgTAP tests in `supabase/tests/`. Both are empty until the schema is approved.
 
+Always use the pinned CLI, `npx -y supabase@2.121.0` (written `supabase` below).
+
 ```sh
 supabase start         # local stack
 supabase db reset      # apply migrations + seed.sql locally
-supabase db push --project-ref <ref>   # apply to a hosted project
+supabase db push       # apply to the linked hosted project: never --include-seed
 ```
+
+Never run `supabase config push`: `config.toml` holds the LOCAL Auth settings (localhost Site
+URL, Mailpit); hosted Auth is set in the dashboard (`infra/scripts/provision-enterprise.md`).
+
+**Local stack and the Postgres version.** The local stack runs Postgres 17, the version of the
+hosted projects (`[db] major_version`). A stack created on an older version keeps its data
+volume and won't start on the new one (`tests/integration/test_postgres_version.py` fails while
+it runs the old one). To recreate it: `supabase stop --no-backup` (this deletes the local
+database and the uploaded photos), `supabase start` (migrations and `seed.sql`), then reload the
+showcase (`python backend/scripts/load_showcase.py`) and recreate any local dev users. `backend/.env` is
+untouched, and the local keys and ports stay the same.
 
 ## Infrastructure
 

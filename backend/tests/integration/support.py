@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 import jwt
 
+from app.core.config import get_settings
 from app.core.security import TokenClaims
 
 TENANT_A = "11111111-1111-1111-1111-111111111111"
@@ -143,7 +144,8 @@ def force_currency(db, tenant_id: str, currency: str) -> None:
 # ---------------------------------------------------------------------------
 # Email (Mailpit, the local stack's mail catcher: supabase/config.toml [local_smtp])
 # ---------------------------------------------------------------------------
-MAILPIT_URL = "http://127.0.0.1:55324"
+# The stack's own Mailpit (MAILPIT_URL), so the suite can run against a second local stack.
+MAILPIT_URL = get_settings().mailpit_url.rstrip("/")
 _LINK = re.compile(r'href="([^"]+)"')
 
 

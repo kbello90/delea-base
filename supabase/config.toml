@@ -21,7 +21,9 @@ max_rows = 1000
 [db]
 port = 55322
 shadow_port = 55320
-major_version = 15
+# The same major version as the hosted projects (new Supabase projects run 17), so the
+# migrations and every test run on what production runs (hosted-demo plan step 5).
+major_version = 17
 
 [db.seed]
 enabled = true

@@ -13,6 +13,7 @@ from urllib.parse import quote
 import httpx
 
 from app.core.config import get_settings
+from app.core.supabase_keys import server_key_headers
 
 UPLOADS_BUCKET = "product-uploads"
 IMAGES_BUCKET = "product-images"
@@ -39,8 +40,7 @@ def _base() -> str:
 
 
 def _headers() -> dict[str, str]:
-    key = get_settings().supabase_service_role_key
-    return {"apikey": key, "Authorization": f"Bearer {key}"}
+    return server_key_headers(get_settings().supabase_service_role_key)
 
 
 def _object(bucket: str, path: str) -> str:

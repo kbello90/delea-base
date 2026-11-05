@@ -9,6 +9,8 @@ from functools import lru_cache
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.supabase_keys import PUBLISHABLE_KEY_PREFIX, SECRET_KEY_PREFIX
+
 # Environments where development shortcuts are allowed: *.localhost storefront hosts and plain
 # http:// storefront origins. Every other value (staging, production, ...) refuses them.
 DEV_ENVIRONMENTS = frozenset({"local", "test"})
@@ -19,7 +21,9 @@ UNRESOLVED_KEY_VAULT_REFERENCE = "@microsoft.keyvault("
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # hide_input_in_errors: a settings error names the setting, never the values (pydantic would
+    # otherwise print part of the raw settings, keys and the database password included).
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
 
     environment: str = "local"
 
@@ -110,6 +114,21 @@ class Settings(BaseSettings):
                 "unresolved Key Vault reference in "
                 + ", ".join(unresolved)
                 + ": the secret is missing or the app's identity can't read it"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _keys_in_the_right_settings(self) -> "Settings":
+        """Refuse to start with Supabase's two new key kinds swapped: a publishable key can't
+        act as the server key, and the secret key must never sit in the public key's setting
+        (it would ship to browsers). Names the setting, never the value."""
+        if self.supabase_service_role_key.startswith(PUBLISHABLE_KEY_PREFIX):
+            raise ValueError(
+                "SUPABASE_SERVICE_ROLE_KEY holds a publishable key; it needs the secret key"
+            )
+        if self.supabase_anon_key.startswith(SECRET_KEY_PREFIX):
+            raise ValueError(
+                "SUPABASE_ANON_KEY holds a secret key; it takes the publishable key only"
             )
         return self
 

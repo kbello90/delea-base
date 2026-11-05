@@ -63,6 +63,14 @@ def _settings(database_url: str) -> Settings:
     return Settings(database_url=database_url, _env_file=None)
 
 
+@pytest.fixture(autouse=True)
+def _no_process_settings(monkeypatch) -> None:
+    """These tests build their own Settings: the shell's (e.g. a second local stack's
+    ADMIN_DATABASE_URL) must not leak in."""
+    for name in ("ADMIN_DATABASE_URL", "DATABASE_URL", "SUPABASE_URL"):
+        monkeypatch.delenv(name, raising=False)
+
+
 def test_the_local_database_is_the_default_target() -> None:
     assert script.database_url({}, _settings(LOCAL_DB), allow_remote=False) == (LOCAL_DB, True)
 

@@ -16,8 +16,10 @@ from pathlib import Path
 
 MAPPING = {
     "SUPABASE_URL": "API_URL",
-    "SUPABASE_ANON_KEY": "ANON_KEY",
-    "SUPABASE_SERVICE_ROLE_KEY": "SERVICE_ROLE_KEY",
+    # Supabase's new keys, as on the hosted projects (the legacy ANON_KEY/SERVICE_ROLE_KEY are
+    # retired there by the end of 2026), so CI runs the API with the keys it runs with hosted.
+    "SUPABASE_ANON_KEY": "PUBLISHABLE_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY": "SECRET_KEY",
     "ADMIN_DATABASE_URL": "DB_URL",
 }
 LOCAL_API_PASSWORD = "delea-api-local"  # supabase/seed.sql; local stack only
@@ -26,6 +28,15 @@ LOCAL_HOSTS = (
     "http://localhost:",
     "postgresql://postgres:postgres@127.0.0.1:",
 )
+
+
+def env_lines(status: dict[str, str]) -> list[str]:
+    lines = ["# Local stack only (written by scripts/write_local_env.py). Gitignored."]
+    lines += [f"{target}={status[source]}" for target, source in MAPPING.items()]
+    admin = status[MAPPING["ADMIN_DATABASE_URL"]]
+    api = admin.replace("postgres:postgres@", f"delea_api:{LOCAL_API_PASSWORD}@", 1)
+    lines.append(f"DATABASE_URL={api}")
+    return lines
 
 
 def main() -> int:
@@ -39,11 +50,7 @@ def main() -> int:
             print(f"{target} is not a local stack URL; refusing to write it", file=sys.stderr)
             return 1
 
-    lines = ["# Local stack only (written by scripts/write_local_env.py). Gitignored."]
-    lines += [f"{target}={status[source]}" for target, source in MAPPING.items()]
-    admin = status[MAPPING["ADMIN_DATABASE_URL"]]
-    api = admin.replace("postgres:postgres@", f"delea_api:{LOCAL_API_PASSWORD}@", 1)
-    lines.append(f"DATABASE_URL={api}")
+    lines = env_lines(status)
     path = Path(__file__).resolve().parent.parent / ".env"
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"wrote {len(MAPPING) + 1} variables to {path}")

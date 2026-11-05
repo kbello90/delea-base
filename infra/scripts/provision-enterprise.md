@@ -10,8 +10,16 @@ backend; only environment values differ.
 
 1. **Create the Supabase project.**
    Create a new Supabase project on dedicated compute for the customer (Supabase CLI or
-   Management API). Record its project ref, URL, anon key, service role key, and DB
-   connection string.
+   Management API), on the hosted Postgres major version (17, as `supabase/config.toml`).
+   Record its project ref and URL. Create a **publishable key** and a **secret key** (Settings >
+   API Keys); the legacy `anon` and `service_role` keys are retired by Supabase by the end of
+   2026. The publishable key is `SUPABASE_ANON_KEY` (and the admin app's
+   `VITE_SUPABASE_ANON_KEY`); the secret key is `SUPABASE_SERVICE_ROLE_KEY`, sent on the `apikey`
+   header only (`backend/app/core/supabase_keys.py`). The API refuses to start with the two
+   swapped.
+   **Signing key:** the API accepts only ES256 tokens. Under Settings > JWT Signing Keys, if
+   the current key isn't ECC (P-256): **Migrate JWT secret**, check the standby key is ECC
+   P-256, then **Rotate keys**.
 
 2. **Close the Data API, then apply migrations and seed brand config.**
    In the new project's dashboard, Data API settings:
@@ -62,6 +70,14 @@ backend; only environment values differ.
      <publishable key>` must print `ok` for each project (repeat `--url`/`--key` for several).
      It reads the public settings: sign-up off, email provider on. Check the password minimum
      and SMTP in the dashboard.
+   - **Check the whole project:** after the migrations are pushed, run
+     `python backend/scripts/check_hosted_project.py --url <project URL> --sign-in` in your own
+     terminal. It asks for the publishable and secret keys with hidden input and prints only
+     `ok`/`FAIL` lines: Auth settings, an ES256 signing key, the Data API closed (REST and
+     GraphQL, for the browser key and for a signed-in user), the secret key accepted by Auth
+     admin and Storage as the API sends it, the four buckets, and a real sign-in whose token is
+     ES256 and verifies (a key that is only on standby fails). `--sign-in` creates a temporary
+     confirmed user (no email) and deletes it; without it the script only reads.
 
 7. **Trusted proxy headers for the API. Required before the public demo is deployed.**
    The password-reset limit counts requests per client address (TRD §6.10). Behind App Service

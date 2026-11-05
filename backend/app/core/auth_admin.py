@@ -12,6 +12,8 @@ from typing import Any
 
 import httpx
 
+from app.core.supabase_keys import server_key_headers
+
 
 class AuthAdminError(Exception):
     """Auth answered with an unexpected status, or couldn't be reached."""
@@ -27,10 +29,9 @@ class AuthAdmin:
     service_role_key: str
 
     def _client(self) -> httpx.AsyncClient:
-        key = self.service_role_key
         return httpx.AsyncClient(
             base_url=f"{self.supabase_url.rstrip('/')}/auth/v1",
-            headers={"apikey": key, "Authorization": f"Bearer {key}"},
+            headers=server_key_headers(self.service_role_key),
             timeout=15,
         )
 
