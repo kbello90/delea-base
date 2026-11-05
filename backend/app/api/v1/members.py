@@ -76,6 +76,13 @@ async def _refuse_demo(conn: AsyncConnection, claims: TokenClaims) -> str:
     return business_name
 
 
+def _invite_data(claims: TokenClaims, business_name: str) -> dict[str, str]:
+    """The invited user's metadata. business_name is for Auth's own template (local stack);
+    tenant_id tells the Send Email Hook which shop the invite is for (the user has no
+    membership yet when Auth sends it), so it can refuse a demo shop (TRD §6.6)."""
+    return {"business_name": business_name, "tenant_id": str(claims.tenant_id)}
+
+
 async def _members(conn: AsyncConnection, user_id: UUID | None = None) -> list[MemberOut]:
     query = "select * from public.tenant_member_list()"
     params: tuple = ()
@@ -123,7 +130,7 @@ async def invite_member(
         raise ConflictError(CANNOT_INVITE)
 
     try:
-        user_id = await admin.invite(body.email, {"business_name": business_name})
+        user_id = await admin.invite(body.email, _invite_data(claims, business_name))
     except EmailExists:
         raise ConflictError(CANNOT_INVITE) from None
     except AuthAdminError as exc:
@@ -163,7 +170,7 @@ async def resend_invite(
     if member.status != "invited":
         raise ConflictError(ALREADY_ACCEPTED)
     try:
-        await admin.invite(member.email, {"business_name": business_name})
+        await admin.invite(member.email, _invite_data(claims, business_name))
     except EmailExists:
         raise ConflictError(ALREADY_ACCEPTED) from None
     except AuthAdminError as exc:

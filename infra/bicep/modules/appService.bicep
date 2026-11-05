@@ -22,6 +22,7 @@ param corsOrigins array
 param emailFromDomain string
 param forwardedAllowIps string
 param apiHostName string = ''
+param emailHookOn bool = false
 
 // App Service resolves this at runtime with the app's identity. A secret that is missing or
 // unreadable reaches the app as this text, and the API and worker then refuse to start
@@ -49,6 +50,12 @@ var apiSettings = [
   { name: 'CORS_ORIGINS', value: join(corsOrigins, ',') }
   { name: 'FORWARDED_ALLOW_IPS', value: forwardedAllowIps }
 ]
+
+// Supabase Auth's Send Email Hook (TRD §6.6), API only, added once the hook exists: the secret
+// is created in Supabase when the hook is configured, after the API is deployed.
+var emailHookSettings = emailHookOn ? [
+  { name: 'SEND_EMAIL_HOOK_SECRET', value: kvRef(vaultName, 'send-email-hook-secret') }
+] : []
 
 var workerSettings = [
   { name: 'WEBSITES_PORT', value: '8000' }
@@ -102,7 +109,7 @@ resource api 'Microsoft.Web/sites@2023-12-01' = {
     clientAffinityEnabled: false
     keyVaultReferenceIdentity: 'SystemAssigned'
     siteConfig: union(commonSiteConfig, {
-      appSettings: apiSettings
+      appSettings: concat(apiSettings, emailHookSettings)
     })
   }
 }

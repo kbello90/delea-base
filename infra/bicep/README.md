@@ -53,6 +53,7 @@ set here nor listed there with a reason.
 | `RESEND_API_KEY` | yes | yes | **Key Vault** `resend-api-key` |
 | `RESEND_WEBHOOK_SECRET` | yes | | **Key Vault** `resend-webhook-secret` |
 | `TURNSTILE_SECRET_KEY` | yes | | **Key Vault** `turnstile-secret-key` |
+| `SEND_EMAIL_HOOK_SECRET` | yes | | **Key Vault** `send-email-hook-secret`; added only with `DELEA_EMAIL_HOOK=true` (step 8) |
 | `CORS_ORIGINS` | yes | | parameter (the admin's exact origin) |
 | `FORWARDED_ALLOW_IPS` | yes | | parameter, required, never `*` (TRD §6.10); confirm on the deployed service |
 | `WORKER_HEALTH_PORT` | | `8000` | fixed |
@@ -80,7 +81,7 @@ echoing it, so it never appears on screen or in shell history:
 ```sh
 VAULT="<keyVaultName output>"
 for name in database-url supabase-service-role-key stripe-secret-key stripe-webhook-secret \
-            resend-api-key resend-webhook-secret turnstile-secret-key; do
+            resend-api-key resend-webhook-secret turnstile-secret-key send-email-hook-secret; do
   read -rsp "$name: " value; echo
   az keyvault secret set --vault-name "$VAULT" --name "$name" --value "$value" --output none
   unset value
@@ -113,7 +114,9 @@ Not done yet: each command is run with the owner, one at a time. Resource group
 1. **Phase 1 (no apps):** `DELEA_DEPLOY_APPS=false`. Run `az deployment group what-if`, then
    `create`, with `--parameters infra/bicep/parameters/demo.bicepparam`. Creates the logs,
    registry and vault.
-2. **Secrets:** give yourself Key Vault Secrets Officer, then set the seven secrets (above).
+2. **Secrets:** give yourself Key Vault Secrets Officer, then set the first seven secrets (above).
+   The eighth, `send-email-hook-secret`, can only exist once the hook is configured in Supabase
+   (step 8); until then `DELEA_EMAIL_HOOK` stays false, so the API doesn't reference it.
 3. **Image:** `az acr build --registry <registry> --image delea-backend:<tag> backend` (builds
    in Azure from the repo's Dockerfile; no local Docker push).
 4. **Phase 2 (apps):** `DELEA_DEPLOY_APPS=true DELEA_IMAGE_TAG=<tag>`; `what-if`, then
@@ -129,6 +132,20 @@ Not done yet: each command is run with the owner, one at a time. Resource group
 7. **Webhooks:** the Stripe endpoint for connected accounts at
    `https://api.deleajewelry.com/api/v1/stripe/webhook` with the nine events (TRD §6.14), and
    the Resend webhook; their signing secrets go into the vault.
+8. **Send Email Hook (TRD §6.6), right after the API is live.** Until now the Supabase project
+   uses its built-in mailer (team addresses only) with the hook off.
+   1. Supabase dashboard › Authentication › Hooks › Send Email: type HTTPS, URL
+      `https://api.deleajewelry.com/api/v1/auth/email-hook`, generate the secret and copy it.
+      From the moment the hook is enabled until the redeploy below, Auth emails fail (the API
+      answers 404 without the secret): do this when nobody is signing up or resetting.
+   2. Set `send-email-hook-secret` in the vault to that value (the loop above, one name).
+   3. Redeploy with `DELEA_EMAIL_HOOK=true` (`what-if`, then `create`).
+   4. Prove the full path: a password reset for a test account arrives; a reset for a demo
+      account and a magic-link request send nothing; the API's log stream shows both refusals
+      (`Auth email not sent: ... reason=demo` and `reason=type not used`).
+   With the hook on, an API that is down means no Auth emails (acceptable for the private demo;
+   a production consideration, TRD §6.6). Turning the hook off in Supabase falls back to the
+   built-in mailer.
 
 Health checks: App Service calls `/health` on both apps. The worker answers 503 when no pass has
 finished for ten minutes. On a single instance App Service replaces an instance that stays

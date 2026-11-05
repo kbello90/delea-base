@@ -268,6 +268,54 @@ def reply_to_confirmation(shop: str, color: str | None, link: str) -> Rendered:
 
 
 # ---------------------------------------------------------------------------
+# Auth emails (hosted-demo step 4): sent by the Send Email Hook instead of Supabase Auth.
+# Same wording and links as supabase/templates/, which the local stack still uses.
+# ---------------------------------------------------------------------------
+
+AUTH_LINK_NOTE = "This link works once and expires in 24 hours."
+
+
+def _one_line(value: str) -> str:
+    """A shop name for a subject line: no line breaks (they would start a new header)."""
+    return " ".join(value.split())
+
+
+def auth_invite(shop: str, link: str) -> Rendered:
+    shop = _one_line(shop)
+    lines = [
+        f"{shop} added you to their team. Choose a password to finish setting up your account.",
+        f"{AUTH_LINK_NOTE} If you weren't expecting it, you can ignore this email.",
+    ]
+    return _render(
+        f"You're invited to {shop} on DELEA",
+        "DELEA",
+        None,
+        f"You're invited to {shop} on DELEA",
+        lines,
+        ("Accept the invite", link),
+        f"Sent by DELEA because {shop} invited this address.",
+    )
+
+
+def auth_recovery(link: str) -> Rendered:
+    lines = [
+        "Someone asked to reset the password for this email address. Choose a new password "
+        "with the link below.",
+        f"{AUTH_LINK_NOTE} If you didn't ask for this, you can ignore this email; your "
+        "password hasn't changed.",
+    ]
+    return _render(
+        "Reset your DELEA password",
+        "DELEA",
+        None,
+        "Reset your DELEA password",
+        lines,
+        ("Choose a new password", link),
+        "Sent by DELEA because a password reset was requested for this address.",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Customer emails (D2): website orders only
 # ---------------------------------------------------------------------------
 CUSTOMER_TEMPLATES = (

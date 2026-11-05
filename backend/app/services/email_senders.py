@@ -55,13 +55,20 @@ class EmailSender(Protocol):
 
     async def send(self, email: OutgoingEmail) -> str: ...
 
+    async def aclose(self) -> None: ...
+
 
 class ResendSender:
     name = "resend"
 
-    def __init__(self, api_key: str, transport: httpx.AsyncBaseTransport | None = None) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        transport: httpx.AsyncBaseTransport | None = None,
+        timeout: float = 15,
+    ) -> None:
         self._client = httpx.AsyncClient(
-            headers={"Authorization": f"Bearer {api_key}"}, timeout=15, transport=transport
+            headers={"Authorization": f"Bearer {api_key}"}, timeout=timeout, transport=transport
         )
 
     async def send(self, email: OutgoingEmail) -> str:
@@ -89,6 +96,9 @@ class ResendSender:
             raise TemporaryFailure(f"Resend answered {response.status_code}")
         raise PermanentFailure(f"Resend refused it ({response.status_code})")
 
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
 
 class MailpitSender:
     """The local mail catcher from the Supabase stack (local/test only): nothing leaves the
@@ -96,8 +106,13 @@ class MailpitSender:
 
     name = "local mail catcher"
 
-    def __init__(self, base_url: str, transport: httpx.AsyncBaseTransport | None = None) -> None:
-        self._client = httpx.AsyncClient(base_url=base_url, timeout=10, transport=transport)
+    def __init__(
+        self,
+        base_url: str,
+        transport: httpx.AsyncBaseTransport | None = None,
+        timeout: float = 10,
+    ) -> None:
+        self._client = httpx.AsyncClient(base_url=base_url, timeout=timeout, transport=transport)
 
     async def send(self, email: OutgoingEmail) -> str:
         name, _, address = email.sender.rpartition(" <")
@@ -118,6 +133,9 @@ class MailpitSender:
         if response.status_code != 200:
             raise TemporaryFailure(f"mail catcher answered {response.status_code}")
         return str(response.json().get("ID", ""))
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
 
 
 class EmailSettingsError(RuntimeError):
@@ -144,13 +162,18 @@ def check_email_settings(settings: Settings) -> None:
         raise EmailSettingsError("EMAIL_PROVIDER=resend needs RESEND_API_KEY.")
 
 
-def build_sender(settings: Settings) -> EmailSender | None:
-    """The configured sender, or None when email is off."""
+def build_sender(settings: Settings, timeout: float | None = None) -> EmailSender | None:
+    """The configured sender, or None when email is off. `timeout` (seconds) shortens the
+    provider call, for a caller with a time budget (the Auth email hook)."""
     name = provider_name(settings)
     if name == "resend":
-        return ResendSender(settings.resend_api_key.strip())
+        if timeout is None:
+            return ResendSender(settings.resend_api_key.strip())
+        return ResendSender(settings.resend_api_key.strip(), timeout=timeout)
     if name == "mailpit":
-        return MailpitSender(settings.mailpit_url)
+        if timeout is None:
+            return MailpitSender(settings.mailpit_url)
+        return MailpitSender(settings.mailpit_url, timeout=timeout)
     return None
 
 

@@ -88,7 +88,8 @@ select set_eq(
   array['is_current_member(uuid,uuid,text)',
         'api_password_reset_attempt(text,text,integer,interval,interval,interval)',
         'api_account_is_demo(text)', 'api_owner_sign_in_email(uuid,uuid)',
-        'api_open_card_sessions(uuid,uuid)', 'api_card_session_for_link(uuid,text)'],
+        'api_open_card_sessions(uuid,uuid)', 'api_card_session_for_link(uuid,text)',
+        'api_auth_email_decision(uuid,text,uuid)'],
   'on its own it runs exactly these SECURITY DEFINER functions: no Stripe, checkout or email ones');
 select ok(not has_function_privilege('delea_api', 'public.stripe_apply_refund(text,text,text,boolean,text,text,bigint,text,text,timestamptz)', 'execute'),
           'the Stripe refund function needs payments_writer');
@@ -159,7 +160,8 @@ select ok(not has_function_privilege(r, f, 'execute'), format('%s can''t run %s'
          'public.api_account_is_demo(text)',
          'public.api_owner_sign_in_email(uuid, uuid)',
          'public.api_open_card_sessions(uuid, uuid)',
-         'public.api_card_session_for_link(uuid, text)']) f;
+         'public.api_card_session_for_link(uuid, text)',
+         'public.api_auth_email_decision(uuid, text, uuid)']) f;
 select ok((select bool_and(prosecdef and proconfig @> array['search_path=""'])
              from pg_proc where proname like 'api\_%' and pronamespace = 'public'::regnamespace),
           'every api_* function is SECURITY DEFINER with an empty search_path');

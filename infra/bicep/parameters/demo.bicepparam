@@ -23,3 +23,4 @@ param corsOrigins = [
 param emailFromDomain = 'mail.deleajewelry.com'
 param forwardedAllowIps = readEnvironmentVariable('DELEA_FORWARDED_ALLOW_IPS')
 param apiHostName = readEnvironmentVariable('DELEA_API_HOST_NAME', '')
+param emailHookOn = bool(readEnvironmentVariable('DELEA_EMAIL_HOOK', 'false'))

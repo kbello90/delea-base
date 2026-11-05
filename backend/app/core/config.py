@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     mailpit_url: str = "http://127.0.0.1:55324"
     resend_api_key: str = ""
     resend_webhook_secret: str = ""
+    # Supabase Auth's Send Email Hook (TRD §6.6, app/api/v1/auth_email_hook.py): the secret
+    # Supabase generates for the hook ("v1,whsec_..."). Empty: the hook endpoint answers 404 and
+    # Auth sends its own emails (the built-in mailer, or Mailpit locally). Never commit it.
+    send_email_hook_secret: str = ""
 
     llm_api_key: str = ""
 

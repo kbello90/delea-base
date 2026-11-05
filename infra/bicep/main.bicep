@@ -69,6 +69,9 @@ param forwardedAllowIps string
 @description('The API\'s custom domain, e.g. api.deleajewelry.com. Empty on the first app deploy; set it once the CNAME and asuid TXT records exist.')
 param apiHostName string = ''
 
+@description('The Supabase Auth Send Email Hook is on: the API gets SEND_EMAIL_HOOK_SECRET from the vault. Turn on only after the hook is configured in Supabase and its secret is in the vault (send-email-hook-secret); before that the reference would not resolve and the API would refuse to start (TRD §6.6).')
+param emailHookOn bool = false
+
 @description('Deploy a Redis cache. The app does not use Redis today; keep false.')
 param deployRedis bool = false
 
@@ -145,6 +148,7 @@ module apps 'modules/appService.bicep' = if (deployApps) {
     emailFromDomain: emailFromDomain
     forwardedAllowIps: forwardedAllowIps
     apiHostName: apiHostName
+    emailHookOn: emailHookOn
   }
 }
 

@@ -32,11 +32,12 @@ SECRETS = {
     "RESEND_API_KEY",
     "RESEND_WEBHOOK_SECRET",
     "TURNSTILE_SECRET_KEY",
+    "SEND_EMAIL_HOOK_SECRET",
 }
 
 
 def _settings(var: str) -> dict[str, str]:
-    block = re.search(rf"var {var} = \[\n(.*?)\n\]", APP_SERVICE, re.S)
+    block = re.search(rf"var {var} = (?:emailHookOn \? )?\[\n(.*?)\n\]", APP_SERVICE, re.S)
     assert block, f"{var} not found in appService.bicep"
     entries = re.findall(r"\{ name: '([A-Z_]+)', value: (.+?) \}$", block.group(1), re.M)
     assert len(entries) == len(block.group(1).strip().splitlines()), f"unparsed line in {var}"
@@ -45,7 +46,10 @@ def _settings(var: str) -> dict[str, str]:
     return dict(entries)
 
 
-API = _settings("apiSettings")
+# The Send Email Hook's secret joins the API's settings only when emailHookOn is true (it can
+# only exist after the hook is configured in Supabase; an unresolved reference stops the API).
+HOOK = _settings("emailHookSettings")
+API = {**_settings("apiSettings"), **HOOK}
 WORKER = _settings("workerSettings")
 CODE = {name.upper() for name in Settings.model_fields}
 
@@ -83,9 +87,12 @@ def test_the_worker_runs_the_worker_and_answers_health() -> None:
     for name in ("DATABASE_URL", "ENVIRONMENT", "EMAIL_PROVIDER", "RESEND_API_KEY"):
         assert name in WORKER, name
     # The worker holds no key it doesn't use.
-    assert not {"STRIPE_SECRET_KEY", "SUPABASE_SERVICE_ROLE_KEY", "TURNSTILE_SECRET_KEY"} & set(
-        WORKER
-    )
+    assert not {
+        "STRIPE_SECRET_KEY",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "TURNSTILE_SECRET_KEY",
+        "SEND_EMAIL_HOOK_SECRET",
+    } & set(WORKER)
 
 
 def test_the_hosted_environment_is_never_a_development_one() -> None:
@@ -125,3 +132,14 @@ def test_both_apps_may_pull_the_image_and_read_the_secrets() -> None:
     )
     assert APP_SERVICE.count("acrUseManagedIdentityCreds: true") == 1  # in the shared siteConfig
     assert APP_SERVICE.count("keyVaultReferenceIdentity: 'SystemAssigned'") == 2
+
+
+def test_the_email_hook_secret_is_api_only_and_added_only_when_the_hook_is_on() -> None:
+    assert HOOK == {"SEND_EMAIL_HOOK_SECRET": "kvRef(vaultName, 'send-email-hook-secret')"}
+    assert "var emailHookSettings = emailHookOn ? [" in APP_SERVICE and "] : []" in APP_SERVICE
+    assert "appSettings: concat(apiSettings, emailHookSettings)" in APP_SERVICE
+    assert "SEND_EMAIL_HOOK_SECRET" not in WORKER
+    assert re.search(r"^param emailHookOn bool = false$", MAIN, re.M), "off unless asked"
+    switch = "param emailHookOn = bool(readEnvironmentVariable('DELEA_EMAIL_HOOK', 'false'))"
+    for path in (BICEP / "parameters").glob("*.bicepparam"):
+        assert switch in path.read_text(encoding="utf-8"), path.name

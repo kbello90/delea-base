@@ -3922,6 +3922,25 @@
         }
       }
     },
+    "/api/v1/auth/email-hook": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Auth Email Hook",
+        "operationId": "auth_email_hook_api_v1_auth_email_hook_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/dashboard/summary": {
       "get": {
         "tags": [

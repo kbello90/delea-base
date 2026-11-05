@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     ai,
+    auth_email_hook,
     automation,
     customers,
     dashboard,
@@ -35,6 +36,7 @@ for module in (
     settings,
     members,
     password_reset,
+    auth_email_hook,
     ai,
     dashboard,
     public,
