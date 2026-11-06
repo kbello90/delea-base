@@ -14,7 +14,13 @@ are not managed here.
 | `parameters/shared.bicepparam` | Essential + Professional production (not deployed yet) |
 | `parameters/enterprise.template.bicepparam` | Copy to `enterprise.<customer>.bicepparam` per Enterprise tenant |
 
-## What gets created (demo, about $40–45 a month plus Supabase Pro)
+## What gets created (demo, about $18–20 a month plus Supabase Pro)
+
+East US list prices (Azure Retail Prices API, checked 2026-11-06): the B1 Linux plan
+$0.017/hour (about $12.41 a month), the Basic registry $0.1666/day (about $5.07), Log
+Analytics free for the first 5 GB a month and then $2.30/GB, Key Vault $0.03 per 10,000
+operations, the managed certificate free. Image builds (`az acr build`) cost $0.0001 per vCPU
+second.
 
 | Resource | Name | Notes |
 |---|---|---|
@@ -43,7 +49,7 @@ set here nor listed there with a reason.
 | `SUPABASE_ANON_KEY` | yes | | parameter (public: shipped to every browser) |
 | `SUPABASE_SERVICE_ROLE_KEY` | yes | | **Key Vault** `supabase-service-role-key` |
 | `DATABASE_URL` | yes | yes | **Key Vault** `database-url`: the `delea_api` login, pooler in session mode |
-| `DB_POOL_MIN_SIZE` / `DB_POOL_MAX_SIZE` | 1 / 10 | 1 / 3 | fixed |
+| `DB_POOL_MIN_SIZE` / `DB_POOL_MAX_SIZE` | 1 / 5 | 1 / 2 | fixed: the two maximums total 7, under half the Supabase session pooler's pool of 15 (Micro compute), so an old and a new instance of both apps fit during a restart |
 | `STRIPE_SECRET_KEY` | yes | | **Key Vault** `stripe-secret-key` (test key: a live key stops the API) |
 | `STRIPE_WEBHOOK_SECRET` | yes | | **Key Vault** `stripe-webhook-secret` |
 | `STRIPE_GATEWAY` | `stripe` | | fixed |
@@ -127,8 +133,13 @@ Not done yet: each command is run with the owner, one at a time. Resource group
    API's request logs and set `DELEA_FORWARDED_ALLOW_IPS` to them (TRD §6.10).
 6. **Custom domain:** in Cloudflare, add `CNAME api -> <apiDefaultHostName>` (DNS only) and
    `TXT asuid.api -> <customDomainVerificationId>`. Then redeploy with
-   `DELEA_API_HOST_NAME=api.deleajewelry.com`: the host name is bound, a free managed
-   certificate is issued, and TLS is turned on.
+   `DELEA_API_HOST_NAME=api.deleajewelry.com` and, on this deploy only,
+   `DELEA_API_HOST_FIRST_BIND=true`: the host name is bound, a free managed certificate is
+   issued, and TLS is turned on. Every later deploy keeps `DELEA_API_HOST_NAME` and leaves
+   `DELEA_API_HOST_FIRST_BIND` unset (false): the binding is then never declared without TLS,
+   so a redeploy doesn't drop TLS on the domain. Set by mistake later, it drops TLS briefly
+   (until the same deploy's TLS step); left unset on the first bind, the certificate step fails
+   because the host name isn't bound, and nothing changes: rerun with it set.
 7. **Webhooks:** the Stripe endpoint for connected accounts at
    `https://api.deleajewelry.com/api/v1/stripe/webhook` with the nine events (TRD §6.14), and
    the Resend webhook; their signing secrets go into the vault.

@@ -22,6 +22,7 @@ param corsOrigins array
 param emailFromDomain string
 param forwardedAllowIps string
 param apiHostName string = ''
+param apiHostNameFirstBind bool = false
 param emailHookOn bool = false
 
 // App Service resolves this at runtime with the app's identity. A secret that is missing or
@@ -37,7 +38,7 @@ var apiSettings = [
   { name: 'SUPABASE_SERVICE_ROLE_KEY', value: kvRef(vaultName, 'supabase-service-role-key') }
   { name: 'DATABASE_URL', value: kvRef(vaultName, 'database-url') }
   { name: 'DB_POOL_MIN_SIZE', value: '1' }
-  { name: 'DB_POOL_MAX_SIZE', value: '10' }
+  { name: 'DB_POOL_MAX_SIZE', value: '5' }
   { name: 'STRIPE_SECRET_KEY', value: kvRef(vaultName, 'stripe-secret-key') }
   { name: 'STRIPE_WEBHOOK_SECRET', value: kvRef(vaultName, 'stripe-webhook-secret') }
   { name: 'STRIPE_GATEWAY', value: 'stripe' }
@@ -63,7 +64,7 @@ var workerSettings = [
   { name: 'ENVIRONMENT', value: environment }
   { name: 'DATABASE_URL', value: kvRef(vaultName, 'database-url') }
   { name: 'DB_POOL_MIN_SIZE', value: '1' }
-  { name: 'DB_POOL_MAX_SIZE', value: '3' }
+  { name: 'DB_POOL_MAX_SIZE', value: '2' }
   { name: 'ADMIN_APP_URL', value: adminAppUrl }
   { name: 'EMAIL_PROVIDER', value: 'resend' }
   { name: 'EMAIL_FROM_DOMAIN', value: emailFromDomain }
@@ -189,7 +190,11 @@ resource workerLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' =
 
 // The API's custom domain: bound first without TLS (needs the CNAME and the asuid TXT record),
 // then a free App Service managed certificate, then the binding again with SNI TLS.
-resource apiDomain 'Microsoft.Web/sites/hostNameBindings@2023-12-01' = if (!empty(apiHostName)) {
+// The binding without TLS is declared only on the first bind (apiHostNameFirstBind): on any
+// later deploy it would replace the live TLS binding until the TLS step put it back, so every
+// redeploy would briefly drop TLS on the domain. Later deploys re-declare only the certificate
+// (unchanged) and the TLS binding (the same thumbprint).
+resource apiDomain 'Microsoft.Web/sites/hostNameBindings@2023-12-01' = if (!empty(apiHostName) && apiHostNameFirstBind) {
   parent: api
   name: empty(apiHostName) ? 'unused' : apiHostName
   properties: {

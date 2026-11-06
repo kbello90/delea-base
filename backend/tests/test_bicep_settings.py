@@ -143,3 +143,18 @@ def test_the_email_hook_secret_is_api_only_and_added_only_when_the_hook_is_on() 
     switch = "param emailHookOn = bool(readEnvironmentVariable('DELEA_EMAIL_HOOK', 'false'))"
     for path in (BICEP / "parameters").glob("*.bicepparam"):
         assert switch in path.read_text(encoding="utf-8"), path.name
+
+
+# The Supabase session pooler holds one server connection per client connection, and the
+# demo project's pool is 15 (Micro compute). Both apps' pools together stay at most 7, so an
+# old and a new instance of each fit side by side during a restart or a deploy.
+SESSION_POOLER_POOL_SIZE = 15
+MAX_CONNECTIONS_BOTH_APPS = 7
+
+
+def test_the_two_apps_pools_fit_the_session_pooler_twice() -> None:
+    for app, settings in (("api", API), ("worker", WORKER)):
+        assert settings["DB_POOL_MIN_SIZE"] == "'1'", f"{app}: DB_POOL_MIN_SIZE"
+    total = int(API["DB_POOL_MAX_SIZE"].strip("'")) + int(WORKER["DB_POOL_MAX_SIZE"].strip("'"))
+    assert total <= MAX_CONNECTIONS_BOTH_APPS, f"the two pools' maximums total {total}"
+    assert 2 * MAX_CONNECTIONS_BOTH_APPS <= SESSION_POOLER_POOL_SIZE

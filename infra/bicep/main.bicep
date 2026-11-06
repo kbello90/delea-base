@@ -69,6 +69,9 @@ param forwardedAllowIps string
 @description('The API\'s custom domain, e.g. api.deleajewelry.com. Empty on the first app deploy; set it once the CNAME and asuid TXT records exist.')
 param apiHostName string = ''
 
+@description('True only on the deploy that binds apiHostName for the first time: the host name is then bound without TLS before its managed certificate can be issued. Every later deploy leaves it false, so the existing TLS binding is never declared without TLS again (that would drop TLS on the domain until the TLS step re-enabled it). Left false on the first bind, the certificate step fails (the host name isn\'t bound) and nothing changes.')
+param apiHostNameFirstBind bool = false
+
 @description('The Supabase Auth Send Email Hook is on: the API gets SEND_EMAIL_HOOK_SECRET from the vault. Turn on only after the hook is configured in Supabase and its secret is in the vault (send-email-hook-secret); before that the reference would not resolve and the API would refuse to start (TRD §6.6).')
 param emailHookOn bool = false
 
@@ -148,6 +151,7 @@ module apps 'modules/appService.bicep' = if (deployApps) {
     emailFromDomain: emailFromDomain
     forwardedAllowIps: forwardedAllowIps
     apiHostName: apiHostName
+    apiHostNameFirstBind: apiHostNameFirstBind
     emailHookOn: emailHookOn
   }
 }
